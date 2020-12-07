@@ -2,9 +2,12 @@
 #include <libxml/xpath.h>
 #include <libxml/uri.h>
 #include <curl/curl.h>
-#include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -199,10 +202,10 @@ std::vector<std::string> find_links(memory *mem, std::string url)
 
     char *link = (char *) href;
 
-    if (!link || strlen(link) < 20)
-      continue;
+    if (!link) continue;
 
     if (!strncmp(link, "http://", 7) || !strncmp(link, "https://", 8)) {
+      
       std::string s(link);
 
       if (bare_minimum_valid_url(s)) {
@@ -220,7 +223,7 @@ std::vector<std::string> find_links(memory *mem, std::string url)
 
 int is_html(char *ctype)
 {
-  return ctype != NULL && strlen(ctype) > 10 && strstr(ctype, "text/html");
+  return ctype != NULL && strlen(ctype) >= 9 && strstr(ctype, "text/html");
 }
 
 void mkdir_tree(std::string sub, std::string dir) {
@@ -263,12 +266,41 @@ void save_file(std::string path, memory *mem)
   file.close();
 }
 
+void load_index(std::string path,
+      std::vector<std::string> &urls)
+{
+  std::ifstream file;
+
+  printf("load index %s\n", path.c_str());
+
+  file.open(path, std::ios::in);
+  
+  if (!file.is_open()) {
+    fprintf(stderr, "error opening file %s\n", path.c_str());
+    return;
+  }
+
+  std::string line;
+  while (getline(file, line)) {
+    std::string url;
+    for (auto &c: line) {
+      if (c == '\t') break;
+      else url += c;
+    }
+
+    printf("load index -- %s\n", url.c_str());
+    urls.push_back(url);
+  }
+
+  file.close();
+}
+
 void save_index(std::string path,
-      std::map<std::string, std::string> &url_scanned)
+      std::map<std::string, std::string> &urls)
 {
   std::ofstream file;
 
-  printf("save index %lu -> %s\n", url_scanned.size(), path.c_str());
+  printf("save index %lu -> %s\n", urls.size(), path.c_str());
 
   file.open(path, std::ios::out | std::ios::trunc);
   
@@ -277,19 +309,42 @@ void save_index(std::string path,
     return;
   }
 
-  for (auto &u : url_scanned) {
+  for (auto &u : urls) {
     file << u.first << "\t" << u.second << "\n";
   }
 
   file.close();
 }
 
+void load_other(std::string path,
+      std::set<std::string> &urls)
+{
+  std::ifstream file;
+
+  printf("load other %s\n", path.c_str());
+
+  file.open(path, std::ios::in);
+  
+  if (!file.is_open()) {
+    fprintf(stderr, "error opening file %s\n", path.c_str());
+    return;
+  }
+
+  std::string line;
+  while (getline(file, line)) {
+    printf("load other -- %s\n", line.c_str());
+    urls.insert(line);
+  }
+
+  file.close();
+}
+
 void save_other(std::string path,
-      std::set<std::string> &url_other)
+      std::set<std::string> &urls)
 {
   std::ofstream file;
 
-  printf("save other %lu -> %s\n", url_other.size(), path.c_str());
+  printf("save other %lu -> %s\n", urls.size(), path.c_str());
 
   file.open(path, std::ios::out | std::ios::trunc);
   
@@ -298,7 +353,7 @@ void save_other(std::string path,
     return;
   }
 
-  for (auto &u : url_other) {
+  for (auto &u : urls) {
     file << u << "\n";
   }
 
@@ -317,10 +372,14 @@ void insert_urls(std::string host,
 
     if (url_host == host) {
       auto a = url_scanned.find(url);
-      if (a != url_scanned.end()) continue;
+      if (a != url_scanned.end()) {
+        continue;
+      }
 
       auto b = url_bad.find(url);
-      if (b != url_bad.end()) continue;
+      if (b != url_bad.end()) {
+        continue;
+      }
 
       bool found = false;
 
@@ -331,7 +390,9 @@ void insert_urls(std::string host,
         }
       }
 
-      if (found) continue;
+      if (found) {
+        continue;
+      }
 
       url_scanning.push_back(url);
 
@@ -341,64 +402,92 @@ void insert_urls(std::string host,
   }
 }
 
-std::string pick_next(std::vector<std::string> &url_scanning) {
-  auto best = url_scanning.begin();
-  for (auto u = url_scanning.begin(); u != url_scanning.end(); u++) {
+std::string pick_next(std::vector<std::string> &urls) {
+  auto best = urls.begin();
+
+  for (auto u = urls.begin(); u != urls.end(); u++) {
     if ((*u).length() < (*best).length()) {
       best = u;
     }
   }
 
   std::string r(*best);
-  url_scanning.erase(best);
+  urls.erase(best);
   return r;
 }
 
 int
-main(int argc, const char *argv[])
+main(int argc, char *argv[])
 {
-  if (argc < 2) {
-    printf("url?");
+  int max_pages = 100;
+  int c;
+
+  while ((c = getopt(argc, argv, "n:")) != -1) {
+    switch (c) {
+      case 'n':
+        max_pages = strtol(optarg, NULL, 10);
+        break;
+      case '?':
+        if (optopt == 'n') 
+          fprintf(stderr, "option -n requieres an argument\n");
+        else if (isprint(optopt))
+          fprintf(stderr, "unknown option -%c\n", optopt);
+        else
+          fprintf(stderr, "unknown option\n");
+        return EXIT_FAILURE;
+      default:
+        return EXIT_FAILURE;
+    }
+  }
+ 
+  if (optind == argc) {
+    fprintf(stderr, "need url\n");
     return EXIT_FAILURE;
   }
 
-  std::string start_page(argv[1]);
-  if (start_page.length() >= max_url_len) {
+  if (strlen(argv[optind]) >= max_url_len) {
     fprintf(stderr, "url too long\n");
     return EXIT_FAILURE;
   }
 
-  int max_pages = 100;
-
-  if (argc == 3) {
-    max_pages = strtol(argv[2], NULL, 10);
-  }
+  std::string start_page(argv[optind]);
+  
+  printf("start with %s\n", start_page.c_str());
 
   std::string host = get_host(start_page);
+  if (host.length() == 0) {
+    fprintf(stderr, "failed to parse url\n");
+    return EXIT_FAILURE;
+  }
 
   printf("scraping %s for up to %i pages\n", host.c_str(), max_pages);
-  printf("starting with %s\n", start_page.c_str());
 
   std::map<std::string, std::string> url_scanned;
   std::set<std::string> url_bad;
   std::set<std::string> url_other;
   std::vector<std::string> url_scanning;
 
+  url_scanning.push_back(start_page);
+
+  load_index(host + "_index", url_scanning);
+  load_other(host + "_other", url_other);
+
   CURL *curl_handle;
   CURLcode res;
-
-  url_scanning.push_back(start_page);
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
  
   while (!url_scanning.empty() && url_scanned.size() < max_pages) {
     auto url = pick_next(url_scanning);
+
+    printf("scan %s\n", url.c_str());
    
     auto path = make_path(host, url);
 
     bool found = false;
     for (auto &u : url_scanned) {
       if (u.second == path) {
+        printf("dup path %s -> %s matches\n", u.first.c_str(), u.second.c_str());
         found = true;
         break;
       }
@@ -417,6 +506,8 @@ main(int argc, const char *argv[])
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, grow_buffer);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, &mem);
     curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+    curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
+    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
 
     char s[max_url_len];
     strcpy(s, url.c_str());
@@ -430,12 +521,10 @@ main(int argc, const char *argv[])
       if (res_status == 200) {
         char *ctype;
         curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_TYPE, &ctype);
-        printf("HTTP 200 (%s): %s\n", ctype, url.c_str());
+        printf("HTTP 200 (%s) : %lu : %s\n", ctype, mem.size, url.c_str());
 
         if (is_html(ctype) && mem.size > 100) {
           auto urls = find_links(&mem, url);
-
-          insert_urls(host, urls, url_scanned, url_bad, url_other, url_scanning);
 
           printf("save to %s\n", path.c_str());
 
@@ -443,6 +532,8 @@ main(int argc, const char *argv[])
           
           url_scanned.insert(std::pair<std::string, std::string>(url, path));
         
+          insert_urls(host, urls, url_scanned, url_bad, url_other, url_scanning);
+
         } else {
           printf("skip non html %s\n", url.c_str());
           url_bad.insert(url);

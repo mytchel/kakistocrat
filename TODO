@@ -1,0 +1,5 @@
+needs to follow redirects, at least from http to https.
+Support other protocols, gemeni, gopher.
+normalize urls
+timeout quicker
+
