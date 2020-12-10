@@ -77,7 +77,31 @@ bool is_blacklisted(struct data *data, std::string url) {
 }
 
 void save_indexed(struct data *data, std::map<std::string, std::string> urls) {
+  char sql[1024];
+  char *err_msg = 0;
+  int rc;
 
+  for (auto &p: urls) {
+    auto url = p.first;
+    auto path = p.second;
+
+    auto host = util::get_host(url);
+
+    snprintf(sql, sizeof(sql),
+        "INSERT into links "
+        "(host, url, path, internal_ref, external_ref) "
+        "values ('%s', '%s', '%s', 1, 0)",
+        host.c_str(), url.c_str(), path.c_str());
+
+    rc = sqlite3_exec(data->db, sql, NULL, NULL, &err_msg);
+
+    if (rc != SQLITE_OK ) {
+      fprintf(stderr, "SQL error: %s\n", err_msg);
+
+      sqlite3_free(err_msg);
+      err_msg = 0;
+    } 
+  }
 }
 
 void save_other(struct data *data, std::set<std::string> urls) {
@@ -93,6 +117,9 @@ void save_other(struct data *data, std::set<std::string> urls) {
 
     auto host = util::get_host(url);
 
+    // TODO: escape quotes and such things for db calls
+    // or find better way to input params
+    
     snprintf(sql, sizeof(sql),
         "INSERT into pending (host, url) values ('%s', '%s')",
         host.c_str(), url.c_str());
@@ -215,12 +242,26 @@ int main(int argc, char *argv[]) {
         return 1;
     }
   
-    std::string sql = 
+    std::string link_sql = 
+        "DROP TABLE IF EXISTS links;"
+        "CREATE TABLE links (host text, url text, path text, internal_ref int, external_ref int);";
+   
+    rc = sqlite3_exec(data.db, link_sql.c_str(), NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK ) {
+        fprintf(stderr, "SQL error: %s\n", err_msg);
+
+        sqlite3_free(err_msg);
+        sqlite3_close(data.db);
+        
+        return 1;
+    } 
+
+    std::string seed_sql = 
         "DROP TABLE IF EXISTS pending;"
         "CREATE TABLE pending (host text, url text);"
         "INSERT INTO pending SELECT host, url FROM seed;";
    
-    rc = sqlite3_exec(data.db, sql.c_str(), NULL, NULL, &err_msg);
+    rc = sqlite3_exec(data.db, seed_sql.c_str(), NULL, NULL, &err_msg);
     if (rc != SQLITE_OK ) {
         fprintf(stderr, "SQL error: %s\n", err_msg);
 

@@ -29,7 +29,7 @@ std::string get_host(std::string url) {
     }
 
     if (slashes == 2) {
-      s.push_back(c);
+      s.push_back(tolower(c));
     } else if (slashes == 3) {
       break;
     }
