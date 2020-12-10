@@ -12,12 +12,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include <vector>
-#include <set>
-#include <map>
-#include <string>
-#include <iostream>
-#include <fstream>
+#include "util.h"
 
 #define max_url_len 512
 
@@ -26,104 +21,6 @@ typedef struct {
   char *buf;
   size_t size;
 } memory;
-
-std::string get_host(std::string url) {
-  int slashes = 0;
-  std::vector<char> s;
-
-  for (auto c: url) {
-    if (c == '/') {
-      slashes++;
-      continue;
-    }
-
-    if (slashes == 2) {
-      s.push_back(c);
-    } else if (slashes == 3) {
-      break;
-    }
-  }
-
-  return std::string(s.begin(), s.end());
-}
-
-std::string get_path(std::string url) {
-  int slashes = 0;
-  std::vector<char> s;
-
-  for (auto c: url) {
-    if (slashes >= 3) {
-      s.push_back(c);
-
-    } else if (c == '/') {
-      slashes++;
-      continue;
-    }
-  }
-
-  return std::string(s.begin(), s.end());
-}
-
-std::pair<std::string, std::string> split_dir(std::string path) {
-  std::string dir = "", f = "";
-
-  for (auto &c : path) {
-    if (c == '/') {
-      dir += f + "/";
-      f = "";
-    } else {
-      f += c;
-    }
-  }
-
-  return std::pair<std::string, std::string>(dir, f);
-}
-
-std::string normalize_path(std::string s) {
-  std::string n = "";
-
-  for (auto &c : s) {
-    if (c == '?') {
-      n += "_args";
-      break;
-
-    } else if (c == '&' || c == '*' || c == '!' || c == '@' || c == '#' || c == '$' || c == '%' || c == '^') {
-      n += "_junk";
-      break;
-    
-    } else if (c == '\t' || c == '\n') {
-      n += "_naughty";
-      break;
-
-    } else if (c == '.' && n.length() > 0 && n.back() == '.') {
-      n += "_dots";
-      break;
-
-    } else {
-      n += c;
-    }
-  }
-
-  return n;
-}
-
-std::string make_path(std::string host, std::string url) {
-  auto path = get_path(url);
-
-  path = normalize_path(path);
-
-  auto p = split_dir(path);
-
-  auto dir = p.first;
-  auto file = p.second;
-
-  if (file == "") {
-    file = "index";
-  }
-
-  return host + "/" + dir + "/" + file;
-}
-
 
 size_t grow_buffer(void *contents, size_t sz, size_t nmemb, void *ctx)
 {
@@ -139,20 +36,6 @@ size_t grow_buffer(void *contents, size_t sz, size_t nmemb, void *ctx)
   memcpy(&(mem->buf[mem->size]), contents, realsize);
   mem->size += realsize;
   return realsize;
-}
-
-bool bare_minimum_valid_url(std::string url) {
-  if (url.length() >= max_url_len) {
-    return false;
-  }
-
-  for (auto &c : url) {
-    if (c == '\t' || c == '\n') {
-      return false;
-    }
-  }
-
-  return true;
 }
 
 std::vector<std::string> find_links(memory *mem, std::string url)
@@ -208,8 +91,8 @@ std::vector<std::string> find_links(memory *mem, std::string url)
       
       std::string s(link);
 
-      if (bare_minimum_valid_url(s)) {
-        urls.push_back(s);
+      if (util::bare_minimum_valid_url(s)) {
+        urls.push_back(util::simplify_url(s));
       }
     }
 
@@ -251,7 +134,7 @@ void save_file(std::string path, memory *mem)
 {
   std::ofstream file;
   
-  auto d = split_dir(path);
+  auto d = util::split_dir(path);
   mkdir_tree(d.first);
 
   file.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
@@ -266,100 +149,6 @@ void save_file(std::string path, memory *mem)
   file.close();
 }
 
-void load_index(std::string path,
-      std::vector<std::string> &urls)
-{
-  std::ifstream file;
-
-  printf("load index %s\n", path.c_str());
-
-  file.open(path, std::ios::in);
-  
-  if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
-    return;
-  }
-
-  std::string line;
-  while (getline(file, line)) {
-    std::string url;
-    for (auto &c: line) {
-      if (c == '\t') break;
-      else url += c;
-    }
-
-    printf("load index -- %s\n", url.c_str());
-    urls.push_back(url);
-  }
-
-  file.close();
-}
-
-void save_index(std::string path,
-      std::map<std::string, std::string> &urls)
-{
-  std::ofstream file;
-
-  printf("save index %lu -> %s\n", urls.size(), path.c_str());
-
-  file.open(path, std::ios::out | std::ios::trunc);
-  
-  if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
-    return;
-  }
-
-  for (auto &u : urls) {
-    file << u.first << "\t" << u.second << "\n";
-  }
-
-  file.close();
-}
-
-void load_other(std::string path,
-      std::set<std::string> &urls)
-{
-  std::ifstream file;
-
-  printf("load other %s\n", path.c_str());
-
-  file.open(path, std::ios::in);
-  
-  if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
-    return;
-  }
-
-  std::string line;
-  while (getline(file, line)) {
-    printf("load other -- %s\n", line.c_str());
-    urls.insert(line);
-  }
-
-  file.close();
-}
-
-void save_other(std::string path,
-      std::set<std::string> &urls)
-{
-  std::ofstream file;
-
-  printf("save other %lu -> %s\n", urls.size(), path.c_str());
-
-  file.open(path, std::ios::out | std::ios::trunc);
-  
-  if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
-    return;
-  }
-
-  for (auto &u : urls) {
-    file << u << "\n";
-  }
-
-  file.close();
-}
-
 void insert_urls(std::string host,
       std::vector<std::string> urls,
       std::map<std::string, std::string> &url_scanned,
@@ -368,7 +157,7 @@ void insert_urls(std::string host,
       std::vector<std::string> &url_scanning)
 {
   for (auto &url: urls) {
-    std::string url_host = get_host(url);
+    std::string url_host = util::get_host(url);
 
     if (url_host == host) {
       auto a = url_scanned.find(url);
@@ -450,16 +239,8 @@ main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  std::string start_page(argv[optind]);
-  
-  printf("start with %s\n", start_page.c_str());
-
-  std::string host = get_host(start_page);
-  if (host.length() == 0) {
-    fprintf(stderr, "failed to parse url\n");
-    return EXIT_FAILURE;
-  }
-
+  std::string host(argv[optind]);
+ 
   printf("scraping %s for up to %i pages\n", host.c_str(), max_pages);
 
   std::map<std::string, std::string> url_scanned;
@@ -467,10 +248,9 @@ main(int argc, char *argv[])
   std::set<std::string> url_other;
   std::vector<std::string> url_scanning;
 
-  url_scanning.push_back(start_page);
-
-  load_index(host + "_index", url_scanning);
-  load_other(host + "_other", url_other);
+  for (int i = optind + 1; i < argc; i++) {
+    url_scanning.push_back(std::string(argv[i]));
+  }
 
   CURL *curl_handle;
   CURLcode res;
@@ -482,7 +262,7 @@ main(int argc, char *argv[])
 
     printf("scan %s\n", url.c_str());
    
-    auto path = make_path(host, url);
+    auto path = util::make_path(host, url);
 
     bool found = false;
     for (auto &u : url_scanned) {
@@ -557,8 +337,8 @@ main(int argc, char *argv[])
 
   curl_global_cleanup();
 
-  save_index(host + "_index", url_scanned);
-  save_other(host + "_other", url_other);
+  util::save_index(host, url_scanned);
+  util::save_other(host, url_other);
 
   return EXIT_SUCCESS;
 }
