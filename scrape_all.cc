@@ -7,39 +7,13 @@
 #include <cstring>
 
 #include "util.h"
+#include "scrape.h"
 
 struct data {
   sqlite3 *db;
   int level;
   std::map<std::string, std::vector<std::string>> pending_sites;
 };
-
-void scrape_site(std::string host, 
-    std::vector<std::string> urls,
-    int maxPages,
-    std::map<std::string, std::string> &url_indexed,
-    std::set<std::string> &url_other) {
-
-  printf("scrape %s for %i pages\n", host.c_str(), maxPages);
-
-  char cmd[4192];
-  snprintf(cmd, sizeof(cmd), "./scrape -n %i \"%s\" ", 
-      maxPages, host.c_str());
-
-  for (auto &u: urls) {
-    strcat(cmd, "\"");
-    strcat(cmd, u.c_str());
-    strcat(cmd, "\" ");
-  }
-
-  printf("scrape %s with '%s'\n", host.c_str(), cmd);
-  std::system(cmd);
-  
-  printf("scrape %s finished\n", host.c_str());
-
-  util::load_index(host, url_indexed);
-  util::load_other(host, url_other);
-}
 
 struct blacklist_data {
   std::string url;
@@ -58,10 +32,7 @@ bool is_blacklisted(struct data *data, std::string url) {
   int rc = sqlite3_exec(data->db, sql, 
         [](void *v_data, int argc, char **argv, char **azColName) {
         int *count = (int *) v_data;
-
-        for (int i = 0; i < argc; i++) {
-          *count = atoi(argv[i]);
-        }
+        *count = atoi(argv[0]);
 
         return 0;
 
@@ -104,6 +75,55 @@ void save_indexed(struct data *data, std::map<std::string, std::string> urls) {
   }
 }
 
+bool check_mark_url(struct data *data, std::string url) {
+  char sql[1024];
+  char *err_msg = 0;
+  int rc;
+
+  int refs = 0;
+
+  snprintf(sql, sizeof(sql),
+      "SELECT external_ref FROM links "
+      "WHERE url = '%s'",
+      url.c_str());
+
+  rc = sqlite3_exec(data->db, sql, 
+        [](void *v_data, int argc, char **argv, char **azColName) {
+        int *refs = (int *) v_data;
+        *refs = 1 + atoi(argv[0]);
+
+        return 0;
+ 
+        }, &refs, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    fprintf(stderr, "SQL error: %s\n", err_msg);
+
+    sqlite3_free(err_msg);
+    err_msg = 0;
+    return false;
+  }
+
+  if (refs > 0) {
+    snprintf(sql, sizeof(sql),
+        "UPDATE links set external_ref = %i",
+        refs);
+
+    rc = sqlite3_exec(data->db, sql, NULL, NULL, &err_msg);
+
+    if (rc != SQLITE_OK ) {
+      fprintf(stderr, "SQL error: %s\n", err_msg);
+
+      sqlite3_free(err_msg);
+    } 
+
+    return true;
+  
+  } else {
+    return false;
+  }
+}
+
 void save_other(struct data *data, std::set<std::string> urls) {
   char sql[1024];
   char *err_msg = 0;
@@ -112,6 +132,11 @@ void save_other(struct data *data, std::set<std::string> urls) {
   for (auto &url: urls) {
     if (is_blacklisted(data, url)) {
       printf("blacklisted: %s\n", url.c_str());
+      continue;
+    }
+
+    if (check_mark_url(data, url)) {
+      printf("already indexed: %s\n", url.c_str());
       continue;
     }
 
@@ -216,7 +241,8 @@ void run_round(struct data *data) {
 
     std::map<std::string, std::string> url_indexed;
     std::set<std::string> url_other;
-    scrape_site(host, urls, 10, url_indexed, url_other);
+
+    scrape(10, host, urls, url_indexed, url_other);
 
     save_indexed(data, url_indexed);
     save_other(data, url_other);
@@ -226,14 +252,12 @@ void run_round(struct data *data) {
 } 
 
 int main(int argc, char *argv[]) {
+    char *err_msg = 0;
+
     struct data data;
 
     data.level = 0;
-
-    char *err_msg = 0;
     
-    printf("%s\n", sqlite3_libversion()); 
-
     int rc = sqlite3_open("scrape.db", &data.db); if (rc != SQLITE_OK) {
         
         fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(data.db));

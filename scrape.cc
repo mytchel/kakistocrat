@@ -205,59 +205,25 @@ std::string pick_next(std::vector<std::string> &urls) {
   return r;
 }
 
-int
-main(int argc, char *argv[])
+void
+scrape(int max_pages, 
+    std::string host, 
+    std::vector<std::string> url_scanning,
+    std::map<std::string, std::string> &url_index,
+    std::set<std::string> &url_other)
 {
-  int max_pages = 100;
-  int c;
-
-  while ((c = getopt(argc, argv, "n:")) != -1) {
-    switch (c) {
-      case 'n':
-        max_pages = strtol(optarg, NULL, 10);
-        break;
-      case '?':
-        if (optopt == 'n') 
-          fprintf(stderr, "option -n requieres an argument\n");
-        else if (isprint(optopt))
-          fprintf(stderr, "unknown option -%c\n", optopt);
-        else
-          fprintf(stderr, "unknown option\n");
-        return EXIT_FAILURE;
-      default:
-        return EXIT_FAILURE;
-    }
-  }
- 
-  if (optind == argc) {
-    fprintf(stderr, "need url\n");
-    return EXIT_FAILURE;
-  }
-
-  if (strlen(argv[optind]) >= max_url_len) {
-    fprintf(stderr, "url too long\n");
-    return EXIT_FAILURE;
-  }
-
-  std::string host(argv[optind]);
- 
   printf("scraping %s for up to %i pages\n", host.c_str(), max_pages);
 
-  std::map<std::string, std::string> url_scanned;
   std::set<std::string> url_bad;
-  std::set<std::string> url_other;
-  std::vector<std::string> url_scanning;
-
-  for (int i = optind + 1; i < argc; i++) {
-    url_scanning.push_back(std::string(argv[i]));
-  }
+  url_index.clear();
+  url_other.clear();
 
   CURL *curl_handle;
   CURLcode res;
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
  
-  while (!url_scanning.empty() && url_scanned.size() < max_pages) {
+  while (!url_scanning.empty() && url_index.size() < max_pages) {
     auto url = pick_next(url_scanning);
 
     printf("scan %s\n", url.c_str());
@@ -265,7 +231,7 @@ main(int argc, char *argv[])
     auto path = util::make_path(host, url);
 
     bool found = false;
-    for (auto &u : url_scanned) {
+    for (auto &u : url_index) {
       if (u.second == path) {
         printf("dup path %s -> %s matches\n", u.first.c_str(), u.second.c_str());
         found = true;
@@ -310,9 +276,9 @@ main(int argc, char *argv[])
 
           save_file(path, &mem);
           
-          url_scanned.insert(std::pair<std::string, std::string>(url, path));
+          url_index.insert(std::pair<std::string, std::string>(url, path));
         
-          insert_urls(host, urls, url_scanned, url_bad, url_other, url_scanning);
+          insert_urls(host, urls, url_index, url_bad, url_other, url_scanning);
 
         } else {
           printf("skip non html %s\n", url.c_str());
@@ -336,10 +302,5 @@ main(int argc, char *argv[])
   }
 
   curl_global_cleanup();
-
-  util::save_index(host, url_scanned);
-  util::save_other(host, url_other);
-
-  return EXIT_SUCCESS;
 }
 
