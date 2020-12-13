@@ -35,6 +35,26 @@ void save_other(std::string host,
 
 std::vector<std::string> load_list(std::string path);
 
+struct page {
+  std::string path;
+  int refs;
+};
+
+struct site {
+  std::string host;
+  int level;
+  bool scraped;
+  int refs;
+  std::map<std::string, struct page> pages;
+};
+
+void save_index(std::vector<struct site> &index, std::string path);
+void load_index(std::vector<struct site> &index, std::string path);
+
+struct site * index_find_host(
+        std::vector<struct site> &index,
+        std::string host);
+
 };
 
 

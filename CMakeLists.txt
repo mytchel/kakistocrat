@@ -26,5 +26,3 @@ target_link_libraries(scrape_all ${SQLITE3_LIBRARIES})
 target_link_libraries(scrape_all ${CURL_LIBRARIES})
 target_link_libraries(scrape_all ${LIBXML2_LIBRARIES})
 
-configure_file(base.db scrape.db COPYONLY)
-

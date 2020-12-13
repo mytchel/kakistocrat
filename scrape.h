@@ -1,5 +1,4 @@
 
-
 struct index_url {
   int count;
   std::string url;

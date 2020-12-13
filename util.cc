@@ -28,8 +28,8 @@ std::string get_host(std::string url) {
       continue;
     
     } else if (c == '@') {
-      s = "";
-      continue
+      s.clear();
+      continue;
     }
 
     if (slashes == 2) {
@@ -276,5 +276,79 @@ std::vector<std::string> load_list(std::string path) {
   return values;
 }
 
+void save_index(std::vector<struct site> &index, std::string path)
+{
+  std::ofstream file;
+  
+  printf("save index %lu -> %s\n", index.size(), path.c_str());
+
+  file.open(path, std::ios::out | std::ios::trunc);
+
+  if (!file.is_open()) {
+    fprintf(stderr, "error opening file %s\n", path.c_str());
+    return;
+  }
+
+  for (auto &site: index) {
+    bool has_pages = false;
+    for (auto &p: site.pages) {
+      if (p.second.path.empty()) continue;
+
+      has_pages = true;
+      break;
+    }
+
+    if (!has_pages) continue;
+
+    file << site.host << "\t";
+    file << site.level << "\n";
+
+    for (auto &p: site.pages) {
+      if (p.second.path.empty()) continue;
+
+      file << "\t";
+      file << p.first << "\t";
+      file << p.second.path << "\t";
+      file << p.second.refs << "\n";
+    }
+  }
+  file.close();
 }
 
+std::vector<struct site> load_index(std::string path)
+{
+  std::ifstream file;
+  std::vector<struct site> index;
+
+  printf("load %s\n", path.c_str());
+
+  file.open(path, std::ios::in);
+
+  if (!file.is_open()) {
+    fprintf(stderr, "error opening file %s\n", path.c_str());
+    return index;
+  }
+
+  std::string line;
+  while (getline(file, line)) {
+  }
+
+  file.close();
+
+  return index;
+}
+
+struct site * index_find_host(
+        std::vector<struct site> &index,
+        std::string host
+) {
+  for (auto &i: index) {
+    if (i.host == host) {
+      return &i;
+    }
+  }
+
+  return NULL;
+}
+
+}
