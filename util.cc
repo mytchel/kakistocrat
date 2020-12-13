@@ -26,6 +26,10 @@ std::string get_host(std::string url) {
     if (c == '/') {
       slashes++;
       continue;
+    
+    } else if (c == '@') {
+      s = "";
+      continue
     }
 
     if (slashes == 2) {

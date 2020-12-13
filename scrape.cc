@@ -39,6 +39,46 @@ size_t grow_buffer(void *contents, size_t sz, size_t nmemb, void *ctx)
   return realsize;
 }
 
+
+bool has_suffix(std::string const &s, std::string const &suffix) {
+  if (s.length() >= suffix.length()) {
+    return (0 == s.compare(s.length() - suffix.length(), suffix.length(), suffix));
+  } else {
+    return false;
+  }
+}
+
+bool want_url(std::string url) {
+  if (strncmp(url.c_str(), "http://", 7) && strncmp(url.c_str(), "https://", 8)) 
+    return false;
+
+  if (!util::bare_minimum_valid_url(url)) return false;
+
+  if (has_suffix(url, ".jpg") ||
+      has_suffix(url, ".png") ||
+      has_suffix(url, ".gif") ||
+      has_suffix(url, ".mov") ||
+      has_suffix(url, ".mp3") ||
+      has_suffix(url, ".flac") ||
+      has_suffix(url, ".ogg") ||
+      has_suffix(url, ".epub") ||
+      has_suffix(url, ".tar") ||
+      has_suffix(url, ".zip") ||
+      has_suffix(url, ".gz") ||
+      has_suffix(url, ".xz") ||
+      has_suffix(url, ".bz2") ||
+      has_suffix(url, ".crate") ||
+      has_suffix(url, ".xml") ||
+      has_suffix(url, ".sh") ||
+      has_suffix(url, ".py") ||
+      has_suffix(url, ".js") ||
+      has_suffix(url, ".asc") ||
+      has_suffix(url, ".pdf")) 
+    return false;
+
+  return true;
+}
+
 std::vector<std::string> find_links(memory *mem, std::string url)
 {
   std::vector<std::string> urls;
@@ -88,13 +128,9 @@ std::vector<std::string> find_links(memory *mem, std::string url)
 
     if (!link) continue;
 
-    if (!strncmp(link, "http://", 7) || !strncmp(link, "https://", 8)) {
-      
-      std::string s(link);
-
-      if (util::bare_minimum_valid_url(s)) {
-        urls.push_back(util::simplify_url(s));
-      }
+    std::string url(link);
+    if (want_url(url)) {
+      urls.push_back(util::simplify_url(url));
     }
 
     xmlFree(link);
@@ -190,7 +226,6 @@ bool other_check_mark(
 
   return false;
 }
-
 
 void insert_urls(std::string host,
       std::vector<std::string> urls,
