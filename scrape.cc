@@ -325,8 +325,15 @@ scrape(int max_pages,
   CURLcode res;
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
+
+  int fail_net = 0;
+  int fail_web = 0;
  
-  while (!url_scanning.empty() && url_index.size() < max_pages) {
+  while (!url_scanning.empty()) {
+    if (url_index.size() >= max_pages) break;
+    if (fail_net > 1 + url_index.size() / 4) break;
+    if (fail_web > 1 + url_index.size() / 2) break;
+
     auto u = pick_next(url_scanning);
 
     auto path = u.path;
@@ -375,12 +382,14 @@ scrape(int max_pages,
       } else {
         printf("miss %d %s\n", (int) res_status, url.c_str());
         url_bad.insert(url);
+        fail_web++;
       }
 
     } else {
       fprintf(stderr, "curl_easy_perform() failed: %s\n",
               curl_easy_strerror(res));
       url_bad.insert(url);
+      fail_net++;
     }
    
     curl_easy_cleanup(curl_handle);
