@@ -1,306 +1,289 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#include <sqlite3.h>
-
 #include <cstdlib>
 #include <cstring>
+
+#include <vector>
+#include <string>
+#include <algorithm>
 
 #include "util.h"
 #include "scrape.h"
 
-struct data {
-  sqlite3 *db;
+struct page {
+  std::string path;
+  int refs;
+};
+
+struct site {
+  std::string host;
   int level;
-  std::map<std::string, std::vector<std::string>> pending_sites;
+  bool scraped;
+  int refs;
+  std::map<std::string, struct page> pages;
 };
 
-struct blacklist_data {
-  std::string url;
-  bool matched;
-};
-
-bool is_blacklisted(struct data *data, std::string url) {
-  int count = 0;
-
-  char sql[1024];
-  snprintf(sql, sizeof(sql),
-      "SELECT count(match) FROM blacklist where '%s' like match",
-      url.c_str());
-
-  char *err_msg = 0;
-  int rc = sqlite3_exec(data->db, sql, 
-        [](void *v_data, int argc, char **argv, char **azColName) {
-        int *count = (int *) v_data;
-        *count = atoi(argv[0]);
-
-        return 0;
-
-      }, &count, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    fprintf(stderr, "SQL error: %s\n", err_msg);
-
-    sqlite3_free(err_msg);
-  } 
-
-  return count > 0;
-}
-
-void save_indexed(struct data *data, std::map<std::string, std::string> urls) {
-  char sql[1024];
-  char *err_msg = 0;
-  int rc;
-
-  for (auto &p: urls) {
-    auto url = p.first;
-    auto path = p.second;
-
-    auto host = util::get_host(url);
-
-    snprintf(sql, sizeof(sql),
-        "INSERT into links "
-        "(host, url, path, internal_ref, external_ref) "
-        "values ('%s', '%s', '%s', 1, 0)",
-        host.c_str(), url.c_str(), path.c_str());
-
-    rc = sqlite3_exec(data->db, sql, NULL, NULL, &err_msg);
-
-    if (rc != SQLITE_OK ) {
-      fprintf(stderr, "SQL error: %s\n", err_msg);
-
-      sqlite3_free(err_msg);
-      err_msg = 0;
-    } 
-  }
-}
-
-bool check_mark_url(struct data *data, std::string url) {
-  char sql[1024];
-  char *err_msg = 0;
-  int rc;
-
-  int refs = 0;
-
-  snprintf(sql, sizeof(sql),
-      "SELECT external_ref FROM links "
-      "WHERE url = '%s'",
-      url.c_str());
-
-  rc = sqlite3_exec(data->db, sql, 
-        [](void *v_data, int argc, char **argv, char **azColName) {
-        int *refs = (int *) v_data;
-        *refs = 1 + atoi(argv[0]);
-
-        return 0;
- 
-        }, &refs, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    fprintf(stderr, "SQL error: %s\n", err_msg);
-
-    sqlite3_free(err_msg);
-    err_msg = 0;
-    return false;
-  }
-
-  if (refs > 0) {
-    snprintf(sql, sizeof(sql),
-        "UPDATE links set external_ref = %i",
-        refs);
-
-    rc = sqlite3_exec(data->db, sql, NULL, NULL, &err_msg);
-
-    if (rc != SQLITE_OK ) {
-      fprintf(stderr, "SQL error: %s\n", err_msg);
-
-      sqlite3_free(err_msg);
-    } 
-
-    return true;
-  
-  } else {
-    return false;
-  }
-}
-
-void save_other(struct data *data, std::set<std::string> urls) {
-  char sql[1024];
-  char *err_msg = 0;
-  int rc;
-
-  for (auto &url: urls) {
-    if (is_blacklisted(data, url)) {
-      printf("blacklisted: %s\n", url.c_str());
-      continue;
+struct site * index_find_host(
+        std::vector<struct site> &index,
+        std::string host
+) {
+  for (auto &i: index) {
+    if (i.host == host) {
+      return &i;
     }
-
-    if (check_mark_url(data, url)) {
-      printf("already indexed: %s\n", url.c_str());
-      continue;
-    }
-
-    auto host = util::get_host(url);
-
-    // TODO: escape quotes and such things for db calls
-    // or find better way to input params
-    
-    snprintf(sql, sizeof(sql),
-        "INSERT into pending (host, url) values ('%s', '%s')",
-        host.c_str(), url.c_str());
-
-    rc = sqlite3_exec(data->db, sql, NULL, NULL, &err_msg);
-
-    if (rc != SQLITE_OK ) {
-      fprintf(stderr, "SQL error: %s\n", err_msg);
-
-      sqlite3_free(err_msg);
-    } 
   }
+
+  return NULL;
 }
 
-void clear_pending(struct data *data) {
-  char *err_msg = 0;
-  int rc;
+void insert_site_index(
+    std::vector<struct site> &index,
+    std::string host,
+    std::vector<struct index_url> &site_index
+) {
 
-  printf("clear pending urls\n");
-
-  std::string sql = "DELETE FROM pending";
-
-  rc = sqlite3_exec(data->db, sql.c_str(), NULL, NULL, &err_msg);
-  if (rc != SQLITE_OK ) {
-    fprintf(stderr, "SQL error: %s\n", err_msg);
-
-    sqlite3_free(err_msg);
+  auto index_site = index_find_host(index, host);
+  if (index_site == NULL) {
+    printf("site %s not found in index.\n", host.c_str());
     exit(1);
-  } 
+  }
+
+  for (auto &u: site_index) {
+    auto u_iter = index_site->pages.find(u.url);
+    
+    if (u_iter == index_site->pages.end()) {
+      struct page page = {u.path, u.count};
+      index_site->pages.emplace(u.url, page);
+
+    } else {
+      u_iter->second.path = u.path;
+      u_iter->second.refs += u.count;
+    }
+  }
+}
+
+bool check_blacklist(
+      std::vector<std::string> &blacklist, 
+      std::string url
+) {
+  for (auto &b: blacklist) {
+    if (url.find(b) != std::string::npos) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void insert_site_other(
+    std::vector<struct site> &index,
+    int level,
+    std::vector<struct other_url> &site_other,
+    std::vector<std::string> &blacklist
+) {
+  printf("insert other\n");
+
+  for (auto &u: site_other) {
+
+    if (check_blacklist(blacklist, u.url)) {
+      printf("  blacklisted '%s'\n", u.url.c_str());
+      continue;
+    }
+
+    auto host = util::get_host(u.url);
   
-  printf("pending urls cleared\n");
-} 
+    printf("  insert %s -- %s\n", host.c_str(), u.url.c_str());
+    
+    auto index_site = index_find_host(index, host);
+    if (index_site == NULL) {
+      std::map<std::string, struct page> pages;
 
+      struct page page = {"", u.count};
 
-void run_round(struct data *data) {
-  char *err_msg = 0;
-  int rc;
+      std::string url(u.url);
+     
+      pages.emplace(url, page);
 
-  if (++data->level > 3) {
-    printf("reached max level\n");
+      struct site site = {host, level, false, 1, pages};
+
+      index.push_back(site);
+
+    } else {
+      auto u_iter = index_site->pages.find(u.url);
+
+      index_site->refs++;
+    
+      if (u_iter == index_site->pages.end()) {
+        struct page page = {"", u.count};
+        std::string url(u.url);
+        index_site->pages.emplace(url, page);
+
+      } else {
+        u_iter->second.refs += u.count;
+      }
+    }
+  }
+}
+
+void print_index(std::ofstream &file, std::vector<struct site> &index)
+{
+  printf("index\n");
+
+  for (auto &site: index) {
+    printf("    %s  at level %i with %i refs\n", 
+        site.host.c_str(), site.level, site.refs);
+    
+    bool has_pages = false;
+    for (auto &p: site.pages) {
+      if (p.second.path.empty()) continue;
+
+      has_pages = true;
+      break;
+    }
+
+    if (!has_pages) continue;
+
+    file << site.host << "\t";
+    file << site.level << "\n";
+
+    for (auto &p: site.pages) {
+      if (p.second.path.empty()) continue;
+
+      printf("\t\t%s\t%s\t%i\n", p.first.c_str(), 
+            p.second.path.c_str(),
+            p.second.refs);
+
+      file << "\t";
+      file << p.first << "\t";
+      file << p.second.path << "\t";
+      file << p.second.refs << "\n";
+    }
+  }
+}
+
+void save_index(std::vector<struct site> &index, std::string path)
+{
+  std::ofstream file;
+  
+  printf("save index %lu -> %s\n", index.size(), path.c_str());
+
+  file.open(path, std::ios::out | std::ios::trunc);
+
+  if (!file.is_open()) {
+    fprintf(stderr, "error opening file %s\n", path.c_str());
     return;
   }
-    
-  printf("run round %i\n", data->level);
+
+  print_index(file, index);
+
+  file.close();
+}
+
+void run_round(int level, int max_sites, int max_pages,
+  std::vector<struct site> &index,
+  std::vector<std::string> &blacklist)
+{
+  printf("run round %i\n", level);
+
+  std::vector<std::string> hosts;
+
+  for (auto &site: index) {
+    if (site.scraped) continue;
+    hosts.push_back(std::string(site.host));
+  }
+
+  std::sort(hosts.begin(), hosts.end(), 
+      [&index](std::string &host_a, std::string &host_b) {
  
-  data->pending_sites.clear();
-  
-  std::string sql = "SELECT host, url FROM pending";
-  rc = sqlite3_exec(data->db, sql.c_str(), 
-        [](void *v_data, int argc, char **argv, char **azColName) {
-        struct data *data = (struct data *) v_data;
-
-        std::string host(argv[0]);
-        std::string url(argv[1]);
-
-        auto iter = data->pending_sites.find(host);
-        if (iter == data->pending_sites.end()) {
-          std::vector<std::string> urls;
-
-          urls.push_back(url);
-
-          data->pending_sites.insert(
-              std::pair<std::string, std::vector<std::string>>(
-                host, urls));
-        } else {
-          iter->second.push_back(url);
+        auto site_a = index_find_host(index, host_a);
+        if (site_a == NULL) {
+          return false;
         }
 
-        return 0;
+        auto site_b =  index_find_host(index, host_b);
+        if (site_b == NULL) {
+          return true;
+        }
 
-      }, data, &err_msg);
+        return site_a->refs > site_b->refs;
+      });
 
-  if (rc != SQLITE_OK ) {
-    fprintf(stderr, "SQL error: %s\n", err_msg);
-
-    sqlite3_free(err_msg);
-  } 
-
-  clear_pending(data);
-
-  if (data->pending_sites.empty()) {
-    printf("no pending sites\n");
-    return;
-  }
- 
-  for (auto &p: data->pending_sites) {
-    auto host = p.first;
-    auto urls = p.second;
-
-    printf("have host %s\n", host.c_str());
-    for (auto &u: urls) {
-      printf("  %s\n", u.c_str());
+  int site_count = 0;
+  for (auto &host: hosts) {
+    if (max_sites > 0 && ++site_count >= max_sites) {
+      printf("reached max sites\n");
+      break;
     }
 
-    std::map<std::string, std::string> url_indexed;
-    std::set<std::string> url_other;
+    auto site = index_find_host(index, host);
+    if (site == NULL) {
+      printf("site %s not found in index.\n", host.c_str());
+      exit(1);
+    }
+   
+    printf("scrape host '%s' with %i refs at level %i\n", 
+        host.c_str(), site->refs, site->level);
 
-    scrape(10, host, urls, url_indexed, url_other);
-
-    save_indexed(data, url_indexed);
-    save_other(data, url_other);
-  }
+    // TODO: should skipped and revisisted sites get to use their 
+    // original level?
  
-  run_round(data);
-} 
+    if (site->level != level) {
+      printf("interestingly, '%s' was previously skipped\n", host.c_str());
+    }
+    
+    std::vector<struct index_url> url_index;
+    std::vector<struct other_url> url_other;;
+
+    std::vector<std::string> urls;
+
+    for (auto &p: site->pages) {
+      urls.push_back(p.first);
+    }
+
+    scrape(max_pages, host, urls, url_index, url_other);
+
+    site->scraped = true;
+
+    insert_site_index(index, host, url_index);
+    
+    insert_site_other(index, level + 1, url_other, blacklist);
+ 
+    // Save the current index so exiting early doesn't loose
+    // all the work that has been done
+    save_index(index, "full_index");
+  }
+}
 
 int main(int argc, char *argv[]) {
-    char *err_msg = 0;
+  std::vector<std::string> blacklist = util::load_list("../mine/blacklist");
+  std::vector<std::string> initial_seed = util::load_list("../mine/seed");
 
-    struct data data;
+  std::vector<struct other_url> seed_other;
+  for (auto &u: initial_seed) {
+    struct other_url i = {1, u};
+    seed_other.push_back(i);
+  }
 
-    data.level = 0;
-    
-    int rc = sqlite3_open("scrape.db", &data.db); if (rc != SQLITE_OK) {
-        
-        fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(data.db));
-        sqlite3_close(data.db);
-        
-        return 1;
-    }
-  
-    std::string link_sql = 
-        "DROP TABLE IF EXISTS links;"
-        "CREATE TABLE links (host text, url text, path text, internal_ref int, external_ref int);";
-   
-    rc = sqlite3_exec(data.db, link_sql.c_str(), NULL, NULL, &err_msg);
-    if (rc != SQLITE_OK ) {
-        fprintf(stderr, "SQL error: %s\n", err_msg);
+  std::vector<struct site> index;
 
-        sqlite3_free(err_msg);
-        sqlite3_close(data.db);
-        
-        return 1;
-    } 
+  struct level {
+    int max_sites;
+    int max_pages;
+  };
 
-    std::string seed_sql = 
-        "DROP TABLE IF EXISTS pending;"
-        "CREATE TABLE pending (host text, url text);"
-        "INSERT INTO pending SELECT host, url FROM seed;";
-   
-    rc = sqlite3_exec(data.db, seed_sql.c_str(), NULL, NULL, &err_msg);
-    if (rc != SQLITE_OK ) {
-        fprintf(stderr, "SQL error: %s\n", err_msg);
+  std::vector<struct level> levels = {{0, 30}, {10, 20}, {10, 10}, {10, 5}, {10, 1}};
+  int level_count = 1;
 
-        sqlite3_free(err_msg);
-        sqlite3_close(data.db);
-        
-        return 1;
-    } 
+  insert_site_other(index, level_count, seed_other, blacklist);
 
-    sleep(1);
+  save_index(index, "full_index");
 
-    run_round(&data);
+  for (auto level: levels) {
+    run_round(level_count++, level.max_sites, level.max_pages, 
+        index, blacklist);
+  }
 
-    sqlite3_close(data.db);
-    
-    return 0;
+  return 0;
 }
     

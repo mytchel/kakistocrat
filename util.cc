@@ -74,8 +74,7 @@ std::string normalize_path(std::string s) {
   std::string n = "";
 
   for (auto &c : s) {
-    if (c == '?') {
-      n += "_bad";
+    if (c == '?' || c == '#') {
       break;
 
     } else if (c == '\t' || c == '\n') {
@@ -83,8 +82,7 @@ std::string normalize_path(std::string s) {
       break;
 
     } else if (c == '&' || c == '*' || c == '!' 
-        || c == '@' || c == '#' || c == '$' 
-        || c == '%' || c == '^') 
+        || c == '@' || c == '$' || c == '^') 
     {
       n += "_junk";
       break;
@@ -248,6 +246,30 @@ void save_other(std::string host,
   }
 
   file.close();
+}
+
+std::vector<std::string> load_list(std::string path) {
+  std::ifstream file;
+  std::vector<std::string> values;
+
+  printf("load %s\n", path.c_str());
+
+  file.open(path, std::ios::in);
+
+  if (!file.is_open()) {
+    fprintf(stderr, "error opening file %s\n", path.c_str());
+    return values;
+  }
+
+  std::string line;
+  while (getline(file, line)) {
+    printf("     %s\n", line.c_str());
+    values.push_back(line);
+  }
+
+  file.close();
+
+  return values;
 }
 
 }

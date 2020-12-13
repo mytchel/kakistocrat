@@ -13,6 +13,7 @@
 #include <sys/types.h>
 
 #include "util.h"
+#include "scrape.h"
 
 #define max_url_len 512
 
@@ -149,19 +150,60 @@ void save_file(std::string path, memory *mem)
   file.close();
 }
 
+bool index_check_mark(
+    std::vector<struct index_url> &url_index,
+    std::string url)
+{
+  for (auto &i: url_index) {
+    if (i.url == url) {
+      i.count++;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool index_check_path(
+    std::vector<struct index_url> &url_index,
+    std::string path)
+{
+  for (auto &i: url_index) {
+    if (i.path == path) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool other_check_mark(
+    std::vector<struct other_url> &url_other,
+    std::string url)
+{
+  for (auto &i: url_other) {
+    if (i.url == url) {
+      i.count++;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
 void insert_urls(std::string host,
       std::vector<std::string> urls,
-      std::map<std::string, std::string> &url_scanned,
+      std::vector<struct index_url> &url_index,
+      std::vector<struct other_url> &url_other,
       std::set<std::string> &url_bad,
-      std::set<std::string> &url_other,
-      std::vector<std::string> &url_scanning)
+      std::vector<struct index_url> &url_scanning)
 {
   for (auto &url: urls) {
     std::string url_host = util::get_host(url);
 
     if (url_host == host) {
-      auto a = url_scanned.find(url);
-      if (a != url_scanned.end()) {
+      if (index_check_mark(url_index, url)) {
         continue;
       }
 
@@ -172,35 +214,45 @@ void insert_urls(std::string host,
 
       bool found = false;
 
-      for (auto &u: url_scanning) {
-        if (url == u) {
-          found = true;
-          break;
-        }
-      }
-
-      if (found) {
+      if (index_check_mark(url_scanning, url)) {
         continue;
       }
 
-      url_scanning.push_back(url);
+      auto p = util::make_path(host, url);
+
+      if (index_check_path(url_scanning, p)) {
+        continue;
+      }
+
+      if (index_check_path(url_index, p)) {
+        continue;
+      }
+   
+      struct index_url i = {1, url, p};
+      url_scanning.push_back(i);
 
     } else {
-      url_other.insert(url);
+      if (other_check_mark(url_other, url)) {
+        continue;
+      }
+
+      struct other_url i = {1, url};
+      url_other.push_back(i);
     } 
   }
 }
 
-std::string pick_next(std::vector<std::string> &urls) {
+struct index_url pick_next(std::vector<struct index_url> &urls) {
   auto best = urls.begin();
 
   for (auto u = urls.begin(); u != urls.end(); u++) {
-    if ((*u).length() < (*best).length()) {
+    // TODO: base on count too
+    if ((*u).url.length() < (*best).url.length()) {
       best = u;
     }
   }
 
-  std::string r(*best);
+  struct index_url r(*best);
   urls.erase(best);
   return r;
 }
@@ -208,15 +260,31 @@ std::string pick_next(std::vector<std::string> &urls) {
 void
 scrape(int max_pages, 
     std::string host, 
-    std::vector<std::string> url_scanning,
-    std::map<std::string, std::string> &url_index,
-    std::set<std::string> &url_other)
+    std::vector<std::string> url_seed,
+    std::vector<struct index_url> &url_index,
+    std::vector<struct other_url> &url_other)
 {
   printf("scraping %s for up to %i pages\n", host.c_str(), max_pages);
 
+  std::vector<struct index_url> url_scanning;
   std::set<std::string> url_bad;
   url_index.clear();
   url_other.clear();
+
+  for (auto &u: url_seed) {
+    auto p = util::make_path(host, u);
+
+    if (index_check_path(url_scanning, p)) {
+      printf("skip dup path %s\n", u.c_str());
+      continue;
+    }
+   
+    printf("  seed: %s\n", u.c_str());
+
+    struct index_url i = {0, u, p};
+
+    url_scanning.push_back(i);
+  }
 
   CURL *curl_handle;
   CURLcode res;
@@ -224,25 +292,10 @@ scrape(int max_pages,
   curl_global_init(CURL_GLOBAL_DEFAULT);
  
   while (!url_scanning.empty() && url_index.size() < max_pages) {
-    auto url = pick_next(url_scanning);
+    auto u = pick_next(url_scanning);
 
-    printf("scan %s\n", url.c_str());
-   
-    auto path = util::make_path(host, url);
-
-    bool found = false;
-    for (auto &u : url_index) {
-      if (u.second == path) {
-        printf("dup path %s -> %s matches\n", u.first.c_str(), u.second.c_str());
-        found = true;
-        break;
-      }
-    }
-
-    if (found) {
-      printf("skip dup path %s\n", url.c_str());
-      continue;
-    }
+    auto path = u.path;
+    auto url = u.url;
 
     char *c = (char *) malloc(1);
     memory mem{c, 0};
@@ -267,26 +320,25 @@ scrape(int max_pages,
       if (res_status == 200) {
         char *ctype;
         curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_TYPE, &ctype);
-        printf("HTTP 200 (%s) : %lu : %s\n", ctype, mem.size, url.c_str());
 
         if (is_html(ctype) && mem.size > 100) {
-          auto urls = find_links(&mem, url);
+          printf("good %s\n", url.c_str());
 
-          printf("save to %s\n", path.c_str());
+          auto urls = find_links(&mem, url);
 
           save_file(path, &mem);
           
-          url_index.insert(std::pair<std::string, std::string>(url, path));
+          url_index.push_back(u);
         
-          insert_urls(host, urls, url_index, url_bad, url_other, url_scanning);
+          insert_urls(host, urls, url_index, url_other, url_bad, url_scanning);
 
         } else {
-          printf("skip non html %s\n", url.c_str());
+          printf("miss '%s' %s\n", ctype, url.c_str());
           url_bad.insert(url);
         }
 
       } else {
-        printf("miss http %d %s\n", (int) res_status, url.c_str());
+        printf("miss %d %s\n", (int) res_status, url.c_str());
         url_bad.insert(url);
       }
 

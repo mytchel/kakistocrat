@@ -54,18 +54,20 @@ main(int argc, char *argv[])
  
   printf("scraping %s for up to %i pages\n", host.c_str(), max_pages);
 
-  std::map<std::string, std::string> url_scanned;
-  std::set<std::string> url_other;
+  std::vector<struct index_url> url_index;
+  std::vector<struct other_url> url_other;
+
   std::vector<std::string> url_scanning;
 
   for (int i = optind + 1; i < argc; i++) {
     url_scanning.push_back(std::string(argv[i]));
   }
 
-  scrape(max_pages, host, url_scanning, url_scanned, url_other);
+  scrape(max_pages, host, url_scanning, url_index, url_other);
 
-  util::save_index(host, url_scanned);
-  util::save_other(host, url_other);
+  // TODO
+  //util::save_index(host, url_index);
+  //util::save_other(host, url_other);
 
   return EXIT_SUCCESS;
 }

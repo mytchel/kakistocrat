@@ -32,4 +32,9 @@ void load_other(std::string host,
 
 void save_other(std::string host,
       std::set<std::string> &urls);
+
+std::vector<std::string> load_list(std::string path);
+
 };
+
+
