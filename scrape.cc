@@ -69,6 +69,8 @@ bool want_url(std::string url) {
       has_suffix(url, ".bz2") ||
       has_suffix(url, ".crate") ||
       has_suffix(url, ".xml") ||
+      has_suffix(url, ".csv") ||
+      has_suffix(url, ".sheet") ||
       has_suffix(url, ".sh") ||
       has_suffix(url, ".py") ||
       has_suffix(url, ".js") ||

@@ -184,7 +184,7 @@ int main(int argc, char *argv[]) {
     int max_pages;
   };
 
-  std::vector<struct level> levels = {{0, 100}, {100, 30}, {100, 5}};
+  std::vector<struct level> levels = {{0, 5000}, {1000, 50}, {1000, 1}};
   int level_count = 1;
 
   insert_site_other(index, level_count, seed_other, blacklist);
