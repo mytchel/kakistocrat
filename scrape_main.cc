@@ -53,6 +53,8 @@ main(int argc, char *argv[])
   std::string host(argv[optind]);
  
   printf("scraping %s for up to %i pages\n", host.c_str(), max_pages);
+  
+  curl_global_init(CURL_GLOBAL_DEFAULT);
 
   std::vector<struct index_url> url_index;
   std::vector<struct other_url> url_other;
@@ -68,6 +70,8 @@ main(int argc, char *argv[])
   // TODO
   //util::save_index(host, url_index);
   //util::save_other(host, url_other);
+
+  curl_global_cleanup();
 
   return EXIT_SUCCESS;
 }

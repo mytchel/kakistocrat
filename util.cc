@@ -28,7 +28,12 @@ std::string get_host(std::string url) {
   for (auto c: url) {
     if (c == '/') {
       slashes++;
-      continue;
+      
+      if (slashes == 3) {
+        break;
+      } else {
+        continue;
+      }
     
     } else if (c == '@') {
       s.clear();
@@ -37,8 +42,6 @@ std::string get_host(std::string url) {
 
     if (slashes == 2) {
       s.push_back(tolower(c));
-    } else if (slashes == 3) {
-      break;
     }
   }
 
@@ -89,7 +92,7 @@ std::string normalize_path(std::string s) {
       break;
 
     } else if (c == '&' || c == '*' || c == '!' 
-        || c == '@' || c == '$' || c == '^') 
+              || c == '$' || c == '^') 
     {
       n += "_junk";
       break;

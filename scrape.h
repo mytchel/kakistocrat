@@ -12,8 +12,8 @@ struct other_url {
 
 void
 scrape(int max_pages, 
-    std::string host, 
-    std::vector<std::string> url_scanning,
+    const std::string host, 
+    const std::vector<std::string> &url_scanning,
     std::vector<struct index_url> &url_index,
     std::vector<struct other_url> &url_other);
 

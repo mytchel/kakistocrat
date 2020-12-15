@@ -26,7 +26,7 @@ size_t grow_buffer(void *contents, size_t sz, size_t nmemb, void *ctx)
   size_t realsize = sz * nmemb;
   memory *mem = (memory*) ctx;
 
-  if (mem->size + realsize > 1024 * 1024 * 10) {
+  if (mem->size + realsize > 1024 * 1024 * 5) {
     printf("buffer exceded max size\n");
     return 0;
   } 
@@ -58,9 +58,11 @@ bool want_url(std::string url) {
 
   if (!util::bare_minimum_valid_url(url)) return false;
 
-  if (has_suffix(url, ".jpg") ||
+  if (has_suffix(url, ".txt") ||
+      has_suffix(url, ".jpg") ||
       has_suffix(url, ".png") ||
       has_suffix(url, ".gif") ||
+      has_suffix(url, ".svg") ||
       has_suffix(url, ".mov") ||
       has_suffix(url, ".mp3") ||
       has_suffix(url, ".flac") ||
@@ -74,6 +76,7 @@ bool want_url(std::string url) {
       has_suffix(url, ".crate") ||
       has_suffix(url, ".xml") ||
       has_suffix(url, ".csv") ||
+      has_suffix(url, ".ppt") ||
       has_suffix(url, ".sheet") ||
       has_suffix(url, ".sh") ||
       has_suffix(url, ".py") ||
@@ -154,14 +157,14 @@ int is_html(char *ctype)
   return ctype != NULL && strlen(ctype) >= 9 && strstr(ctype, "text/html");
 }
 
-void save_file(std::string path, memory *mem)
+void save_file(std::string path, std::string url, memory *mem)
 {
   std::ofstream file;
  
   file.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
   
   if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
+    fprintf(stderr, "error opening file %s for %s\n", path.c_str(), url.c_str());
     return;
   }
 
@@ -171,7 +174,7 @@ void save_file(std::string path, memory *mem)
 }
 
 bool index_check_mark(
-    std::vector<struct index_url> &url_index,
+    std::vector<struct index_url> url_index,
     std::string url)
 {
   for (auto &i: url_index) {
@@ -185,7 +188,7 @@ bool index_check_mark(
 }
 
 bool index_check_path(
-    std::vector<struct index_url> &url_index,
+    std::vector<struct index_url> url_index,
     std::string path)
 {
   for (auto &i: url_index) {
@@ -198,7 +201,7 @@ bool index_check_path(
 }
 
 bool other_check_mark(
-    std::vector<struct other_url> &url_other,
+    std::vector<struct other_url> url_other,
     std::string url)
 {
   for (auto &i: url_other) {
@@ -221,17 +224,17 @@ void insert_urls(std::string host,
   for (auto &url: urls) {
     std::string url_host = util::get_host(url);
 
-    if (url_host == host) {
-      if (index_check_mark(url_index, url)) {
-        continue;
-      }
+    if (url_host.empty()) continue;
 
+    if (url_host == host) {
       auto b = url_bad.find(url);
       if (b != url_bad.end()) {
         continue;
       }
 
-      bool found = false;
+      if (index_check_mark(url_index, url)) {
+        continue;
+      }
 
       if (index_check_mark(url_scanning, url)) {
         continue;
@@ -278,8 +281,8 @@ struct index_url pick_next(std::vector<struct index_url> &urls) {
 
 void
 scrape(int max_pages, 
-    std::string host, 
-    std::vector<std::string> url_seed,
+    const std::string host, 
+    const std::vector<std::string> &url_seed,
     std::vector<struct index_url> &url_index,
     std::vector<struct other_url> &url_other)
 {
@@ -287,8 +290,6 @@ scrape(int max_pages,
 
   std::vector<struct index_url> url_scanning;
   std::set<std::string> url_bad;
-  url_index.clear();
-  url_other.clear();
 
   for (auto &u: url_seed) {
     auto p = util::make_path(host, u);
@@ -297,8 +298,6 @@ scrape(int max_pages,
       printf("skip dup path %s\n", u.c_str());
       continue;
     }
-   
-    printf("  seed: %s\n", u.c_str());
 
     struct index_url i = {0, u, p};
 
@@ -308,18 +307,29 @@ scrape(int max_pages,
   CURL *curl_handle;
   CURLcode res;
 
-  curl_global_init(CURL_GLOBAL_DEFAULT);
-
   int fail_net = 0;
   int fail_web = 0;
   
   // TODO: have a memory leak somewhere
  
   while (!url_scanning.empty()) {
-    if (url_index.size() >= max_pages) break;
-    if (fail_net > 1 + url_index.size() / 4) break;
-    if (fail_web > 1 + url_index.size() / 2) break;
+    if (url_index.size() >= max_pages) {
+      printf("%s reached max pages\n", host.c_str());
+      break;
+    }
+    
+    if (fail_net > 1 + url_index.size() / 4) {
+      printf("%s reached max fail net %i / %lu\n", host.c_str(),
+          fail_net, url_index.size());
+      break;
+    }
 
+    if (fail_web > 1 + url_index.size() / 2) {
+      printf("%s reached max fail web %i / %lu\n", host.c_str(),
+          fail_web, url_index.size());
+      break;
+    }
+ 
     auto u = pick_next(url_scanning);
 
     auto path = u.path;
@@ -352,7 +362,7 @@ scrape(int max_pages,
         if (is_html(ctype) && mem.size > 10) {
           auto urls = find_links(&mem, url);
 
-          save_file(path, &mem);
+          save_file(path, url, &mem);
 
           if (url_index.size() > 0 && url_index.size() % 10 == 0) {
             printf("%s %lu / %lu with %lu failures\n",
@@ -376,8 +386,7 @@ scrape(int max_pages,
       }
 
     } else {
-      fprintf(stderr, "curl_easy_perform() failed: %s\n",
-              curl_easy_strerror(res));
+      printf("miss %s %s\n", curl_easy_strerror(res), url.c_str());
       url_bad.insert(url);
       fail_net++;
     }
@@ -386,7 +395,5 @@ scrape(int max_pages,
 
     free(mem.buf);
   }
-
-  curl_global_cleanup();
 }
 

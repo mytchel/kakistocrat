@@ -23,3 +23,8 @@ target_include_directories(scrape_all PUBLIC ${LIBXML2_INCLUDE_DIR})
 target_link_libraries(scrape_all ${CURL_LIBRARIES})
 target_link_libraries(scrape_all ${LIBXML2_LIBRARIES})
 
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
+target_link_libraries(scrape_all Threads::Threads)
+
