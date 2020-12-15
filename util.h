@@ -7,7 +7,7 @@
 
 namespace util {
 
-#define max_url_len 512
+const size_t max_url_len = 512;
 
 std::string get_host(std::string url);
 std::string get_path(std::string url);

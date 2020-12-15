@@ -2,7 +2,10 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -103,21 +106,95 @@ std::string normalize_path(std::string s) {
   return n;
 }
 
-std::string make_path(std::string host, std::string url) {
-  auto path = get_path(url);
+std::vector<std::string> split_path(std::string s) {
+  std::vector<std::string> path;
+  std::string cur;
 
-  path = normalize_path(path);
+  for (auto &c: s) {
+    if (c == '/') {
+      if (cur == ".") {
+        cur = "";
 
-  auto p = split_dir(path);
+      } else if (cur == "..") {
+        if (!path.empty()) {
+          cur = path.back();
+          path.pop_back();
 
-  auto dir = p.first;
-  auto file = p.second;
+        } else {
+          cur = "";
+        }
 
-  if (file == "") {
-    file = "index";
+      } else if (!cur.empty()) {
+        path.push_back(cur);
+        cur = "";
+      }
+    } else {
+      cur += c;
+    }
   }
 
-  return host + "/" + dir + "/" + file;
+  if (!cur.empty()) {
+    path.push_back(cur);
+  }
+
+  return path;
+}
+
+std::string make_path(std::string host, std::string url) {
+  auto path = normalize_path(get_path(url));
+
+  auto path_parts = split_path(path);
+
+  auto file_path = host;
+
+  mkdir(host.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
+  if (path_parts.empty()) {
+    return file_path + "/index";
+  }
+
+  for (int i = 0; i < path_parts.size(); i++) {
+    auto &part = path_parts[i];
+    
+    bool need_dir = i + 1 < path_parts.size();
+    bool exists = false;
+
+    auto p = file_path + "/" + part;
+
+    struct stat s;
+    if (stat(p.c_str(), &s) != -1) {
+
+      bool is_dir = (s.st_mode & S_IFMT) == S_IFDIR;
+      bool is_file = (s.st_mode & S_IFMT) == S_IFDIR;
+
+      if (need_dir && !is_dir) {
+        p = file_path + "/" + part + "_dir";
+      } else if (!need_dir && is_dir) {
+        p = file_path + "/" + part + "/index";
+      }
+    
+      exists = stat(p.c_str(), &s) != -1;
+
+    } else {
+      exists = false;
+    }
+
+    file_path = p;
+
+    if (!exists) {
+      if (need_dir) {
+        mkdir(file_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
+      } else {
+        int fd = creat(file_path.c_str(), S_IRUSR | S_IWUSR);
+        if (fd > 0) {
+          close(fd);
+        }
+      }
+    }
+  }
+
+  return file_path;
 }
 
 bool bare_minimum_valid_url(std::string url) {
@@ -270,6 +347,8 @@ std::vector<std::string> load_list(std::string path) {
     printf("     %s\n", line.c_str());
     values.push_back(line);
   }
+    
+  printf("\n");
 
   file.close();
 

@@ -15,8 +15,6 @@
 #include "util.h"
 #include "scrape.h"
 
-#define max_url_len 512
-
 /* resizable buffer */ 
 typedef struct {
   char *buf;
@@ -27,18 +25,24 @@ size_t grow_buffer(void *contents, size_t sz, size_t nmemb, void *ctx)
 {
   size_t realsize = sz * nmemb;
   memory *mem = (memory*) ctx;
+
+  if (mem->size + realsize > 1024 * 1024 * 10) {
+    printf("buffer exceded max size\n");
+    return 0;
+  } 
+
   char *ptr = (char *) realloc(mem->buf, mem->size + realsize);
-  if(!ptr) {
+  if (!ptr) {
     /* out of memory */ 
     printf("not enough memory (realloc returned NULL)\n");
     return 0;
   }
+
   mem->buf = ptr;
   memcpy(&(mem->buf[mem->size]), contents, realsize);
   mem->size += realsize;
   return realsize;
 }
-
 
 bool has_suffix(std::string const &s, std::string const &suffix) {
   if (s.length() >= suffix.length()) {
@@ -85,7 +89,7 @@ std::vector<std::string> find_links(memory *mem, std::string url)
 {
   std::vector<std::string> urls;
 
-  char url_w[max_url_len];
+  char url_w[util::max_url_len];
   strcpy(url_w, url.c_str());
 
   int opts = HTML_PARSE_NOBLANKS | HTML_PARSE_NOERROR |  
@@ -116,6 +120,7 @@ std::vector<std::string> find_links(memory *mem, std::string url)
 
   int i;
   for (i = 0; i < nodeset->nodeNr; i++) {
+    // TODO: what does this actually do?
     double r = rand();
     int x = r * nodeset->nodeNr / RAND_MAX;
 
@@ -131,6 +136,7 @@ std::vector<std::string> find_links(memory *mem, std::string url)
     if (!link) continue;
 
     std::string url(link);
+
     if (want_url(url)) {
       urls.push_back(util::simplify_url(url));
     }
@@ -148,34 +154,10 @@ int is_html(char *ctype)
   return ctype != NULL && strlen(ctype) >= 9 && strstr(ctype, "text/html");
 }
 
-void mkdir_tree(std::string sub, std::string dir) {
-  if (sub.length() == 0) return;
-
-  int i;
-
-  for (i = 0; i < sub.length(); i++) {
-    dir += sub[i];
-    if (sub[i] == '/') break;
-  }
-
-  mkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-
-  if (i + 1 < sub.length()) {
-    mkdir_tree(sub.substr(i+1), dir);
-  }
-}
-
-void mkdir_tree(std::string path) {
-  mkdir_tree(path, "");
-}
-
 void save_file(std::string path, memory *mem)
 {
   std::ofstream file;
-  
-  auto d = util::split_dir(path);
-  mkdir_tree(d.first);
-
+ 
   file.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
   
   if (!file.is_open()) {
@@ -330,6 +312,8 @@ scrape(int max_pages,
 
   int fail_net = 0;
   int fail_web = 0;
+  
+  // TODO: have a memory leak somewhere
  
   while (!url_scanning.empty()) {
     if (url_index.size() >= max_pages) break;
@@ -352,7 +336,7 @@ scrape(int max_pages,
     curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
     curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
 
-    char s[max_url_len];
+    char s[util::max_url_len];
     strcpy(s, url.c_str());
     curl_easy_setopt(curl_handle, CURLOPT_URL, s);
 
@@ -365,19 +349,23 @@ scrape(int max_pages,
         char *ctype;
         curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_TYPE, &ctype);
 
-        if (is_html(ctype) && mem.size > 100) {
-          printf("good %s\n", url.c_str());
-
+        if (is_html(ctype) && mem.size > 10) {
           auto urls = find_links(&mem, url);
 
           save_file(path, &mem);
+
+          if (url_index.size() > 0 && url_index.size() % 10 == 0) {
+            printf("%s %lu / %lu with %lu failures\n",
+                host.c_str(), url_index.size(), url_scanning.size(),
+                url_bad.size());
+          }
           
           url_index.push_back(u);
         
           insert_urls(host, urls, url_index, url_other, url_bad, url_scanning);
 
         } else {
-          printf("miss '%s' %s\n", ctype, url.c_str());
+          printf("miss '%s' %lu %s\n", ctype, mem.size, url.c_str());
           url_bad.insert(url);
         }
 

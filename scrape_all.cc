@@ -26,12 +26,16 @@ void insert_site_index(
   for (auto &u: site_index) {
     auto u_iter = index_site->pages.find(u.url);
     
+    std::string path(u.path);
+
     if (u_iter == index_site->pages.end()) {
-      struct util::page page = {u.path, u.count};
-      index_site->pages.emplace(u.url, page);
+      std::string url(url);
+
+      struct util::page page = {path, u.count};
+      index_site->pages.emplace(url, page);
 
     } else {
-      u_iter->second.path = u.path;
+      u_iter->second.path = path;
       u_iter->second.refs += u.count;
     }
   }
@@ -62,27 +66,25 @@ void insert_site_other(
       continue;
     }
 
-    auto host = util::get_host(u.url);
+    std::string url(u.url);
+    auto host = util::get_host(url);
   
     auto index_site = util::index_find_host(index, host);
     if (index_site == NULL) {
       struct util::page page = {"", u.count};
 
-      std::string url(u.url);
-     
       struct util::site site = {host, level, false, 1};
       site.pages.emplace(url, page);
 
       index.push_back(site);
 
     } else {
-      auto u_iter = index_site->pages.find(u.url);
+      auto u_iter = index_site->pages.find(url);
 
       index_site->refs++;
     
       if (u_iter == index_site->pages.end()) {
         struct util::page page = {"", u.count};
-        std::string url(u.url);
         index_site->pages.emplace(url, page);
 
       } else {
@@ -145,7 +147,7 @@ void run_round(int level, int max_sites, int max_pages,
     }
     
     std::vector<struct index_url> url_index;
-    std::vector<struct other_url> url_other;;
+    std::vector<struct other_url> url_other;
 
     std::vector<std::string> urls;
 
@@ -156,6 +158,9 @@ void run_round(int level, int max_sites, int max_pages,
     scrape(max_pages, host, urls, url_index, url_other);
 
     site->scraped = true;
+
+    printf("scrapped %lu pages and found %lu others\n", 
+        url_index.size(), url_other.size());
 
     insert_site_index(index, host, url_index);
     

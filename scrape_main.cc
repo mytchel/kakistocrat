@@ -45,7 +45,7 @@ main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  if (strlen(argv[optind]) >= max_url_len) {
+  if (strlen(argv[optind]) >= util::max_url_len) {
     fprintf(stderr, "url too long\n");
     return EXIT_FAILURE;
   }
