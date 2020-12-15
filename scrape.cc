@@ -12,6 +12,11 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include <list>
+#include <set>
+#include <map>
+#include <string>
+
 #include "util.h"
 #include "scrape.h"
 
@@ -69,6 +74,7 @@ bool want_url(std::string url) {
       has_suffix(url, ".ogg") ||
       has_suffix(url, ".epub") ||
       has_suffix(url, ".tar") ||
+      has_suffix(url, ".rar") ||
       has_suffix(url, ".zip") ||
       has_suffix(url, ".gz") ||
       has_suffix(url, ".xz") ||
@@ -88,9 +94,9 @@ bool want_url(std::string url) {
   return true;
 }
 
-std::vector<std::string> find_links(memory *mem, std::string url)
+std::list<std::string> find_links(memory *mem, std::string url)
 {
-  std::vector<std::string> urls;
+  std::list<std::string> urls;
 
   char url_w[util::max_url_len];
   strcpy(url_w, url.c_str());
@@ -174,7 +180,7 @@ void save_file(std::string path, std::string url, memory *mem)
 }
 
 bool index_check_mark(
-    std::vector<struct index_url> url_index,
+    std::list<struct index_url> &url_index,
     std::string url)
 {
   for (auto &i: url_index) {
@@ -188,7 +194,7 @@ bool index_check_mark(
 }
 
 bool index_check_path(
-    std::vector<struct index_url> url_index,
+    std::list<struct index_url> &url_index,
     std::string path)
 {
   for (auto &i: url_index) {
@@ -201,7 +207,7 @@ bool index_check_path(
 }
 
 bool other_check_mark(
-    std::vector<struct other_url> url_other,
+    std::list<struct other_url> &url_other,
     std::string url)
 {
   for (auto &i: url_other) {
@@ -215,11 +221,11 @@ bool other_check_mark(
 }
 
 void insert_urls(std::string host,
-      std::vector<std::string> urls,
-      std::vector<struct index_url> &url_index,
-      std::vector<struct other_url> &url_other,
+      std::list<std::string> urls,
+      std::list<struct index_url> &url_index,
+      std::list<struct other_url> &url_other,
       std::set<std::string> &url_bad,
-      std::vector<struct index_url> &url_scanning)
+      std::list<struct index_url> &url_scanning)
 {
   for (auto &url: urls) {
     std::string url_host = util::get_host(url);
@@ -264,7 +270,7 @@ void insert_urls(std::string host,
   }
 }
 
-struct index_url pick_next(std::vector<struct index_url> &urls) {
+struct index_url pick_next(std::list<struct index_url> &urls) {
   auto best = urls.begin();
 
   for (auto u = urls.begin(); u != urls.end(); u++) {
@@ -283,12 +289,12 @@ void
 scrape(int max_pages, 
     const std::string host, 
     const std::vector<std::string> &url_seed,
-    std::vector<struct index_url> &url_index,
-    std::vector<struct other_url> &url_other)
+    std::list<struct index_url> &url_index,
+    std::list<struct other_url> &url_other)
 {
   printf("scraping %s for up to %i pages\n", host.c_str(), max_pages);
 
-  std::vector<struct index_url> url_scanning;
+  std::list<struct index_url> url_scanning;
   std::set<std::string> url_bad;
 
   for (auto &u: url_seed) {

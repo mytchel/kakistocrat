@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include <vector>
+#include <list>
 #include <string>
 #include <algorithm>
 #include <thread>
@@ -17,7 +18,7 @@
 
 void insert_site_index(
     struct util::site *index_site,
-    std::vector<struct index_url> &site_index
+    std::list<struct index_url> &site_index
 ) {
   for (auto &u: site_index) {
     auto u_iter = index_site->pages.find(u.url);
@@ -53,7 +54,7 @@ bool check_blacklist(
 void insert_site_other(
     std::vector<struct util::site> &index,
     int level,
-    std::vector<struct other_url> &site_other,
+    std::list<struct other_url> &site_other,
     std::vector<std::string> &blacklist
 ) {
   for (auto &u: site_other) {
@@ -95,8 +96,8 @@ struct thread_data {
 
   std::vector<std::string> urls;
   
-  std::vector<struct index_url> url_index;
-  std::vector<struct other_url> url_other;
+  std::list<struct index_url> url_index;
+  std::list<struct other_url> url_other;
 
   std::future<void> future;
   bool done{false};
@@ -115,6 +116,8 @@ void run_round(int level, int max_sites, int max_pages,
   printf("run round %i\n", level);
 
   std::vector<std::string> hosts;
+
+  hosts.reserve(index.size());
 
   for (auto &site: index) {
     if (site.scraped) continue;
@@ -140,6 +143,10 @@ void run_round(int level, int max_sites, int max_pages,
   int site_count = 0;
   std::vector<thread_data> threads;
 
+  // TODO: should run this in batches
+
+  threads.reserve(max_sites);
+
   for (auto &host: hosts) {
     if (max_sites > 0 && ++site_count >= max_sites) {
       break;
@@ -155,6 +162,8 @@ void run_round(int level, int max_sites, int max_pages,
 
     t.host = host;
     
+    t.urls.reserve(site->pages.size());
+
     for (auto &p: site->pages) {
       t.urls.push_back(p.first);
     }
@@ -211,7 +220,7 @@ int main(int argc, char *argv[]) {
   std::vector<std::string> blacklist = util::load_list("../mine/blacklist");
   std::vector<std::string> initial_seed = util::load_list("../mine/seed");
 
-  std::vector<struct other_url> seed_other;
+  std::list<struct other_url> seed_other;
   for (auto &u: initial_seed) {
     struct other_url i = {1, u};
     seed_other.push_back(i);
