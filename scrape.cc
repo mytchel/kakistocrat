@@ -23,29 +23,23 @@
 /* resizable buffer */ 
 typedef struct {
   char *buf;
-  size_t size;
+  size_t size, cur;
 } memory;
 
 size_t grow_buffer(void *contents, size_t sz, size_t nmemb, void *ctx)
 {
-  size_t realsize = sz * nmemb;
   memory *mem = (memory*) ctx;
+  size_t realsize = sz * nmemb;
 
-  if (mem->size + realsize > 1024 * 1024 * 5) {
-    printf("buffer exceded max size\n");
-    return 0;
-  } 
+  if (mem->size < mem->cur + realsize) {
+    printf("file too big\n");
 
-  char *ptr = (char *) realloc(mem->buf, mem->size + realsize);
-  if (!ptr) {
-    /* out of memory */ 
-    printf("not enough memory (realloc returned NULL)\n");
     return 0;
   }
 
-  mem->buf = ptr;
-  memcpy(&(mem->buf[mem->size]), contents, realsize);
-  mem->size += realsize;
+  memcpy(&(mem->buf[mem->cur]), contents, realsize);
+  mem->cur += realsize;
+
   return realsize;
 }
 
@@ -228,6 +222,7 @@ void insert_urls(std::string host,
       std::list<struct index_url> &url_scanning)
 {
   for (auto &url: urls) {
+
     std::string url_host = util::get_host(url);
 
     if (url_host.empty()) continue;
@@ -317,6 +312,9 @@ scrape(int max_pages,
   int fail_web = 0;
   
   // TODO: have a memory leak somewhere
+  size_t size = 1024 * 1024;
+  char *c = (char *) malloc(size);
+  memory mem{c, size, 0};
  
   while (!url_scanning.empty()) {
     if (url_index.size() >= max_pages) {
@@ -341,8 +339,7 @@ scrape(int max_pages,
     auto path = u.path;
     auto url = u.url;
 
-    char *c = (char *) malloc(1);
-    memory mem{c, 0};
+    mem.cur = 0;
 
     curl_handle = curl_easy_init();
 
@@ -398,8 +395,8 @@ scrape(int max_pages,
     }
    
     curl_easy_cleanup(curl_handle);
-
-    free(mem.buf);
   }
+  
+  free(mem.buf);
 }
 

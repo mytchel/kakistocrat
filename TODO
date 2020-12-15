@@ -1,5 +1,3 @@
-needs to follow redirects, at least from http to https.
 Support other protocols, gemeni, gopher.
-normalize urls
-timeout quicker
+Need to support file and dir with same name. Do something like {path}_file or {path}_dir if it is in the way.
 
