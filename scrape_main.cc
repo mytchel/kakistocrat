@@ -56,8 +56,8 @@ main(int argc, char *argv[])
   
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
-  std::list<struct index_url> url_index;
-  std::list<struct other_url> url_other;
+  std::list<scrape::index_url> url_index;
+  std::list<scrape::other_url> url_other;
 
   std::vector<std::string> url_seed;
 
@@ -65,7 +65,7 @@ main(int argc, char *argv[])
     url_seed.push_back(std::string(argv[i]));
   }
 
-  scrape(max_pages, host, url_seed, url_index, url_other);
+  scrape::scrape(max_pages, host, url_seed, url_index, url_other);
 
   // TODO
   //util::save_index(host, url_index);

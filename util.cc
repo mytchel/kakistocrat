@@ -358,7 +358,7 @@ std::vector<std::string> load_list(std::string path) {
   return values;
 }
 
-void save_index(std::vector<struct site> &index, std::string path)
+void save_index(std::list<struct site> &index, std::string path)
 {
   std::ofstream file;
   
@@ -372,35 +372,37 @@ void save_index(std::vector<struct site> &index, std::string path)
   }
 
   for (auto &site: index) {
+    /*
     bool has_pages = false;
     for (auto &p: site.pages) {
-      if (p.second.path.empty()) continue;
+      if (p.path.empty()) continue;
 
       has_pages = true;
       break;
     }
 
     if (!has_pages) continue;
+*/
 
     file << site.host << "\t";
     file << site.level << "\n";
 
     for (auto &p: site.pages) {
-      if (p.second.path.empty()) continue;
+    //  if (p.path.empty()) continue;
 
       file << "\t";
-      file << p.first << "\t";
-      file << p.second.path << "\t";
-      file << p.second.refs << "\n";
+      file << p.url << "\t";
+      file << p.path << "\t";
+      file << p.refs << "\n";
     }
   }
   file.close();
 }
 
-std::vector<struct site> load_index(std::string path)
+std::list<struct site> load_index(std::string path)
 {
   std::ifstream file;
-  std::vector<struct site> index;
+  std::list<struct site> index;
 
   printf("load %s\n", path.c_str());
 
@@ -421,7 +423,7 @@ std::vector<struct site> load_index(std::string path)
 }
 
 struct site * index_find_host(
-        std::vector<struct site> &index,
+        std::list<struct site> &index,
         std::string host
 ) {
   for (auto &i: index) {

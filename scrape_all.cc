@@ -10,31 +10,46 @@
 #include <algorithm>
 #include <thread>
 #include <future>
+#include <optional>
 
 #include <curl/curl.h>
 
 #include "util.h"
 #include "scrape.h"
 
+util::page * find_page(struct util::site *site, std::string url) {
+  for (auto &p: site->pages) {
+    if (p.url == url) {
+      return &p;
+    }
+  }
+
+  return NULL;
+}
+
+void insert_site_index(
+    util::site *index_site,
+    std::string url, std::string path,
+    int count) {
+
+  auto p = find_page(index_site, url);
+    
+  if (p == NULL) {
+    util::page page = {url, path, count};
+    index_site->pages.push_back(page);
+
+  } else {
+    p->path = path;
+    p->refs += count;
+  }
+}
+
 void insert_site_index(
     struct util::site *index_site,
-    std::list<struct index_url> &site_index
-) {
+    std::list<scrape::index_url> &site_index) {
+
   for (auto &u: site_index) {
-    auto u_iter = index_site->pages.find(u.url);
-    
-    std::string path(u.path);
-
-    if (u_iter == index_site->pages.end()) {
-      std::string url(u.url);
-
-      struct util::page page = {path, u.count};
-      index_site->pages.emplace(url, page);
-
-    } else {
-      u_iter->second.path = path;
-      u_iter->second.refs += u.count;
-    }
+    insert_site_index(index_site, u.url, u.path, u.count);
   }
 }
 
@@ -52,9 +67,9 @@ bool check_blacklist(
 }
 
 void insert_site_other(
-    std::vector<struct util::site> &index,
+    std::list<struct util::site> &index,
     int level,
-    std::list<struct other_url> &site_other,
+    std::list<scrape::other_url> &site_other,
     std::vector<std::string> &blacklist
 ) {
   for (auto &u: site_other) {
@@ -68,25 +83,15 @@ void insert_site_other(
   
     auto index_site = util::index_find_host(index, host);
     if (index_site == NULL) {
-      struct util::page page = {"", u.count};
+      util::page page = {u.url, "", u.count};
 
-      struct util::site site = {host, level, false, 1};
-      site.pages.emplace(url, page);
+      util::site site = {host, level, false, 1};
+      site.pages.push_back(page);
 
       index.push_back(site);
 
     } else {
-      auto u_iter = index_site->pages.find(url);
-
-      index_site->refs++;
-    
-      if (u_iter == index_site->pages.end()) {
-        struct util::page page = {"", u.count};
-        index_site->pages.emplace(url, page);
-
-      } else {
-        u_iter->second.refs += u.count;
-      }
+      insert_site_index(index_site, u.url, "", u.count);
     }
   }
 }
@@ -96,8 +101,8 @@ struct thread_data {
 
   std::vector<std::string> urls;
   
-  std::list<struct index_url> url_index;
-  std::list<struct other_url> url_other;
+  std::list<scrape::index_url> url_index;
+  std::list<scrape::other_url> url_other;
 
   std::future<void> future;
   bool done{false};
@@ -110,7 +115,7 @@ bool future_is_ready(std::future<T>& t){
 }
 
 void run_round(int level, int max_sites, int max_pages,
-  std::vector<struct util::site> &index,
+  std::list<struct util::site> &index,
   std::vector<std::string> &blacklist)
 {
   printf("run round %i\n", level);
@@ -165,7 +170,7 @@ void run_round(int level, int max_sites, int max_pages,
     t.urls.reserve(site->pages.size());
 
     for (auto &p: site->pages) {
-      t.urls.push_back(p.first);
+      t.urls.push_back(p.url);
     }
     
     threads.push_back(std::move(t));
@@ -174,7 +179,7 @@ void run_round(int level, int max_sites, int max_pages,
   for (auto &t: threads) {
     t.future = std::async(std::launch::async,
         [max_pages, &t]() {
-          scrape(max_pages, t.host, t.urls, t.url_index, t.url_other);
+          scrape::scrape(max_pages, t.host, t.urls, t.url_index, t.url_other);
         });
   }
 
@@ -197,6 +202,7 @@ void run_round(int level, int max_sites, int max_pages,
         }
 
         site->scraped = true;
+        /*
 
         insert_site_index(site, t.url_index);
         
@@ -205,6 +211,11 @@ void run_round(int level, int max_sites, int max_pages,
         // Save the current index so exiting early doesn't loose
         // all the work that has been done
         util::save_index(index, "full_index");
+        */
+
+        t.url_index.clear();
+        t.url_other.clear();
+        t.url_other.clear();
 
         t.done = true;
       }
@@ -212,7 +223,7 @@ void run_round(int level, int max_sites, int max_pages,
       if (!t.done) waiting = true;
     }
   }
-      
+    
   printf("all done\n");
 }
 
@@ -220,13 +231,13 @@ int main(int argc, char *argv[]) {
   std::vector<std::string> blacklist = util::load_list("../mine/blacklist");
   std::vector<std::string> initial_seed = util::load_list("../mine/seed");
 
-  std::list<struct other_url> seed_other;
+  std::list<scrape::other_url> seed_other;
   for (auto &u: initial_seed) {
-    struct other_url i = {1, u};
+    scrape::other_url i = {1, u};
     seed_other.push_back(i);
   }
 
-  std::vector<struct util::site> index;
+  std::list<struct util::site> index;
 
   struct level {
     int max_sites;
@@ -236,7 +247,7 @@ int main(int argc, char *argv[]) {
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
   //std::vector<struct level> levels = {{0, 2000}, {1000, 50}, {1000, 1}};
-  std::vector<struct level> levels = {{50, 100}, {50, 5}, {50, 1}};
+  std::vector<struct level> levels = {{50, 1}, {5, 5}, {5, 1}};
   //std::vector<struct level> levels = {{0, 2}, {50, 2}, {50, 1}};
   int level_count = 1;
 
@@ -245,9 +256,17 @@ int main(int argc, char *argv[]) {
   save_index(index, "full_index");
 
   for (auto level: levels) {
-    run_round(level_count++, level.max_sites, level.max_pages, 
+      printf("wait before running\n");
+      std::this_thread::sleep_for(std::chrono::seconds(5));
+
+      run_round(level_count++, level.max_sites, level.max_pages, 
         index, blacklist);
+
+      printf("wait after running\n");
+      std::this_thread::sleep_for(std::chrono::seconds(5));
   }
+
+  index.clear();
 
   curl_global_cleanup();
 

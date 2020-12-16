@@ -20,10 +20,12 @@
 #include "util.h"
 #include "scrape.h"
 
+namespace scrape {
+
 /* resizable buffer */ 
 typedef struct {
   char *buf;
-  size_t size, cur;
+  size_t max, size;
 } memory;
 
 size_t grow_buffer(void *contents, size_t sz, size_t nmemb, void *ctx)
@@ -31,16 +33,27 @@ size_t grow_buffer(void *contents, size_t sz, size_t nmemb, void *ctx)
   memory *mem = (memory*) ctx;
   size_t realsize = sz * nmemb;
 
-  if (mem->size < mem->cur + realsize) {
+  if (mem->max < mem->size + realsize) {
     printf("file too big\n");
 
     return 0;
   }
 
-  memcpy(&(mem->buf[mem->cur]), contents, realsize);
-  mem->cur += realsize;
+  memcpy(&(mem->buf[mem->size]), contents, realsize);
+  mem->size += realsize;
 
   return realsize;
+}
+
+size_t header_callback(char *buffer, size_t size, size_t nitems, void *userdata) {
+  buffer[nitems*size] = 0;
+  if (strstr(buffer, "content-type:")) {
+    if (strstr(buffer, "text/html") == NULL) {
+      return 0;
+    }
+  }
+
+  return nitems * size;
 }
 
 bool has_suffix(std::string const &s, std::string const &suffix) {
@@ -73,6 +86,7 @@ bool want_url(std::string url) {
       has_suffix(url, ".gz") ||
       has_suffix(url, ".xz") ||
       has_suffix(url, ".bz2") ||
+      has_suffix(url, ".exe") ||
       has_suffix(url, ".crate") ||
       has_suffix(url, ".xml") ||
       has_suffix(url, ".csv") ||
@@ -92,6 +106,9 @@ std::list<std::string> find_links(memory *mem, std::string url)
 {
   std::list<std::string> urls;
 
+
+  // TODO: I think I need to replace this with something else.
+  //
   char url_w[util::max_url_len];
   strcpy(url_w, url.c_str());
 
@@ -104,7 +121,7 @@ std::list<std::string> find_links(memory *mem, std::string url)
     return urls;
   }
 
-  xmlChar *xpath = (xmlChar*) "//a/@href";
+    xmlChar *xpath = (xmlChar*) "//a/@href";
   xmlXPathContextPtr context = xmlXPathNewContext(doc);
   xmlXPathObjectPtr result = xmlXPathEvalExpression(xpath, context);
   xmlXPathFreeContext(context);
@@ -113,7 +130,7 @@ std::list<std::string> find_links(memory *mem, std::string url)
     printf("xml parse failed\n");
     return urls;
   }
-
+    
   xmlNodeSetPtr nodeset = result->nodesetval;
 
   if (xmlXPathNodeSetIsEmpty(nodeset)) {
@@ -121,18 +138,13 @@ std::list<std::string> find_links(memory *mem, std::string url)
     return urls;
   }
 
-  int i;
-  for (i = 0; i < nodeset->nodeNr; i++) {
-    // TODO: what does this actually do?
-    double r = rand();
-    int x = r * nodeset->nodeNr / RAND_MAX;
+  for (int i = 0; i < nodeset->nodeNr; i++) {
+    const xmlNode *node = nodeset->nodeTab[i]->xmlChildrenNode;
 
-    const xmlNode *node = nodeset->nodeTab[x]->xmlChildrenNode;
+    xmlChar *href = xmlNodeListGetString(doc, node, 1);
 
-    xmlChar *orig = xmlNodeListGetString(doc, node, 1);
-
-    xmlChar *href = xmlBuildURI(orig, (const xmlChar *) url_w);
-    xmlFree(orig);
+    //xmlChar *href = xmlBuildURI(orig, (const xmlChar *) url_w);
+    //xmlFree(orig);
 
     char *link = (char *) href;
 
@@ -148,13 +160,9 @@ std::list<std::string> find_links(memory *mem, std::string url)
   }
 
   xmlXPathFreeObject(result);
+  xmlFreeDoc(doc);
 
   return urls;
-}
-
-int is_html(char *ctype)
-{
-  return ctype != NULL && strlen(ctype) >= 9 && strstr(ctype, "text/html");
 }
 
 void save_file(std::string path, std::string url, memory *mem)
@@ -218,21 +226,24 @@ void insert_urls(std::string host,
       std::list<std::string> urls,
       std::list<struct index_url> &url_index,
       std::list<struct other_url> &url_other,
-      std::set<std::string> &url_bad,
+      std::list<std::string> &url_bad,
       std::list<struct index_url> &url_scanning)
 {
   for (auto &url: urls) {
-
-    std::string url_host = util::get_host(url);
-
+    auto url_host = util::get_host(url);
     if (url_host.empty()) continue;
 
     if (url_host == host) {
-      auto b = url_bad.find(url);
-      if (b != url_bad.end()) {
-        continue;
+      bool bad = false;
+      for (auto &b: url_bad) {
+        if (b == url) {
+          bad = true;
+          break;
+        }
       }
 
+      if (bad) continue;
+   
       if (index_check_mark(url_index, url)) {
         continue;
       }
@@ -283,14 +294,14 @@ struct index_url pick_next(std::list<struct index_url> &urls) {
 void
 scrape(int max_pages, 
     const std::string host, 
-    const std::vector<std::string> &url_seed,
+    const std::vector<std::string> url_seed,
     std::list<struct index_url> &url_index,
     std::list<struct other_url> &url_other)
 {
   printf("scraping %s for up to %i pages\n", host.c_str(), max_pages);
 
   std::list<struct index_url> url_scanning;
-  std::set<std::string> url_bad;
+  std::list<std::string> url_bad;
 
   for (auto &u: url_seed) {
     auto p = util::make_path(host, u);
@@ -311,11 +322,19 @@ scrape(int max_pages,
   int fail_net = 0;
   int fail_web = 0;
   
-  // TODO: have a memory leak somewhere
-  size_t size = 1024 * 1024;
-  char *c = (char *) malloc(size);
-  memory mem{c, size, 0};
- 
+  size_t max_size = 1024 * 1024;
+  char *c = (char *) malloc(max_size);
+  memory mem{c, max_size, 0};
+
+  curl_handle = curl_easy_init();
+
+  curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, grow_buffer);
+  curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, &mem);
+  curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, header_callback);
+  curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+  curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
+  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
+
   while (!url_scanning.empty()) {
     if (url_index.size() >= max_pages) {
       printf("%s reached max pages\n", host.c_str());
@@ -339,20 +358,11 @@ scrape(int max_pages,
     auto path = u.path;
     auto url = u.url;
 
-    mem.cur = 0;
-
-    curl_handle = curl_easy_init();
-
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, grow_buffer);
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, &mem);
-    curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-    curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
-    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
-
     char s[util::max_url_len];
     strcpy(s, url.c_str());
     curl_easy_setopt(curl_handle, CURLOPT_URL, s);
 
+    mem.size = 0;
     res = curl_easy_perform(curl_handle);
     if (res == CURLE_OK) {
       long res_status;
@@ -362,7 +372,7 @@ scrape(int max_pages,
         char *ctype;
         curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_TYPE, &ctype);
 
-        if (is_html(ctype) && mem.size > 10) {
+        if (mem.size > 10) {
           auto urls = find_links(&mem, url);
 
           save_file(path, url, &mem);
@@ -379,24 +389,25 @@ scrape(int max_pages,
 
         } else {
           printf("miss '%s' %lu %s\n", ctype, mem.size, url.c_str());
-          url_bad.insert(url);
+          url_bad.push_back(url);
         }
 
       } else {
         printf("miss %d %s\n", (int) res_status, url.c_str());
-        url_bad.insert(url);
+        url_bad.push_back(url);
         fail_web++;
       }
 
     } else {
       printf("miss %s %s\n", curl_easy_strerror(res), url.c_str());
-      url_bad.insert(url);
+      url_bad.push_back(url);
       fail_net++;
     }
-   
-    curl_easy_cleanup(curl_handle);
   }
   
+  curl_easy_cleanup(curl_handle);
   free(mem.buf);
+}
+
 }
 

@@ -1,4 +1,6 @@
 
+namespace scrape {
+
 struct index_url {
   int count;
   std::string url;
@@ -13,7 +15,9 @@ struct other_url {
 void
 scrape(int max_pages, 
     const std::string host, 
-    const std::vector<std::string> &url_scanning,
+    const std::vector<std::string> url_scanning,
     std::list<struct index_url> &url_index,
     std::list<struct other_url> &url_other);
+
+}
 
