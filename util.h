@@ -41,9 +41,9 @@ struct page {
 
 struct site {
   std::string host;
-  int level;
   bool scraped;
-  int refs;
+  size_t level;
+  size_t refs;
   std::list<struct page> pages;
 };
 

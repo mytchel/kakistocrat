@@ -68,7 +68,7 @@ bool check_blacklist(
 
 void insert_site_other(
     std::list<util::site> &index,
-    int level,
+    size_t level,
     std::list<scrape::other_url> &site_other,
     std::vector<std::string> &blacklist)
 {
@@ -85,7 +85,7 @@ void insert_site_other(
     if (index_site == NULL) {
       util::page page = {u.url, "", u.count};
 
-      util::site site = {host, level, false, 1};
+      util::site site = {host, false ,level, 1};
       site.pages.push_back(page);
 
       index.push_back(site);
@@ -117,36 +117,40 @@ std::list<std::string> get_batch_hosts(
     size_t max_sites,
     std::list<util::site> &index)
 {
-  std::vector<std::string> hosts;
+  struct host_data {
+    std::string host;
+    size_t refs;
+    size_t level;
+  };
+
+  printf("get hosts\n");
+
+  std::vector<host_data> hosts;
+
+  hosts.reserve(index.size());
 
   for (auto &site: index) {
     if (site.scraped) continue;
-    hosts.push_back(std::string(site.host));
+  printf("put for sortig %s\n", site.host.c_str());
+    host_data h = {site.host, site.refs, site.level};
+    hosts.push_back(std::move(h));
   }
 
   std::sort(hosts.begin(), hosts.end(), 
-      [&index](std::string &host_a, std::string &host_b) {
- 
-        auto site_a = util::index_find_host(index, host_a);
-        if (site_a == NULL) {
-          return false;
-        }
-
-        auto site_b =  util::index_find_host(index, host_b);
-        if (site_b == NULL) {
-          return true;
-        }
-
-        return site_a->refs > site_b->refs;
+      [&index](host_data &a, host_data &b) {
+        return a.refs > b.refs;
       });
 
+  std::list<std::string> ret;
 
-  size_t len = hosts.size();
-  if (max_sites > 0 && max_sites < len)
-    len = max_sites;
+  for (auto &h: hosts) {
+    if (max_sites > 0 && ret.size() >= max_sites) {
+      break;
+    }
+    ret.push_back(h.host);
+  }
 
-  return std::list<std::string>(
-        hosts.begin(), hosts.begin() + len);
+  return ret;
 }
 
 void start_thread(
@@ -205,7 +209,7 @@ thread_data pop_finished_thread(std::list<thread_data> &threads)
 
 const size_t max_threads = 100;
 
-void run_round(int level, size_t max_sites, size_t max_pages,
+void run_round(size_t level, size_t max_sites, size_t max_pages,
   std::list<util::site> &index,
   std::vector<std::string> &blacklist)
 {
@@ -278,24 +282,18 @@ int main(int argc, char *argv[]) {
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
-  //std::vector<struct level> levels = {{0, 2000}, {1000, 50}, {1000, 1}};
-  std::vector<struct level> levels = {{0, 500}, {5, 5}, {5, 1}};
+  std::vector<struct level> levels = {{0, 2000}, {1000, 50}, {1000, 1}};
+  //std::vector<struct level> levels = {{0, 500}, {5, 5}, {5, 1}};
   //std::vector<struct level> levels = {{0, 2}, {50, 2}, {50, 1}};
-  int level_count = 1;
+  size_t level_count = 1;
 
   insert_site_other(index, level_count, seed_other, blacklist);
 
   save_index(index, "full_index");
 
   for (auto level: levels) {
-      printf("wait before running\n");
-      std::this_thread::sleep_for(std::chrono::seconds(5));
-
       run_round(level_count++, level.max_sites, level.max_pages, 
         index, blacklist);
-
-      printf("wait after running\n");
-      std::this_thread::sleep_for(std::chrono::seconds(5));
   }
 
   index.clear();
