@@ -123,15 +123,12 @@ std::list<std::string> get_batch_hosts(
     size_t level;
   };
 
-  printf("get hosts\n");
-
   std::vector<host_data> hosts;
 
   hosts.reserve(index.size());
 
   for (auto &site: index) {
     if (site.scraped) continue;
-  printf("put for sortig %s\n", site.host.c_str());
     host_data h = {site.host, site.refs, site.level};
     hosts.push_back(std::move(h));
   }
@@ -147,6 +144,7 @@ std::list<std::string> get_batch_hosts(
     if (max_sites > 0 && ret.size() >= max_sites) {
       break;
     }
+
     ret.push_back(h.host);
   }
 
