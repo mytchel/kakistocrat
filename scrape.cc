@@ -69,7 +69,8 @@ bool want_proto(std::string proto) {
 }
 
 bool want_suffix(std::string path) {
-  if (has_suffix(path, ".txt") ||
+  if (has_suffix(path, "?share=twitter") ||
+      has_suffix(path, ".txt") ||
       has_suffix(path, ".jpg") ||
       has_suffix(path, ".png") ||
       has_suffix(path, ".gif") ||
