@@ -122,6 +122,8 @@ void run_round(int level, int max_sites, int max_pages,
 
   std::vector<std::string> hosts;
 
+  max_sites = 50;
+
   hosts.reserve(index.size());
 
   for (auto &site: index) {
@@ -247,7 +249,7 @@ int main(int argc, char *argv[]) {
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
   //std::vector<struct level> levels = {{0, 2000}, {1000, 50}, {1000, 1}};
-  std::vector<struct level> levels = {{50, 1}, {5, 5}, {5, 1}};
+  std::vector<struct level> levels = {{50, 500}, {5, 5}, {5, 1}};
   //std::vector<struct level> levels = {{0, 2}, {50, 2}, {50, 1}};
   int level_count = 1;
 

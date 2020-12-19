@@ -21,6 +21,25 @@
 
 namespace util {
 
+std::string get_proto(std::string url) {
+  int slashes = 0;
+  std::vector<char> s;
+
+  for (auto c: url) {
+    if (c == ':') {
+      return std::string(s.begin(), s.end());
+
+    } else if (c == '/' || c == '#' || c == '&') {
+      break;
+
+    } else {
+      s.push_back(tolower(c));
+    }
+  }
+      
+  return "";
+}
+
 std::string get_host(std::string url) {
   int slashes = 0;
   std::vector<char> s;
@@ -50,15 +69,28 @@ std::string get_host(std::string url) {
 
 std::string get_path(std::string url) {
   int slashes = 0;
+  bool need_host = false;
   std::vector<char> s;
-
+  
   for (auto c: url) {
-    if (slashes >= 3) {
-      s.push_back(c);
+    if (slashes == 0 && c == ':') {
+      need_host = true;
+      s.clear();
 
-    } else if (c == '/') {
-      slashes++;
-      continue;
+    } else if (need_host) {
+      if (c == '/') {
+        slashes++;
+        if (slashes == 3) {
+          need_host = false;
+          s.push_back(c);
+        }
+      }
+
+    } else if (c == '#') {
+      break;
+
+    } else {
+      s.push_back(c);
     }
   }
 
@@ -78,35 +110,6 @@ std::pair<std::string, std::string> split_dir(std::string path) {
   }
 
   return std::pair<std::string, std::string>(dir, f);
-}
-
-std::string normalize_path(std::string s) {
-  std::string n = "";
-
-  for (auto &c : s) {
-    if (c == '?' || c == '#') {
-      break;
-
-    } else if (c == '\t' || c == '\n') {
-      n += "_bad";
-      break;
-
-    } else if (c == '&' || c == '*' || c == '!' 
-              || c == '$' || c == '^') 
-    {
-      n += "_junk";
-      break;
-    
-    } else if (c == '.' && n.length() > 0 && n.back() == '.') {
-      n += "_dots";
-      break;
-
-    } else {
-      n += c;
-    }
-  }
-
-  return n;
 }
 
 std::vector<std::string> split_path(std::string s) {
@@ -143,9 +146,7 @@ std::vector<std::string> split_path(std::string s) {
   return path;
 }
 
-std::string make_path(std::string host, std::string url) {
-  auto path = normalize_path(get_path(url));
-
+std::string make_path(std::string host, std::string path) {
   auto path_parts = split_path(path);
 
   auto file_path = host;

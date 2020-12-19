@@ -1,7 +1,3 @@
-#include <libxml/HTMLparser.h>
-#include <libxml/xpath.h>
-#include <libxml/uri.h>
-#include <curl/curl.h>
 #include <string.h>
 #include <math.h>
 #include <ctype.h>
@@ -11,6 +7,10 @@
 
 #include <sys/stat.h>
 #include <sys/types.h>
+
+#include <curl/curl.h>
+#include "lexbor/html/html.h"
+#include <lexbor/dom/dom.h>
 
 #include <list>
 #include <set>
@@ -64,103 +64,158 @@ bool has_suffix(std::string const &s, std::string const &suffix) {
   }
 }
 
-bool want_url(std::string url) {
-  if (strncmp(url.c_str(), "http://", 7) && strncmp(url.c_str(), "https://", 8)) 
-    return false;
+bool want_proto(std::string proto) {
+  return proto.empty() || proto == "http" || proto == "https";
+}
 
-  if (!util::bare_minimum_valid_url(url)) return false;
-
-  if (has_suffix(url, ".txt") ||
-      has_suffix(url, ".jpg") ||
-      has_suffix(url, ".png") ||
-      has_suffix(url, ".gif") ||
-      has_suffix(url, ".svg") ||
-      has_suffix(url, ".mov") ||
-      has_suffix(url, ".mp3") ||
-      has_suffix(url, ".flac") ||
-      has_suffix(url, ".ogg") ||
-      has_suffix(url, ".epub") ||
-      has_suffix(url, ".tar") ||
-      has_suffix(url, ".rar") ||
-      has_suffix(url, ".zip") ||
-      has_suffix(url, ".gz") ||
-      has_suffix(url, ".xz") ||
-      has_suffix(url, ".bz2") ||
-      has_suffix(url, ".exe") ||
-      has_suffix(url, ".crate") ||
-      has_suffix(url, ".xml") ||
-      has_suffix(url, ".csv") ||
-      has_suffix(url, ".ppt") ||
-      has_suffix(url, ".sheet") ||
-      has_suffix(url, ".sh") ||
-      has_suffix(url, ".py") ||
-      has_suffix(url, ".js") ||
-      has_suffix(url, ".asc") ||
-      has_suffix(url, ".pdf")) 
+bool want_suffix(std::string path) {
+  if (has_suffix(path, ".txt") ||
+      has_suffix(path, ".jpg") ||
+      has_suffix(path, ".png") ||
+      has_suffix(path, ".gif") ||
+      has_suffix(path, ".svg") ||
+      has_suffix(path, ".mov") ||
+      has_suffix(path, ".mp3") ||
+      has_suffix(path, ".flac") ||
+      has_suffix(path, ".ogg") ||
+      has_suffix(path, ".epub") ||
+      has_suffix(path, ".tar") ||
+      has_suffix(path, ".rar") ||
+      has_suffix(path, ".zip") ||
+      has_suffix(path, ".gz") ||
+      has_suffix(path, ".xz") ||
+      has_suffix(path, ".bz2") ||
+      has_suffix(path, ".exe") ||
+      has_suffix(path, ".crate") ||
+      has_suffix(path, ".xml") ||
+      has_suffix(path, ".csv") ||
+      has_suffix(path, ".ppt") ||
+      has_suffix(path, ".sheet") ||
+      has_suffix(path, ".sh") ||
+      has_suffix(path, ".py") ||
+      has_suffix(path, ".js") ||
+      has_suffix(path, ".asc") ||
+      has_suffix(path, ".pdf")) 
     return false;
 
   return true;
 }
 
-std::list<std::string> find_links(memory *mem, std::string url)
+
+lxb_inline lxb_html_document_t *
+parse(const lxb_char_t *html, size_t html_len)
+{
+    lxb_status_t status;
+    lxb_html_parser_t *parser;
+    lxb_html_document_t *document;
+
+    /* Initialization */
+    parser = lxb_html_parser_create();
+    status = lxb_html_parser_init(parser);
+
+    if (status != LXB_STATUS_OK) {
+        printf("Failed to create HTML parser\n");
+        exit(1);
+    }
+
+    /* Parse */
+    document = lxb_html_parse(parser, html, html_len);
+    if (document == NULL) {
+        printf("Failed to create Document object\n");
+        exit(1);
+    }
+
+    /* Destroy parser */
+    lxb_html_parser_destroy(parser);
+
+    return document;
+}
+
+std::list<std::string> find_links_lex(memory *mem, std::string page_url)
 {
   std::list<std::string> urls;
 
+  lxb_status_t status;
+  lxb_dom_element_t *element;
+  lxb_html_document_t *document;
+  lxb_dom_collection_t *collection;
 
-  // TODO: I think I need to replace this with something else.
-  //
-  char url_w[util::max_url_len];
-  strcpy(url_w, url.c_str());
+  document = parse((const lxb_char_t *) mem->buf, mem->size);
 
-  int opts = HTML_PARSE_NOBLANKS | HTML_PARSE_NOERROR |  
-             HTML_PARSE_NOWARNING | HTML_PARSE_NONET;
-
-  htmlDocPtr doc = htmlReadMemory(mem->buf, mem->size, url.c_str(), NULL, opts);
-  if (!doc) {
-    printf("read mem failed\n");
-    return urls;
+  collection = lxb_dom_collection_make(&document->dom_document, 128);
+  if (collection == NULL) {
+      printf("Failed to create Collection object");
+      exit(1);
   }
 
-    xmlChar *xpath = (xmlChar*) "//a/@href";
-  xmlXPathContextPtr context = xmlXPathNewContext(doc);
-  xmlXPathObjectPtr result = xmlXPathEvalExpression(xpath, context);
-  xmlXPathFreeContext(context);
+  // TODO: the library is broken and access's 0 page somewhere in this call
 
-  if (!result) {
-    printf("xml parse failed\n");
-    return urls;
-  }
-    
-  xmlNodeSetPtr nodeset = result->nodesetval;
-
-  if (xmlXPathNodeSetIsEmpty(nodeset)) {
-    xmlXPathFreeObject(result);
-    return urls;
+  status = lxb_dom_elements_by_tag_name(lxb_dom_interface_element(document->body),
+                                        collection,
+                                        (const lxb_char_t *) "a", 1);
+  if (status != LXB_STATUS_OK) {
+      printf("Failed to get elements by name\n");
+      exit(1);
   }
 
-  for (int i = 0; i < nodeset->nodeNr; i++) {
-    const xmlNode *node = nodeset->nodeTab[i]->xmlChildrenNode;
+  auto page_proto = util::get_proto(page_url);
+  auto page_host = util::get_host(page_url);
+  auto page_dir = util::split_dir(util::get_path(page_url));
 
-    xmlChar *href = xmlNodeListGetString(doc, node, 1);
+  char attr_name[] = "href";
+  size_t attr_len = 4;
+  for (size_t i = 0; i < lxb_dom_collection_length(collection); i++) {
+      element = lxb_dom_collection_element(collection, i);
 
-    //xmlChar *href = xmlBuildURI(orig, (const xmlChar *) url_w);
-    //xmlFree(orig);
+      size_t len;
+      char *s = (char *) lxb_dom_element_get_attribute(element, (const lxb_char_t*) attr_name, attr_len, &len);
+      if (s == NULL) {
+        continue;
+      }
 
-    char *link = (char *) href;
+      // http://
+      // https://
+      // #same-page skip
+      // /from-root
+      // from-current-dir
+      // javascript: skip
+      // //host/page keep protocol
+      
+      std::string url(s);
+      if (url.empty() || url.front() == '#')
+        continue;
 
-    if (!link) continue;
+      if (!util::bare_minimum_valid_url(url)) 
+        continue;
 
-    std::string url(link);
+      auto proto = util::get_proto(url);
+      if (proto.empty()) {
+        proto = page_proto;
 
-    if (want_url(url)) {
-      urls.push_back(util::simplify_url(url));
-    }
+      } else if (!want_proto(proto))  {
+        continue;
+      }
+ 
+      auto host = util::get_host(url);
+      if (host.empty()) {
+        host = page_host;
+      }
+       
+      auto path = util::get_path(url);
+      
+      if (!want_suffix(path)) 
+        continue;
 
-    xmlFree(link);
+      if (!path.empty() && path.front() != '/') {
+        path = page_dir.first + "/" + path;
+      }
+   
+      auto fixed = proto + "://" + host + path;
+      urls.push_back(fixed);
   }
 
-  xmlXPathFreeObject(result);
-  xmlFreeDoc(doc);
+  lxb_dom_collection_destroy(collection, true);
+  lxb_html_document_destroy(document);
 
   return urls;
 }
@@ -373,7 +428,7 @@ scrape(int max_pages,
         curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_TYPE, &ctype);
 
         if (mem.size > 10) {
-          auto urls = find_links(&mem, url);
+          auto urls = find_links_lex(&mem, url);
 
           save_file(path, url, &mem);
 

@@ -10,6 +10,7 @@ namespace util {
 
 const size_t max_url_len = 512;
 
+std::string get_proto(std::string url);
 std::string get_host(std::string url);
 std::string get_path(std::string url);
 std::pair<std::string, std::string> split_dir(std::string path);
