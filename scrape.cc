@@ -84,6 +84,7 @@ bool want_suffix(std::string path) {
       has_suffix(path, ".rar") ||
       has_suffix(path, ".zip") ||
       has_suffix(path, ".gz") ||
+      has_suffix(path, ".tgz") ||
       has_suffix(path, ".xz") ||
       has_suffix(path, ".bz2") ||
       has_suffix(path, ".exe") ||
