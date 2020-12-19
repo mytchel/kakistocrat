@@ -17,7 +17,7 @@
 #include "util.h"
 #include "scrape.h"
 
-util::page * find_page(struct util::site *site, std::string url) {
+util::page * find_page(util::site *site, std::string url) {
   for (auto &p: site->pages) {
     if (p.url == url) {
       return &p;
@@ -30,8 +30,8 @@ util::page * find_page(struct util::site *site, std::string url) {
 void insert_site_index(
     util::site *index_site,
     std::string url, std::string path,
-    int count) {
-
+    int count) 
+{
   auto p = find_page(index_site, url);
     
   if (p == NULL) {
@@ -45,9 +45,9 @@ void insert_site_index(
 }
 
 void insert_site_index(
-    struct util::site *index_site,
-    std::list<scrape::index_url> &site_index) {
-
+    util::site *index_site,
+    std::list<scrape::index_url> &site_index) 
+{
   for (auto &u: site_index) {
     insert_site_index(index_site, u.url, u.path, u.count);
   }
@@ -55,8 +55,8 @@ void insert_site_index(
 
 bool check_blacklist(
       std::vector<std::string> &blacklist, 
-      std::string url
-) {
+      std::string url)
+{
   for (auto &b: blacklist) {
     if (url.find(b) != std::string::npos) {
       return true;
@@ -67,11 +67,11 @@ bool check_blacklist(
 }
 
 void insert_site_other(
-    std::list<struct util::site> &index,
+    std::list<util::site> &index,
     int level,
     std::list<scrape::other_url> &site_other,
-    std::vector<std::string> &blacklist
-) {
+    std::vector<std::string> &blacklist)
+{
   for (auto &u: site_other) {
 
     if (check_blacklist(blacklist, u.url)) {
@@ -108,23 +108,16 @@ struct thread_data {
   bool done{false};
 };
 
-
 template<typename T>
 bool future_is_ready(std::future<T>& t){
     return t.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
 }
 
-void run_round(int level, int max_sites, int max_pages,
-  std::list<struct util::site> &index,
-  std::vector<std::string> &blacklist)
+std::list<std::string> get_batch_hosts(
+    size_t max_sites,
+    std::list<util::site> &index)
 {
-  printf("run round %i\n", level);
-
   std::vector<std::string> hosts;
-
-  max_sites = 50;
-
-  hosts.reserve(index.size());
 
   for (auto &site: index) {
     if (site.scraped) continue;
@@ -147,85 +140,122 @@ void run_round(int level, int max_sites, int max_pages,
         return site_a->refs > site_b->refs;
       });
 
-  int site_count = 0;
-  std::vector<thread_data> threads;
 
-  // TODO: should run this in batches
+  size_t len = hosts.size();
+  if (max_sites > 0 && max_sites < len)
+    len = max_sites;
 
-  threads.reserve(max_sites);
+  return std::list<std::string>(
+        hosts.begin(), hosts.begin() + len);
+}
 
-  for (auto &host: hosts) {
-    if (max_sites > 0 && ++site_count >= max_sites) {
-      break;
+void start_thread(
+    std::list<thread_data> &threads,
+    size_t max_pages,
+    std::string host,
+    std::list<util::site> &index)
+{
+  printf("start new thread for %s\n", host.c_str());
+
+  auto site = util::index_find_host(index, host);
+  if (site == NULL) {
+    printf("site %s not found in index.\n", host.c_str());
+    exit(1);
+  }
+
+  thread_data t;
+
+  t.host = host;
+  
+  t.urls.reserve(site->pages.size());
+
+  for (auto &p: site->pages) {
+    t.urls.push_back(p.url);
+  }
+
+  threads.push_back(std::move(t));
+
+  auto &tt = threads.back();
+  tt.future = std::async(std::launch::async,
+      [max_pages, &tt]() {
+        scrape::scrape(max_pages, tt.host, tt.urls, tt.url_index, tt.url_other);
+      });
+}
+
+thread_data pop_finished_thread(std::list<thread_data> &threads)
+{
+  while (threads.size() > 0) {
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    auto t = threads.begin();
+    while (t != threads.end()) {
+      if (future_is_ready(t->future)) {
+        auto tt = std::move(*t);
+        threads.erase(t++);
+        return tt;
+      } else {
+        t++;
+      }
     }
+  }
 
-    auto site = util::index_find_host(index, host);
+  thread_data dummy;
+  return dummy;
+}
+
+const size_t max_threads = 100;
+
+void run_round(int level, size_t max_sites, size_t max_pages,
+  std::list<util::site> &index,
+  std::vector<std::string> &blacklist)
+{
+  printf("run round %i\n", level);
+
+  auto hosts = get_batch_hosts(max_sites, index);
+  
+  std::list<thread_data> threads;
+
+  while (hosts.size() > 0 && threads.size() < max_threads) {
+    auto host = hosts.front();
+    hosts.pop_front();
+
+    start_thread(threads, max_pages, host, index);
+  }
+
+  while (threads.size() > 0) {
+    printf("waiting on %i threads\n", threads.size());
+
+    auto t = pop_finished_thread(threads);
+      
+    printf("thread finished for %s\n", t.host.c_str());
+
+    auto site = util::index_find_host(index, t.host);
     if (site == NULL) {
-      printf("site %s not found in index.\n", host.c_str());
+      printf("site %s not found in index.\n", t.host.c_str());
       exit(1);
     }
 
-    thread_data t;
+    site->scraped = true;
 
-    t.host = host;
+    insert_site_index(site, t.url_index);
     
-    t.urls.reserve(site->pages.size());
+    insert_site_other(index, level + 1, t.url_other, blacklist);
+ 
+    // Save the current index so exiting early doesn't loose
+    // all the work that has been done
+    util::save_index(index, "full_index");
 
-    for (auto &p: site->pages) {
-      t.urls.push_back(p.url);
-    }
-    
-    threads.push_back(std::move(t));
-  }
+    t.url_index.clear();
+    t.url_other.clear();
 
-  for (auto &t: threads) {
-    t.future = std::async(std::launch::async,
-        [max_pages, &t]() {
-          scrape::scrape(max_pages, t.host, t.urls, t.url_index, t.url_other);
-        });
-  }
+    if (hosts.size() > 0) {
+      auto host = hosts.front();
+      hosts.pop_front();
 
-  bool waiting = true;
-  while (waiting) {
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-
-    waiting = false;
-    for (auto &t: threads) {
-      if (t.done) continue;
-
-      if (future_is_ready(t.future)) {
-        printf("finished %s: scrapped %lu pages and found %lu others\n", 
-            t.host.c_str(), t.url_index.size(), t.url_other.size());
-
-        auto site = util::index_find_host(index, t.host);
-        if (site == NULL) {
-          printf("site %s not found in index.\n", t.host.c_str());
-          exit(1);
-        }
-
-        site->scraped = true;
-        /*
-
-        insert_site_index(site, t.url_index);
-        
-        insert_site_other(index, level + 1, t.url_other, blacklist);
-     
-        // Save the current index so exiting early doesn't loose
-        // all the work that has been done
-        util::save_index(index, "full_index");
-        */
-
-        t.url_index.clear();
-        t.url_other.clear();
-        t.url_other.clear();
-
-        t.done = true;
-      }
-
-      if (!t.done) waiting = true;
+      start_thread(threads, max_pages, host, index);
     }
   }
-    
+
   printf("all done\n");
 }
 
@@ -239,17 +269,17 @@ int main(int argc, char *argv[]) {
     seed_other.push_back(i);
   }
 
-  std::list<struct util::site> index;
+  std::list<util::site> index;
 
   struct level {
-    int max_sites;
-    int max_pages;
+    size_t max_sites;
+    size_t max_pages;
   };
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
   //std::vector<struct level> levels = {{0, 2000}, {1000, 50}, {1000, 1}};
-  std::vector<struct level> levels = {{50, 500}, {5, 5}, {5, 1}};
+  std::vector<struct level> levels = {{0, 500}, {5, 5}, {5, 1}};
   //std::vector<struct level> levels = {{0, 2}, {50, 2}, {50, 1}};
   int level_count = 1;
 

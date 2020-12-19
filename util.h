@@ -13,15 +13,11 @@ const size_t max_url_len = 512;
 std::string get_proto(std::string url);
 std::string get_host(std::string url);
 std::string get_path(std::string url);
-std::pair<std::string, std::string> split_dir(std::string path);
+std::string get_dir(std::string path);
 
-std::string normalize_path(std::string s);
-
-std::string make_path(std::string host, std::string url);
+std::string make_path(std::string url);
 
 bool bare_minimum_valid_url(std::string url);
-
-std::string simplify_url(std::string url);
 
 void load_index(std::string host,
       std::map<std::string, std::string> &urls);

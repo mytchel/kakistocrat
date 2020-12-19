@@ -42,74 +42,31 @@ std::string get_proto(std::string url) {
 
 std::string get_host(std::string url) {
   int slashes = 0;
-  std::vector<char> s;
-
-  for (auto c: url) {
-    if (c == '/') {
-      slashes++;
-      
-      if (slashes == 3) {
-        break;
-      } else {
-        continue;
-      }
-    
-    } else if (c == '@') {
-      s.clear();
-      continue;
-    }
-
-    if (slashes == 2) {
-      s.push_back(tolower(c));
-    }
-  }
-
-  return std::string(s.begin(), s.end());
-}
-
-std::string get_path(std::string url) {
-  int slashes = 0;
   bool need_host = false;
   std::vector<char> s;
-  
+
   for (auto c: url) {
     if (slashes == 0 && c == ':') {
       need_host = true;
-      s.clear();
 
     } else if (need_host) {
       if (c == '/') {
-        slashes++;
-        if (slashes == 3) {
-          need_host = false;
+        if (++slashes == 3) {
+          break;
+        }
+      } else if (slashes == 2) {
+        if (c == '@') {
+          s.clear();
+        } else {
           s.push_back(c);
         }
+      } else {
+        return "";
       }
-
-    } else if (c == '#') {
-      break;
-
-    } else {
-      s.push_back(c);
     }
   }
 
   return std::string(s.begin(), s.end());
-}
-
-std::pair<std::string, std::string> split_dir(std::string path) {
-  std::string dir = "", f = "";
-
-  for (auto &c : path) {
-    if (c == '/') {
-      dir += f + "/";
-      f = "";
-    } else {
-      f += c;
-    }
-  }
-
-  return std::pair<std::string, std::string>(dir, f);
 }
 
 std::vector<std::string> split_path(std::string s) {
@@ -146,7 +103,65 @@ std::vector<std::string> split_path(std::string s) {
   return path;
 }
 
-std::string make_path(std::string host, std::string path) {
+std::string get_path(std::string url) {
+  int slashes = 0;
+  bool need_host = false;
+  std::vector<char> s;
+  
+  for (auto c: url) {
+    if (slashes == 0 && c == ':') {
+      need_host = true;
+      s.clear();
+
+    } else if (need_host) {
+      if (c == '/') {
+        if (++slashes == 3) {
+          need_host = false;
+          s.push_back(c);
+        }
+      }
+
+    } else if (c == '#') {
+      break;
+
+    } else {
+      s.push_back(c);
+    }
+  }
+
+  auto parts = split_path(std::string(s.begin(), s.end()));
+  std::string path = "";
+  for (auto part: parts) {
+    path += "/" + part;
+  }
+
+  if (path.empty()) {
+    path = "/";
+  }
+
+  return path;
+}
+
+std::string get_dir(std::string path) {
+  auto parts = split_path(path);
+  std::string dir = "";
+
+  auto p = parts.begin();
+  while (p < parts.end()) {
+    dir += "/" + *p;
+    p++;
+  }
+
+  if (dir.empty()) {
+    dir = "/";
+  }
+
+  return dir;
+}
+
+std::string make_path(std::string url) {
+  auto host = get_host(url);
+  auto path = get_path(url);
   auto path_parts = split_path(path);
 
   auto file_path = host;
@@ -213,19 +228,6 @@ bool bare_minimum_valid_url(std::string url) {
   }
 
   return true;
-}
-
-std::string simplify_url(std::string url) {
-  std::string n;
-
-  for (auto &c: url) {
-    if (c == '?') break;
-    else if (c == '&') break;
-    else if (c == '#') break;
-    else n += c;
-  }
-
-  return n;
 }
 
 void load_index(std::string host,

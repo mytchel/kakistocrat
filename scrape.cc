@@ -139,7 +139,7 @@ std::list<std::string> find_links_lex(
 
   auto page_proto = util::get_proto(page_url);
   auto page_host = util::get_host(page_url);
-  auto page_dir = util::split_dir(util::get_path(page_url));
+  auto page_dir = util::get_dir(util::get_path(page_url));
 
   char attr_name[] = "href";
   size_t attr_len = 4;
@@ -166,6 +166,7 @@ std::list<std::string> find_links_lex(
       // //host/page keep protocol
       
       std::string url(s);
+
       if (url.empty() || url.front() == '#')
         continue;
 
@@ -191,7 +192,7 @@ std::list<std::string> find_links_lex(
         continue;
 
       if (!path.empty() && path.front() != '/') {
-        path = page_dir.first + "/" + path;
+        path = page_dir + "/" + path;
       }
    
       auto fixed = proto + "://" + host + path;
@@ -291,7 +292,7 @@ void insert_urls(std::string host,
         continue;
       }
 
-      auto p = util::make_path(host, url);
+      auto p = util::make_path(url);
 
       if (index_check_path(url_scanning, p)) {
         continue;
@@ -343,7 +344,7 @@ scrape(int max_pages,
   std::list<std::string> url_bad;
 
   for (auto &u: url_seed) {
-    auto p = util::make_path(host, u);
+    auto p = util::make_path(u);
 
     if (index_check_path(url_scanning, p)) {
       printf("skip dup path %s\n", u.c_str());
@@ -354,7 +355,6 @@ scrape(int max_pages,
 
     url_scanning.push_back(i);
   }
-
 
   lxb_status_t status;
   lxb_html_parser_t *parser;
@@ -372,7 +372,7 @@ scrape(int max_pages,
   int fail_net = 0;
   int fail_web = 0;
   
-  size_t max_size = 1024 * 1024;
+  size_t max_size = 1024 * 1024 * 5;
   char *c = (char *) malloc(max_size);
   memory mem{c, max_size, 0};
 
@@ -443,7 +443,10 @@ scrape(int max_pages,
         }
 
       } else {
-        printf("miss %d %s\n", (int) res_status, url.c_str());
+        if ((int) res_status != 404) {
+          printf("miss %d %s\n", (int) res_status, url.c_str());
+        }
+
         url_bad.push_back(url);
         fail_web++;
       }
