@@ -101,37 +101,10 @@ bool want_suffix(std::string path) {
   return true;
 }
 
-
-lxb_inline lxb_html_document_t *
-parse(const lxb_char_t *html, size_t html_len)
-{
-    lxb_status_t status;
-    lxb_html_parser_t *parser;
-    lxb_html_document_t *document;
-
-    /* Initialization */
-    parser = lxb_html_parser_create();
-    status = lxb_html_parser_init(parser);
-
-    if (status != LXB_STATUS_OK) {
-        printf("Failed to create HTML parser\n");
-        exit(1);
-    }
-
-    /* Parse */
-    document = lxb_html_parse(parser, html, html_len);
-    if (document == NULL) {
-        printf("Failed to create Document object\n");
-        exit(1);
-    }
-
-    /* Destroy parser */
-    lxb_html_parser_destroy(parser);
-
-    return document;
-}
-
-std::list<std::string> find_links_lex(memory *mem, std::string page_url)
+std::list<std::string> find_links_lex(
+      lxb_html_parser_t *parser,
+      memory *mem, 
+      std::string page_url)
 {
   std::list<std::string> urls;
 
@@ -140,15 +113,21 @@ std::list<std::string> find_links_lex(memory *mem, std::string page_url)
   lxb_html_document_t *document;
   lxb_dom_collection_t *collection;
 
-  document = parse((const lxb_char_t *) mem->buf, mem->size);
+  document = lxb_html_parse(parser, (const lxb_char_t *) mem->buf, mem->size);
+  if (document == NULL) {
+    printf("Failed to create Document object\n");
+    return urls; 
+  }
 
   collection = lxb_dom_collection_make(&document->dom_document, 128);
   if (collection == NULL) {
-      printf("Failed to create Collection object");
-      exit(1);
+    printf("Failed to create Collection object");
+    exit(1);
   }
 
-  // TODO: the library is broken and access's 0 page somewhere in this call
+  if (document->body == NULL) {
+    return urls;
+  }
 
   status = lxb_dom_elements_by_tag_name(lxb_dom_interface_element(document->body),
                                         collection,
@@ -168,7 +147,12 @@ std::list<std::string> find_links_lex(memory *mem, std::string page_url)
       element = lxb_dom_collection_element(collection, i);
 
       size_t len;
-      char *s = (char *) lxb_dom_element_get_attribute(element, (const lxb_char_t*) attr_name, attr_len, &len);
+      char *s = (char *) lxb_dom_element_get_attribute(
+            element, 
+            (const lxb_char_t*) attr_name, 
+            attr_len, 
+            &len);
+
       if (s == NULL) {
         continue;
       }
@@ -371,6 +355,17 @@ scrape(int max_pages,
     url_scanning.push_back(i);
   }
 
+
+  lxb_status_t status;
+  lxb_html_parser_t *parser;
+  parser = lxb_html_parser_create();
+  status = lxb_html_parser_init(parser);
+
+  if (status != LXB_STATUS_OK) {
+    printf("Failed to create HTML parser\n");
+    exit(1);
+  }
+
   CURL *curl_handle;
   CURLcode res;
 
@@ -428,7 +423,7 @@ scrape(int max_pages,
         curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_TYPE, &ctype);
 
         if (mem.size > 10) {
-          auto urls = find_links_lex(&mem, url);
+          auto urls = find_links_lex(parser, &mem, url);
 
           save_file(path, url, &mem);
 
@@ -462,7 +457,7 @@ scrape(int max_pages,
   
   curl_easy_cleanup(curl_handle);
   free(mem.buf);
+  
+  lxb_html_parser_destroy(parser);
 }
-
 }
-
