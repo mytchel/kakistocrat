@@ -10,7 +10,7 @@ struct page {
   std::string url;
   std::string path;
   float score{0};
-  std::vector<page_id> linked_by;
+  std::vector<page_id> links;
 };
 
 struct site {
@@ -18,7 +18,9 @@ struct site {
   std::string host;
   size_t level;
   bool scraped{false};
+  bool scraping{false};
 
+  std::uint32_t next_id{1};
   std::list<page> pages;
 };
 

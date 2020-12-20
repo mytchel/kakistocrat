@@ -6,6 +6,7 @@
 
 #include <vector>
 #include <list>
+#include <set>
 #include <string>
 #include <algorithm>
 #include <thread>
@@ -22,6 +23,8 @@
 #include "crawl.h"
 
 namespace crawl {
+
+const size_t max_threads = 100;
 
 void save_index(index &index, std::string path)
 {
@@ -45,21 +48,21 @@ void save_index(index &index, std::string path)
       break;
     }
 
-    if (!has_pages) continue;
+    //if (!has_pages) continue;
 
     file << site.id << "\t";
     file << site.host << "\t";
     file << site.level << "\n";
 
     for (auto &p: site.pages) {
-      if (p.path.empty()) continue;
+     // if (p.path.empty()) continue;
 
       file << "\t";
       file << p.id << "\t";
       file << p.url << "\t";
       file << p.path;
 
-      for (auto &l: p.linked_by) {
+      for (auto &l: p.links) {
         file << "\t" << l.site << ":" << l.page;
       }
 
@@ -105,34 +108,6 @@ site * index_find_host(
   return NULL;
 }
 
-page& index_find_add_page(site *site, std::uint32_t id, 
-    std::string url, std::string path) 
-{
-  for (auto &p: site->pages) {
-    if (p.id == id) {
-      return p;
-    }
-  }
-
-  page page = {id, url, path};
-  site->pages.push_back(page);
-
-  return site->pages.back();
-}
-
-void insert_site_index(
-    site *site,
-    std::list<scrape::index_url> &site_index) 
-{
-  for (auto &u: site_index) {
-    auto &p = index_find_add_page(site, u.id, u.url, u.path);
-    for (auto &l: u.linked_by) {
-      page_id id = {site->id, l};
-      p.linked_by.push_back(id);
-    }
-  }
-}
-
 bool check_blacklist(
       std::vector<std::string> &blacklist, 
       std::string host)
@@ -146,35 +121,108 @@ bool check_blacklist(
   return false;
 }
 
-void insert_site_other(
+page& index_find_add_page(site *site, std::uint32_t id, 
+    std::string url, std::string path) 
+{
+  for (auto &p: site->pages) {
+    if (id > 0) {
+      if (p.id == id) {
+        p.path = path;
+        return p;
+      }
+
+    } else if (p.url == url) {
+      p.path = path;
+      return p;
+    }
+  }
+
+  if (id == 0) {
+    id = site->next_id++;
+  }
+
+  page page = {id, url, path};
+  site->pages.push_back(page);
+
+  return site->pages.back();
+}
+
+void insert_site_index(
     index &index,
-    std::uint32_t site_id,
+    site *site,
     size_t level,
-    std::list<scrape::other_url> &site_other,
+    std::list<scrape::index_url> &site_index,
     std::vector<std::string> &blacklist)
 {
-  for (auto &u: site_other) {
-    auto host = util::get_host(u.url);
+  for (auto &u: site_index) {
+    auto &p = index_find_add_page(site, u.id, u.url, u.path);
+
+    if (u.id > site->next_id) 
+      site->next_id = u.id + 1;
+
+    for (auto &l: u.links) {
+      page_id i = {site->id, l};
+      p.links.push_back(i);
+
+      if (l > site->next_id) 
+        site->next_id = l + 1;
+    }
+
+    for (auto &o: u.ext_links) {
+      auto host = util::get_host(o);
+   
+      if (check_blacklist(blacklist, host)) {
+        continue;
+      }
+   
+      auto o_site = index_find_host(index, host);
+      if (o_site == NULL) {
+        struct site n_site = {index.next_id++, host, level, false};
+
+        auto &o_p = index_find_add_page(&n_site, 0, o, "");
+
+        page_id i = {n_site.id, o_p.id};
+        p.links.push_back(i);
+
+        index.sites.push_back(n_site);
+
+      } else if (!o_site->scraping) {
+        auto &o_p = index_find_add_page(o_site, 0, o, "");
+
+        page_id i = {o_site->id, o_p.id};
+        p.links.push_back(i);
+
+      } else {
+        // Drop so that id's don't get fucked with
+      }
+    }
+  }
+  
+  site->scraping = false;
+}
+
+void insert_site_index_seed(
+    index &index,
+    std::vector<std::string> url,
+    std::vector<std::string> &blacklist)
+{
+  for (auto &o: url) {
+    auto host = util::get_host(o);
  
     if (check_blacklist(blacklist, host)) {
       continue;
     }
  
-    auto index_site = index_find_host(index, host);
-    if (index_site == NULL) {
-      site site = {index.next_id++, host, level, false};
+    auto o_site = index_find_host(index, host);
+    if (o_site == NULL) {
+      struct site n_site = {index.next_id++, host, 1, false};
 
-      page page = {u.id, u.url, ""};
-      site.pages.push_back(page);
+      index_find_add_page(&n_site, 0, o, "");
 
-      index.sites.push_back(site);
+      index.sites.push_back(n_site);
 
     } else {
-      auto &p = index_find_add_page(index_site, u.id, u.url, "");
-      for (auto &l: u.linked_by) {
-        page_id id = {site_id, l};
-        p.linked_by.push_back(id);
-      }
+      index_find_add_page(o_site, 0, o, "");
     }
   }
 }
@@ -182,7 +230,7 @@ void insert_site_other(
 size_t count_site_refs(site &site) {
   size_t sum = 0;
   for (auto &p: site.pages) {
-    sum += p.linked_by.size();
+    sum += 0;//p.linked_by.size();
   }
   return sum;
 }
@@ -190,10 +238,11 @@ size_t count_site_refs(site &site) {
 struct thread_data {
   std::string host;
 
+  uint32_t next_id;
+
   std::vector<std::string> urls;
   
   std::list<scrape::index_url> url_index;
-  std::list<scrape::other_url> url_other;
 
   std::future<void> future;
   bool done{false};
@@ -257,6 +306,8 @@ void start_thread(
     exit(1);
   }
 
+  site->scraping = true;
+
   thread_data t;
 
   t.host = host;
@@ -264,7 +315,14 @@ void start_thread(
   t.urls.reserve(site->pages.size());
 
   for (auto &p: site->pages) {
-    t.urls.push_back(p.url);
+    auto path = p.path;
+    if (path == "") {
+      path = util::make_path(p.url);
+    }
+
+    scrape::index_url u = {p.id, p.url, path};
+
+    t.url_index.push_back(u);
   }
 
   threads.push_back(std::move(t));
@@ -272,7 +330,7 @@ void start_thread(
   auto &tt = threads.back();
   tt.future = std::async(std::launch::async,
       [max_pages, &tt]() {
-        scrape::scrape(max_pages, tt.host, tt.urls, tt.url_index, tt.url_other);
+        scrape::scrape(max_pages, tt.host, tt.url_index);
       });
 }
 
@@ -296,8 +354,6 @@ thread_data pop_finished_thread(std::list<thread_data> &threads)
   thread_data dummy;
   return dummy;
 }
-
-const size_t max_threads = 100;
 
 void run_round(size_t level, size_t max_sites, size_t max_pages,
   index &index,
@@ -331,16 +387,13 @@ void run_round(size_t level, size_t max_sites, size_t max_pages,
 
     site->scraped = true;
 
-    insert_site_index(site, t.url_index);
+    insert_site_index(index, site, level + 1, t.url_index, blacklist);
     
-    insert_site_other(index, site->id, level + 1, t.url_other, blacklist);
+    t.url_index.clear();
  
     // Save the current index so exiting early doesn't loose
     // all the work that has been done
     save_index(index, "full_index");
-
-    t.url_index.clear();
-    t.url_other.clear();
 
     if (hosts.size() > 0) {
       auto host = hosts.front();
@@ -359,13 +412,9 @@ int main(int argc, char *argv[]) {
   std::vector<std::string> blacklist = util::load_list("../mine/blacklist");
   std::vector<std::string> initial_seed = util::load_list("../mine/seed");
 
-  std::list<scrape::other_url> seed_other;
-  for (auto &u: initial_seed) {
-    scrape::other_url i = {1, u};
-    seed_other.push_back(i);
-  }
-
   crawl::index index;
+
+  insert_site_index_seed(index, initial_seed, blacklist);
 
   struct level {
     size_t max_sites;
@@ -378,8 +427,6 @@ int main(int argc, char *argv[]) {
   //std::vector<struct level> levels = {{0, 500}, {5, 5}, {5, 1}};
   //std::vector<struct level> levels = {{0, 2}, {50, 2}, {50, 1}};
   size_t level_count = 1;
-
-  crawl::insert_site_other(index, 0, level_count, seed_other, blacklist);
 
   crawl::save_index(index, "full_index");
 

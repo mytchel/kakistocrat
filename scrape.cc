@@ -125,6 +125,7 @@ bool bad_prefix(std::string path) {
       has_prefix(path, "/forum") ||
       has_prefix(path, "/account") ||
       has_prefix(path, "/uploads") ||
+      has_prefix(path, "/cgit") ||
       has_prefix(path, "/admin");
 }
 
@@ -251,16 +252,12 @@ void save_file(std::string path, std::string url, memory *mem)
   file.close();
 }
 
-bool index_check_mark(
-    std::list<struct index_url> &url_index,
-    std::uint32_t id, std::string url)
+bool index_check(
+    std::list<index_url> &url_index,
+    std::string url)
 {
   for (auto &i: url_index) {
     if (i.url == url) {
-      if (i.id != id) {
-        i.linked_by.insert(id);
-      }
-
       return true;
     }
   }
@@ -269,7 +266,7 @@ bool index_check_mark(
 }
 
 bool index_check_path(
-    std::list<struct index_url> &url_index,
+    std::list<index_url> &url_index,
     std::string path)
 {
   for (auto &i: url_index) {
@@ -281,38 +278,21 @@ bool index_check_path(
   return false;
 }
 
-bool other_check_mark(
-    std::list<struct other_url> &url_other,
-    std::uint32_t id, std::string url)
-{
-  for (auto &i: url_other) {
-    if (i.url == url) {
-      i.linked_by.push_back(id);
-      return true;
-    }
-  }
-
-  return false;
-}
-
 void insert_urls(std::string host, 
-      std::uint32_t page_id, std::uint32_t *next_id,
+      index_url &url, std::uint32_t *next_id,
       std::list<std::string> urls,
       std::list<struct index_url> &url_index,
-      std::list<struct other_url> &url_other,
       std::list<std::string> &url_bad,
       std::list<struct index_url> &url_scanning)
 {
-  for (auto &url: urls) {
-    auto url_host = util::get_host(url);
-    if (url_host.empty()) continue;
+  for (auto &u: urls) {
+    auto u_host = util::get_host(u);
+    if (u_host.empty()) continue;
 
-    std::uint32_t id = (*next_id)++;
-
-    if (url_host == host) {
+    if (u_host == host) {
       bool bad = false;
       for (auto &b: url_bad) {
-        if (b == url) {
+        if (b == u) {
           bad = true;
           break;
         }
@@ -320,15 +300,15 @@ void insert_urls(std::string host,
 
       if (bad) continue;
    
-      if (index_check_mark(url_index, page_id, url)) {
+      if (index_check(url_index, u)) {
         continue;
       }
 
-      if (index_check_mark(url_scanning, page_id, url)) {
+      if (index_check(url_scanning, u)) {
         continue;
       }
 
-      auto p = util::make_path(url);
+      auto p = util::make_path(u);
 
       if (index_check_path(url_scanning, p)) {
         continue;
@@ -338,18 +318,16 @@ void insert_urls(std::string host,
         continue;
       }
    
-      struct index_url i = {id, url, p};
-      i.linked_by.push_back(page_id);
+      auto id = (*next_id)++;
+      
+      url.links.insert(id);
+
+      struct index_url i = {id, u, p};
 
       url_scanning.push_back(i);
 
     } else {
-      if (other_check_mark(url_other, page_id, url)) {
-        continue;
-      }
-
-      struct other_url i = {id, url};
-      url_other.push_back(i);
+      url.ext_links.insert(u);
     } 
   }
 }
@@ -372,33 +350,15 @@ struct index_url pick_next(std::list<struct index_url> &urls) {
 void
 scrape(int max_pages, 
     const std::string host, 
-    const std::vector<std::string> url_seed,
-    std::list<struct index_url> &url_index,
-    std::list<struct other_url> &url_other)
+    std::list<struct index_url> &url_index)
 {
   printf("scraping %s for up to %i pages\n", host.c_str(), max_pages);
 
   std::uint32_t next_id = 0;
-  std::list<struct index_url> url_scanning;
+  std::list<index_url> url_scanning(url_index);
   std::list<std::string> url_bad;
 
-  for (auto &u: url_seed) {
-    auto p = util::make_path(u);
-
-    if (index_check_path(url_index, p)) {
-      printf("skip dup path %s\n", u.c_str());
-      continue;
-    }
-
-    if (index_check_path(url_scanning, p)) {
-      printf("skip dup path %s\n", u.c_str());
-      continue;
-    }
-
-    struct index_url i = {next_id++, u, p};
-
-    url_scanning.push_back(i);
-  }
+  url_index.clear();
 
   lxb_status_t status;
   lxb_html_parser_t *parser;
@@ -449,12 +409,8 @@ scrape(int max_pages,
  
     auto u = pick_next(url_scanning);
 
-    auto path = u.path;
-    auto url = u.url;
-    auto id = u.id;
-
     char s[util::max_url_len];
-    strcpy(s, url.c_str());
+    strcpy(s, u.url.c_str());
     curl_easy_setopt(curl_handle, CURLOPT_URL, s);
 
     mem.size = 0;
@@ -468,37 +424,37 @@ scrape(int max_pages,
         curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_TYPE, &ctype);
 
         if (mem.size > 10) {
-          auto urls = find_links_lex(parser, &mem, url);
+          auto urls = find_links_lex(parser, &mem, u.url);
 
-          save_file(path, url, &mem);
+          save_file(u.path, u.url, &mem);
 
-          if (url_index.size() > 0 && url_index.size() % 10 == 0) {
+          if (url_index.size() > 0 && url_index.size() % 50 == 0) {
             printf("%s %lu / %lu with %lu failures\n",
                 host.c_str(), url_index.size(), url_scanning.size(),
                 url_bad.size());
           }
           
+          insert_urls(host, u, &next_id, urls, url_index, url_bad, url_scanning);
+          
           url_index.push_back(u);
-        
-          insert_urls(host, id, &next_id, urls, url_index, url_other, url_bad, url_scanning);
 
         } else {
-          printf("miss '%s' %lu %s\n", ctype, mem.size, url.c_str());
-          url_bad.push_back(url);
+          printf("miss '%s' %lu %s\n", ctype, mem.size, u.url.c_str());
+          url_bad.push_back(u.url);
         }
 
       } else {
         if ((int) res_status != 404) {
-          printf("miss %d %s\n", (int) res_status, url.c_str());
+          printf("miss %d %s\n", (int) res_status, u.url.c_str());
         }
 
-        url_bad.push_back(url);
+        url_bad.push_back(u.url);
         fail_web++;
       }
 
     } else {
-      printf("miss %s %s\n", curl_easy_strerror(res), url.c_str());
-      url_bad.push_back(url);
+      printf("miss %s %s\n", curl_easy_strerror(res), u.url.c_str());
+      url_bad.push_back(u.url);
       fail_net++;
     }
   }
