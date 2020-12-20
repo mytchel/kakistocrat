@@ -10,7 +10,7 @@ struct index_url {
 };
 
 void
-scrape(int max_pages, 
+scrape(int max_pages, std::uint32_t next_id,
     const std::string host, 
     std::list<index_url> &url_index);
 

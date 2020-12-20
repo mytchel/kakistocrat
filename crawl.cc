@@ -7,6 +7,7 @@
 #include <vector>
 #include <list>
 #include <set>
+#include <map>
 #include <string>
 #include <algorithm>
 #include <thread>
@@ -24,7 +25,7 @@
 
 namespace crawl {
 
-const size_t max_threads = 100;
+const size_t max_threads = 500;
 
 void save_index(index &index, std::string path)
 {
@@ -48,17 +49,18 @@ void save_index(index &index, std::string path)
       break;
     }
 
-    //if (!has_pages) continue;
+    if (!has_pages) continue;
 
     file << site.id << "\t";
     file << site.host << "\t";
     file << site.level << "\n";
 
     for (auto &p: site.pages) {
-     // if (p.path.empty()) continue;
+      if (p.path.empty()) continue;
 
       file << "\t";
       file << p.id << "\t";
+      file << p.score << "\t";
       file << p.url << "\t";
       file << p.path;
 
@@ -197,8 +199,6 @@ void insert_site_index(
       }
     }
   }
-  
-  site->scraping = false;
 }
 
 void insert_site_index_seed(
@@ -227,10 +227,10 @@ void insert_site_index_seed(
   }
 }
 
-size_t count_site_refs(site &site) {
-  size_t sum = 0;
+double site_score(site &site) {
+  double sum = 0;
   for (auto &p: site.pages) {
-    sum += 0;//p.linked_by.size();
+    sum += p.score;
   }
   return sum;
 }
@@ -259,18 +259,16 @@ std::list<std::string> get_batch_hosts(
 {
   struct host_data {
     std::string host;
-    size_t score;
+    double score;
   };
 
   std::vector<host_data> hosts;
 
   hosts.reserve(index.sites.size());
 
-  float min_score = 1.0;
-
   for (auto &site: index.sites) {
     if (site.scraped) continue;
-    host_data h = {site.host, count_site_refs(site)};
+    host_data h = {site.host, site_score(site)};
     hosts.push_back(std::move(h));
   }
 
@@ -298,8 +296,6 @@ void start_thread(
     std::string host,
     index &index)
 {
-  printf("start new thread for %s\n", host.c_str());
-
   auto site = index_find_host(index, host);
   if (site == NULL) {
     printf("site %s not found in index.\n", host.c_str());
@@ -307,6 +303,7 @@ void start_thread(
   }
 
   site->scraping = true;
+  auto next_id = site->next_id;
 
   thread_data t;
 
@@ -329,8 +326,8 @@ void start_thread(
 
   auto &tt = threads.back();
   tt.future = std::async(std::launch::async,
-      [max_pages, &tt]() {
-        scrape::scrape(max_pages, tt.host, tt.url_index);
+      [max_pages, next_id, &tt]() {
+        scrape::scrape(max_pages, next_id, tt.host, tt.url_index);
       });
 }
 
@@ -355,9 +352,86 @@ thread_data pop_finished_thread(std::list<thread_data> &threads)
   return dummy;
 }
 
-void run_round(size_t level, size_t max_sites, size_t max_pages,
-  index &index,
-  std::vector<std::string> &blacklist)
+void score_iteration(index &index)
+{
+  std::map<page_id, double> new_scores;
+
+  printf("score iteration for %i sites\n", index.sites.size());
+
+  for (auto &s: index.sites) {
+    printf("  scoring %s with %i pages\n", s.host.c_str(), s.pages.size());
+    
+    for (auto &p: s.pages) {
+      double link_score = p.score / p.links.size();
+      p.score = 0;
+
+      for (auto &l: p.links) {
+        auto i = new_scores.find(l);
+        if (i == new_scores.end()) {
+          new_scores.insert(std::pair<page_id, double>(
+                l, link_score));
+        } else {
+          i->second += link_score;
+        }
+      }
+    }
+  }
+
+  printf("apply %i score adjustments\n", new_scores.size());
+
+  for (auto &s: index.sites) {
+    for (auto &p: s.pages) {
+      page_id id = {s.id, p.id};
+      auto score = new_scores.find(id);
+      if (score != new_scores.end()) {
+        p.score += score->second;
+      }
+    }
+  }
+  
+  printf("score iteration complete\n");
+}
+
+void score_initial(index &index, size_t level, size_t max_level) 
+{
+  size_t n = 0;
+
+  printf("score initial settings for level %i\n", level);
+
+  for (auto &s: index.sites) {
+    if (s.level == level) n++;
+  }
+
+  double r = 2.0/3.0;
+  if (level == max_level) {
+    r = 1.0;
+  }
+
+  double c = 1.0;
+  for (size_t l = 1; l < level; l++) {
+    c *= 1.0/3.0;
+  }
+
+  double base = c * r / n;
+
+  printf("score base value of %f = %f * %f / %i\n", 
+      base, c, r, n);
+
+  for (auto &s: index.sites) {
+    if (s.level != level) continue;
+
+    double page_score = base / s.pages.size();
+
+    for (auto &p: s.pages) {
+      p.score = page_score;
+    }
+  }
+}
+
+void run_round(size_t level, size_t max_level,
+    size_t max_sites, size_t max_pages,
+    index &index,
+    std::vector<std::string> &blacklist)
 {
   printf("run round %i\n", level);
 
@@ -389,6 +463,8 @@ void run_round(size_t level, size_t max_sites, size_t max_pages,
 
     insert_site_index(index, site, level + 1, t.url_index, blacklist);
     
+    site->scraping = false;
+
     t.url_index.clear();
  
     // Save the current index so exiting early doesn't loose
@@ -402,6 +478,11 @@ void run_round(size_t level, size_t max_sites, size_t max_pages,
       start_thread(threads, max_pages, host, index);
     }
   }
+
+  score_initial(index, level, max_level);
+  score_iteration(index);
+    
+  save_index(index, "full_index");
 
   printf("all done\n");
 }
@@ -423,15 +504,16 @@ int main(int argc, char *argv[]) {
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
-  std::vector<struct level> levels = {{0, 2000}, {1000, 50}, {1000, 1}};
-  //std::vector<struct level> levels = {{0, 500}, {5, 5}, {5, 1}};
+  //std::vector<struct level> levels = {{0, 2000}, {1000, 50}, {1000, 1}};
+  std::vector<struct level> levels = {{5, 50}, {20, 5}, {50, 1}};
   //std::vector<struct level> levels = {{0, 2}, {50, 2}, {50, 1}};
   size_t level_count = 1;
 
   crawl::save_index(index, "full_index");
 
   for (auto level: levels) {
-    crawl::run_round(level_count++, level.max_sites, level.max_pages, 
+    crawl::run_round(level_count++, levels.size() + 1,
+        level.max_sites, level.max_pages, 
         index, blacklist);
   }
 

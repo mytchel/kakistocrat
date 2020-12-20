@@ -3,13 +3,21 @@ namespace crawl {
 struct page_id {
   std::uint32_t site;
   std::uint32_t page;
+
+  bool operator<(const page_id &a) const {
+    if (site == a.site) {
+      return page < a.page;
+    } else {
+      return site < a.site;
+    }
+  }
 };
 
 struct page {
   std::uint32_t id;
   std::string url;
   std::string path;
-  float score{0};
+  double score{0};
   std::vector<page_id> links;
 };
 

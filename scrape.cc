@@ -318,7 +318,7 @@ void insert_urls(std::string host,
         continue;
       }
    
-      auto id = (*next_id)++;
+      auto id = ++(*next_id);
       
       url.links.insert(id);
 
@@ -348,13 +348,12 @@ struct index_url pick_next(std::list<struct index_url> &urls) {
 }
 
 void
-scrape(int max_pages, 
+scrape(int max_pages, std::uint32_t next_id,
     const std::string host, 
     std::list<struct index_url> &url_index)
 {
   printf("scraping %s for up to %i pages\n", host.c_str(), max_pages);
 
-  std::uint32_t next_id = 0;
   std::list<index_url> url_scanning(url_index);
   std::list<std::string> url_bad;
 
