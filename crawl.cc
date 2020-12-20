@@ -499,6 +499,11 @@ int main(int argc, char *argv[]) {
         index, blacklist);
   }
 
+  for (int i = 0; i < 5; i++) {
+    score_iteration(index);
+    save_index(index, "full_index");
+  }
+
   curl_global_cleanup();
 
   return 0;
