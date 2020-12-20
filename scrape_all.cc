@@ -32,6 +32,8 @@ void insert_site_index(
     std::string url, std::string path,
     int count) 
 {
+  index_site->refs += u.count;
+
   auto p = find_page(index_site, url);
     
   if (p == NULL) {

@@ -1,3 +1,6 @@
+Checking dates of file
+Timeout of sites. Geekhack should fail rather than take 3 fucking hours.
+Read index.
+
 Support other protocols, gemeni, gopher.
-Need to support file and dir with same name. Do something like {path}_file or {path}_dir if it is in the way.
 
