@@ -13,9 +13,12 @@
 #include <lexbor/dom/dom.h>
 
 #include <list>
+#include <vector>
 #include <set>
 #include <map>
 #include <string>
+#include <iostream>
+#include <fstream>
 
 #include "util.h"
 #include "scrape.h"
@@ -64,12 +67,21 @@ bool has_suffix(std::string const &s, std::string const &suffix) {
   }
 }
 
+bool has_prefix(std::string const &s, std::string const &prefix) {
+  if (s.length() >= prefix.length()) {
+    return (0 == s.compare(0, prefix.length(), prefix));
+  } else {
+    return false;
+  }
+}
+
 bool want_proto(std::string proto) {
   return proto.empty() || proto == "http" || proto == "https";
 }
 
-bool want_suffix(std::string path) {
-  if (has_suffix(path, "?share=twitter") ||
+bool bad_suffix(std::string path) {
+  return 
+      has_suffix(path, "?share=twitter") ||
       has_suffix(path, ".txt") ||
       has_suffix(path, ".jpg") ||
       has_suffix(path, ".png") ||
@@ -97,10 +109,23 @@ bool want_suffix(std::string path) {
       has_suffix(path, ".py") ||
       has_suffix(path, ".js") ||
       has_suffix(path, ".asc") ||
-      has_suffix(path, ".pdf")) 
-    return false;
+      has_suffix(path, ".pdf");
+}
 
-  return true;
+bool bad_prefix(std::string path) {
+  return 
+      has_prefix(path, "/signup") ||
+      has_prefix(path, "/login") ||
+      has_prefix(path, "/forgot") ||
+      has_prefix(path, "/register") ||
+      has_prefix(path, "/admin") ||
+      has_prefix(path, "/signin") ||
+      has_prefix(path, "/cart") ||
+      has_prefix(path, "/checkout") ||
+      has_prefix(path, "/forum") ||
+      has_prefix(path, "/account") ||
+      has_prefix(path, "/uploads") ||
+      has_prefix(path, "/admin");
 }
 
 std::list<std::string> find_links_lex(
@@ -190,7 +215,10 @@ std::list<std::string> find_links_lex(
        
       auto path = util::get_path(url);
       
-      if (!want_suffix(path)) 
+      if (bad_suffix(path)) 
+        continue;
+
+      if (bad_prefix(path)) 
         continue;
 
       if (!path.empty() && path.front() != '/') {
@@ -225,11 +253,14 @@ void save_file(std::string path, std::string url, memory *mem)
 
 bool index_check_mark(
     std::list<struct index_url> &url_index,
-    std::string url)
+    std::uint32_t id, std::string url)
 {
   for (auto &i: url_index) {
     if (i.url == url) {
-      i.count++;
+      if (i.id != id) {
+        i.linked_by.insert(id);
+      }
+
       return true;
     }
   }
@@ -252,11 +283,11 @@ bool index_check_path(
 
 bool other_check_mark(
     std::list<struct other_url> &url_other,
-    std::string url)
+    std::uint32_t id, std::string url)
 {
   for (auto &i: url_other) {
     if (i.url == url) {
-      i.count++;
+      i.linked_by.push_back(id);
       return true;
     }
   }
@@ -264,7 +295,8 @@ bool other_check_mark(
   return false;
 }
 
-void insert_urls(std::string host,
+void insert_urls(std::string host, 
+      std::uint32_t page_id, std::uint32_t *next_id,
       std::list<std::string> urls,
       std::list<struct index_url> &url_index,
       std::list<struct other_url> &url_other,
@@ -274,6 +306,8 @@ void insert_urls(std::string host,
   for (auto &url: urls) {
     auto url_host = util::get_host(url);
     if (url_host.empty()) continue;
+
+    std::uint32_t id = (*next_id)++;
 
     if (url_host == host) {
       bool bad = false;
@@ -286,11 +320,11 @@ void insert_urls(std::string host,
 
       if (bad) continue;
    
-      if (index_check_mark(url_index, url)) {
+      if (index_check_mark(url_index, page_id, url)) {
         continue;
       }
 
-      if (index_check_mark(url_scanning, url)) {
+      if (index_check_mark(url_scanning, page_id, url)) {
         continue;
       }
 
@@ -304,15 +338,17 @@ void insert_urls(std::string host,
         continue;
       }
    
-      struct index_url i = {1, url, p};
+      struct index_url i = {id, url, p};
+      i.linked_by.push_back(page_id);
+
       url_scanning.push_back(i);
 
     } else {
-      if (other_check_mark(url_other, url)) {
+      if (other_check_mark(url_other, page_id, url)) {
         continue;
       }
 
-      struct other_url i = {1, url};
+      struct other_url i = {id, url};
       url_other.push_back(i);
     } 
   }
@@ -342,18 +378,24 @@ scrape(int max_pages,
 {
   printf("scraping %s for up to %i pages\n", host.c_str(), max_pages);
 
+  std::uint32_t next_id = 0;
   std::list<struct index_url> url_scanning;
   std::list<std::string> url_bad;
 
   for (auto &u: url_seed) {
     auto p = util::make_path(u);
 
+    if (index_check_path(url_index, p)) {
+      printf("skip dup path %s\n", u.c_str());
+      continue;
+    }
+
     if (index_check_path(url_scanning, p)) {
       printf("skip dup path %s\n", u.c_str());
       continue;
     }
 
-    struct index_url i = {0, u, p};
+    struct index_url i = {next_id++, u, p};
 
     url_scanning.push_back(i);
   }
@@ -409,6 +451,7 @@ scrape(int max_pages,
 
     auto path = u.path;
     auto url = u.url;
+    auto id = u.id;
 
     char s[util::max_url_len];
     strcpy(s, url.c_str());
@@ -437,7 +480,7 @@ scrape(int max_pages,
           
           url_index.push_back(u);
         
-          insert_urls(host, urls, url_index, url_other, url_bad, url_scanning);
+          insert_urls(host, id, &next_id, urls, url_index, url_other, url_bad, url_scanning);
 
         } else {
           printf("miss '%s' %lu %s\n", ctype, mem.size, url.c_str());

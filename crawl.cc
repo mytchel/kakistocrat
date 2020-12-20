@@ -11,56 +11,134 @@
 #include <thread>
 #include <future>
 #include <optional>
+#include <iostream>
+#include <fstream>
+#include <cstdint>
 
 #include <curl/curl.h>
 
 #include "util.h"
 #include "scrape.h"
+#include "crawl.h"
 
-util::page * find_page(util::site *site, std::string url) {
-  for (auto &p: site->pages) {
-    if (p.url == url) {
-      return &p;
+namespace crawl {
+
+void save_index(index &index, std::string path)
+{
+  std::ofstream file;
+  
+  printf("save index %lu -> %s\n", index.sites.size(), path.c_str());
+
+  file.open(path, std::ios::out | std::ios::trunc);
+
+  if (!file.is_open()) {
+    fprintf(stderr, "error opening file %s\n", path.c_str());
+    return;
+  }
+
+  for (auto &site: index.sites) {
+    bool has_pages = false;
+    for (auto &p: site.pages) {
+      if (p.path.empty()) continue;
+
+      has_pages = true;
+      break;
+    }
+
+    if (!has_pages) continue;
+
+    file << site.id << "\t";
+    file << site.host << "\t";
+    file << site.level << "\n";
+
+    for (auto &p: site.pages) {
+      if (p.path.empty()) continue;
+
+      file << "\t";
+      file << p.id << "\t";
+      file << p.url << "\t";
+      file << p.path;
+
+      for (auto &l: p.linked_by) {
+        file << "\t" << l.site << ":" << l.page;
+      }
+
+      file << "\n";
+    }
+  }
+  file.close();
+}
+
+index load_index(std::string path)
+{
+  std::ifstream file;
+  index index;
+
+  printf("load %s\n", path.c_str());
+
+  file.open(path, std::ios::in);
+
+  if (!file.is_open()) {
+    fprintf(stderr, "error opening file %s\n", path.c_str());
+    return index;
+  }
+
+  std::string line;
+  while (getline(file, line)) {
+  }
+
+  file.close();
+
+  return index;
+}
+
+site * index_find_host(
+        index &index,
+        std::string host)
+{
+  for (auto &i: index.sites) {
+    if (i.host == host) {
+      return &i;
     }
   }
 
   return NULL;
 }
 
-void insert_site_index(
-    util::site *index_site,
-    std::string url, std::string path,
-    int count) 
+page& index_find_add_page(site *site, std::uint32_t id, 
+    std::string url, std::string path) 
 {
-  index_site->refs += u.count;
-
-  auto p = find_page(index_site, url);
-    
-  if (p == NULL) {
-    util::page page = {url, path, count};
-    index_site->pages.push_back(page);
-
-  } else {
-    p->path = path;
-    p->refs += count;
+  for (auto &p: site->pages) {
+    if (p.id == id) {
+      return p;
+    }
   }
+
+  page page = {id, url, path};
+  site->pages.push_back(page);
+
+  return site->pages.back();
 }
 
 void insert_site_index(
-    util::site *index_site,
+    site *site,
     std::list<scrape::index_url> &site_index) 
 {
   for (auto &u: site_index) {
-    insert_site_index(index_site, u.url, u.path, u.count);
+    auto &p = index_find_add_page(site, u.id, u.url, u.path);
+    for (auto &l: u.linked_by) {
+      page_id id = {site->id, l};
+      p.linked_by.push_back(id);
+    }
   }
 }
 
 bool check_blacklist(
       std::vector<std::string> &blacklist, 
-      std::string url)
+      std::string host)
 {
   for (auto &b: blacklist) {
-    if (url.find(b) != std::string::npos) {
+    if (host.find(b) != std::string::npos) {
       return true;
     }
   }
@@ -69,33 +147,44 @@ bool check_blacklist(
 }
 
 void insert_site_other(
-    std::list<util::site> &index,
+    index &index,
+    std::uint32_t site_id,
     size_t level,
     std::list<scrape::other_url> &site_other,
     std::vector<std::string> &blacklist)
 {
   for (auto &u: site_other) {
-
-    if (check_blacklist(blacklist, u.url)) {
+    auto host = util::get_host(u.url);
+ 
+    if (check_blacklist(blacklist, host)) {
       continue;
     }
-
-    std::string url(u.url);
-    auto host = util::get_host(url);
-  
-    auto index_site = util::index_find_host(index, host);
+ 
+    auto index_site = index_find_host(index, host);
     if (index_site == NULL) {
-      util::page page = {u.url, "", u.count};
+      site site = {index.next_id++, host, level, false};
 
-      util::site site = {host, false ,level, 1};
+      page page = {u.id, u.url, ""};
       site.pages.push_back(page);
 
-      index.push_back(site);
+      index.sites.push_back(site);
 
     } else {
-      insert_site_index(index_site, u.url, "", u.count);
+      auto &p = index_find_add_page(index_site, u.id, u.url, "");
+      for (auto &l: u.linked_by) {
+        page_id id = {site_id, l};
+        p.linked_by.push_back(id);
+      }
     }
   }
+}
+
+size_t count_site_refs(site &site) {
+  size_t sum = 0;
+  for (auto &p: site.pages) {
+    sum += p.linked_by.size();
+  }
+  return sum;
 }
 
 struct thread_data {
@@ -117,27 +206,28 @@ bool future_is_ready(std::future<T>& t){
 
 std::list<std::string> get_batch_hosts(
     size_t max_sites,
-    std::list<util::site> &index)
+    index &index)
 {
   struct host_data {
     std::string host;
-    size_t refs;
-    size_t level;
+    size_t score;
   };
 
   std::vector<host_data> hosts;
 
-  hosts.reserve(index.size());
+  hosts.reserve(index.sites.size());
 
-  for (auto &site: index) {
+  float min_score = 1.0;
+
+  for (auto &site: index.sites) {
     if (site.scraped) continue;
-    host_data h = {site.host, site.refs, site.level};
+    host_data h = {site.host, count_site_refs(site)};
     hosts.push_back(std::move(h));
   }
 
   std::sort(hosts.begin(), hosts.end(), 
       [&index](host_data &a, host_data &b) {
-        return a.refs > b.refs;
+        return a.score > b.score;
       });
 
   std::list<std::string> ret;
@@ -157,11 +247,11 @@ void start_thread(
     std::list<thread_data> &threads,
     size_t max_pages,
     std::string host,
-    std::list<util::site> &index)
+    index &index)
 {
   printf("start new thread for %s\n", host.c_str());
 
-  auto site = util::index_find_host(index, host);
+  auto site = index_find_host(index, host);
   if (site == NULL) {
     printf("site %s not found in index.\n", host.c_str());
     exit(1);
@@ -210,7 +300,7 @@ thread_data pop_finished_thread(std::list<thread_data> &threads)
 const size_t max_threads = 100;
 
 void run_round(size_t level, size_t max_sites, size_t max_pages,
-  std::list<util::site> &index,
+  index &index,
   std::vector<std::string> &blacklist)
 {
   printf("run round %i\n", level);
@@ -233,7 +323,7 @@ void run_round(size_t level, size_t max_sites, size_t max_pages,
       
     printf("thread finished for %s\n", t.host.c_str());
 
-    auto site = util::index_find_host(index, t.host);
+    auto site = index_find_host(index, t.host);
     if (site == NULL) {
       printf("site %s not found in index.\n", t.host.c_str());
       exit(1);
@@ -243,11 +333,11 @@ void run_round(size_t level, size_t max_sites, size_t max_pages,
 
     insert_site_index(site, t.url_index);
     
-    insert_site_other(index, level + 1, t.url_other, blacklist);
+    insert_site_other(index, site->id, level + 1, t.url_other, blacklist);
  
     // Save the current index so exiting early doesn't loose
     // all the work that has been done
-    util::save_index(index, "full_index");
+    save_index(index, "full_index");
 
     t.url_index.clear();
     t.url_other.clear();
@@ -263,6 +353,8 @@ void run_round(size_t level, size_t max_sites, size_t max_pages,
   printf("all done\n");
 }
 
+}
+
 int main(int argc, char *argv[]) {
   std::vector<std::string> blacklist = util::load_list("../mine/blacklist");
   std::vector<std::string> initial_seed = util::load_list("../mine/seed");
@@ -273,7 +365,7 @@ int main(int argc, char *argv[]) {
     seed_other.push_back(i);
   }
 
-  std::list<util::site> index;
+  crawl::index index;
 
   struct level {
     size_t max_sites;
@@ -287,16 +379,14 @@ int main(int argc, char *argv[]) {
   //std::vector<struct level> levels = {{0, 2}, {50, 2}, {50, 1}};
   size_t level_count = 1;
 
-  insert_site_other(index, level_count, seed_other, blacklist);
+  crawl::insert_site_other(index, 0, level_count, seed_other, blacklist);
 
-  save_index(index, "full_index");
+  crawl::save_index(index, "full_index");
 
   for (auto level: levels) {
-      run_round(level_count++, level.max_sites, level.max_pages, 
+    crawl::run_round(level_count++, level.max_sites, level.max_pages, 
         index, blacklist);
   }
-
-  index.clear();
 
   curl_global_cleanup();
 

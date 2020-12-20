@@ -19,18 +19,18 @@ target_link_libraries(scrape ${CURL_LIBRARIES})
 target_link_libraries(scrape ${LIBXML2_LIBRARIES})
 target_link_libraries(scrape lexbor)
 
-add_executable(scrape_all scrape_all.cc scrape.cc util.cc)
+add_executable(crawl crawl.cc scrape.cc util.cc)
 
-target_include_directories(scrape_all PUBLIC ${CURL_INCLUDE_DIRS})
-target_include_directories(scrape_all PUBLIC ${LIBXML2_INCLUDE_DIR})
-target_include_directories(scrape_all PUBLIC ${LEXBOR_INCLUDES})
+target_include_directories(crawl PUBLIC ${CURL_INCLUDE_DIRS})
+target_include_directories(crawl PUBLIC ${LIBXML2_INCLUDE_DIR})
+target_include_directories(crawl PUBLIC ${LEXBOR_INCLUDES})
 
-target_link_libraries(scrape_all ${CURL_LIBRARIES})
-target_link_libraries(scrape_all ${LIBXML2_LIBRARIES})
-target_link_libraries(scrape_all lexbor)
+target_link_libraries(crawl ${CURL_LIBRARIES})
+target_link_libraries(crawl ${LIBXML2_LIBRARIES})
+target_link_libraries(crawl lexbor)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-target_link_libraries(scrape_all Threads::Threads)
+target_link_libraries(crawl Threads::Threads)
 

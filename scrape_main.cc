@@ -12,8 +12,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include "util.h"
+#include <vector>
+#include <list>
 
+#include "util.h"
 #include "scrape.h"
 
 int
