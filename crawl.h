@@ -26,7 +26,6 @@ struct site {
   std::string host;
   size_t level;
   bool scraped{false};
-  bool scraping{false};
 
   std::uint32_t next_id{1};
   std::list<page> pages;

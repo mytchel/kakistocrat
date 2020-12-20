@@ -279,7 +279,7 @@ bool index_check_path(
 }
 
 void insert_urls(std::string host, 
-      index_url &url, std::uint32_t *next_id,
+      index_url &url, 
       std::list<std::string> urls,
       std::list<struct index_url> &url_index,
       std::list<std::string> &url_bad,
@@ -288,6 +288,8 @@ void insert_urls(std::string host,
   for (auto &u: urls) {
     auto u_host = util::get_host(u);
     if (u_host.empty()) continue;
+      
+    url.links.insert(u);
 
     if (u_host == host) {
       bool bad = false;
@@ -318,16 +320,9 @@ void insert_urls(std::string host,
         continue;
       }
    
-      auto id = ++(*next_id);
-      
-      url.links.insert(id);
-
-      struct index_url i = {id, u, p};
+      struct index_url i = {u, p};
 
       url_scanning.push_back(i);
-
-    } else {
-      url.ext_links.insert(u);
     } 
   }
 }
@@ -348,7 +343,7 @@ struct index_url pick_next(std::list<struct index_url> &urls) {
 }
 
 void
-scrape(int max_pages, std::uint32_t next_id,
+scrape(int max_pages, 
     const std::string host, 
     std::list<struct index_url> &url_index)
 {
@@ -375,7 +370,7 @@ scrape(int max_pages, std::uint32_t next_id,
   int fail_net = 0;
   int fail_web = 0;
   
-  size_t max_size = 1024 * 1024 * 5;
+  size_t max_size = 1024 * 1024 * 10;
   char *c = (char *) malloc(max_size);
   memory mem{c, max_size, 0};
 
@@ -433,7 +428,7 @@ scrape(int max_pages, std::uint32_t next_id,
                 url_bad.size());
           }
           
-          insert_urls(host, u, &next_id, urls, url_index, url_bad, url_scanning);
+          insert_urls(host, u, urls, url_index, url_bad, url_scanning);
           
           url_index.push_back(u);
 
