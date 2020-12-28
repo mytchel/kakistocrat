@@ -15,6 +15,7 @@
 #include <optional>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <cstdint>
 
 #include <curl/curl.h>
@@ -65,7 +66,7 @@ void save_index(index &index, std::string path)
       file << p.path;
 
       for (auto &l: p.links) {
-        file << "\t" << l.site << ":" << l.page;
+        file << "\t" << l.site << " " << l.page;
       }
 
       file << "\n";
@@ -74,10 +75,9 @@ void save_index(index &index, std::string path)
   file.close();
 }
 
-index load_index(std::string path)
+void load_index(index &index, std::string path)
 {
   std::ifstream file;
-  index index;
 
   printf("load %s\n", path.c_str());
 
@@ -85,16 +85,52 @@ index load_index(std::string path)
 
   if (!file.is_open()) {
     fprintf(stderr, "error opening file %s\n", path.c_str());
-    return index;
+    return;
   }
 
   std::string line;
   while (getline(file, line)) {
+    bool have_site = line[0] != '\t';
+
+    std::istringstream ss(line);
+
+    if (have_site) {
+      uint32_t id;
+      std::string host;
+      size_t level;
+
+      ss >> id;
+      ss >> host;
+      ss >> level;
+
+      site s = {id, host, level};
+      index.sites.push_back(s);
+ 
+    } else {
+      uint32_t id;
+      double score;
+      std::string url;
+      std::string path;
+
+      ss >> id;
+      ss >> score;
+      ss >> url;
+      ss >> path;
+
+      page p = {id, url, path, score};
+
+      uint32_t ls, lp;
+      while (ss >> ls && ss >> lp) {
+        page_id id = {ls, lp};
+        p.links.push_back(id);
+      }
+
+      auto &site = index.sites.back();
+      site.pages.push_back(std::move(p));
+    }
   }
 
   file.close();
-
-  return index;
 }
 
 site * index_find_host(
@@ -140,6 +176,18 @@ page& index_find_add_page(site *site,
   return site->pages.back();
 }
 
+page* index_find_page(site *site, 
+    std::string url) 
+{
+  for (auto &p: site->pages) {
+    if (p.url == url) {
+      return &p;
+    }
+  }
+
+  return NULL;
+}
+
 void insert_site_index(
     index &index,
     site *site,
@@ -148,18 +196,31 @@ void insert_site_index(
     std::vector<std::string> &blacklist)
 {
   for (auto &u: site_index) {
-    auto &p = index_find_add_page(site, u.url);
-      
-    p.path = u.path;
+    auto p = index_find_page(site, u.url);
+    if (p == NULL) {
+     auto id = site->next_id++;
 
+      page page = {id, u.url, u.path};
+      site->pages.push_back(page);
+
+    } else {
+      p->path = u.path;
+    }
+  }
+
+  for (auto &u: site_index) {
+    auto p = index_find_page(site, u.url);
+    if (p == NULL) continue;
+      
     for (auto &l: u.links) {
       auto host = util::get_host(l);
 
       if (host == site->host) {
-        auto &n_p = index_find_add_page(site, l);
+        auto n_p = index_find_page(site, u.url);
+        if (n_p == NULL) continue;
           
-        page_id i = {site->id, n_p.id};
-        p.links.push_back(i);
+        page_id i = {site->id, n_p->id};
+        p->links.push_back(i);
 
       } else {
         if (check_blacklist(blacklist, host)) {
@@ -173,7 +234,7 @@ void insert_site_index(
           auto &n_p = index_find_add_page(&n_site, l);
 
           page_id i = {n_site.id, n_p.id};
-          p.links.push_back(i);
+          p->links.push_back(i);
 
           index.sites.push_back(n_site);
 
@@ -181,7 +242,7 @@ void insert_site_index(
           auto &o_p = index_find_add_page(o_site, l);
 
           page_id i = {o_site->id, o_p.id};
-          p.links.push_back(i);
+          p->links.push_back(i);
         }
       }
     }
@@ -346,6 +407,8 @@ void score_iteration(index &index)
     printf("  scoring %s with %i pages\n", s.host.c_str(), s.pages.size());
     
     for (auto &p: s.pages) {
+      if (p.links.empty()) continue;
+
       double link_score = p.score / p.links.size();
       p.score = 0;
 
@@ -477,6 +540,8 @@ int main(int argc, char *argv[]) {
 
   crawl::index index;
 
+  load_index(index, "full_index");
+
   insert_site_index_seed(index, initial_seed, blacklist);
 
   struct level {
@@ -486,8 +551,8 @@ int main(int argc, char *argv[]) {
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
-  std::vector<struct level> levels = {{0, 2000}, {1000, 50}, {1000, 1}};
-  //std::vector<struct level> levels = {{5, 50}, {20, 5}, {50, 1}};
+  //std::vector<struct level> levels = {{0, 2000}, {1000, 50}, {1000, 1}};
+  std::vector<struct level> levels = {{5, 50}, {20, 5}, {50, 1}};
   //std::vector<struct level> levels = {{0, 2}, {50, 2}, {50, 1}};
   size_t level_count = 1;
 
