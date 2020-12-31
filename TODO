@@ -1,7 +1,12 @@
 Checking dates of file
 Timeout of sites. Geekhack should fail rather than take 3 fucking hours.
-Site map
+Site map (this can have last modified date which should be used)
 robot file
 
 Support other protocols, gemeni, gopher.
+
+Make crawl less of a staged thing. 
+Split up the score initially and score as sites are finished.
+Then pick out the next highest scored site to scrape and
+just keep adding. Don't do it in stages.
 

@@ -50,14 +50,14 @@ void save_index(index &index, std::string path)
       break;
     }
 
-    //if (!has_pages) continue;
+    if (!has_pages) continue;
 
     file << site.id << "\t";
     file << site.host << "\t";
     file << site.level << "\n";
 
     for (auto &p: site.pages) {
-      //if (p.path.empty()) continue;
+      if (p.path.empty()) continue;
 
       file << "\t";
       file << p.id << "\t";
@@ -112,10 +112,15 @@ void load_index(index &index, std::string path)
       std::string url;
       std::string path;
 
-      ss >> id;
-      ss >> score;
-      ss >> url;
-      ss >> path;
+      std::string id_s, score_s, tmp;
+      std::getline(ss, tmp, '\t');
+      std::getline(ss, id_s, '\t');
+      std::getline(ss, score_s, '\t');
+      std::getline(ss, url, '\t');
+      std::getline(ss, path, '\t');
+
+      id = std::stoi(id_s);
+      score = std::stod(score_s);
 
       page p = {id, url, path, score};
 
@@ -532,45 +537,5 @@ void run_round(size_t level, size_t max_level,
   printf("all done\n");
 }
 
-}
-
-int main(int argc, char *argv[]) {
-  std::vector<std::string> blacklist = util::load_list("../mine/blacklist");
-  std::vector<std::string> initial_seed = util::load_list("../mine/seed");
-
-  crawl::index index;
-
-  load_index(index, "full_index");
-
-  insert_site_index_seed(index, initial_seed, blacklist);
-
-  struct level {
-    size_t max_sites;
-    size_t max_pages;
-  };
-
-  curl_global_init(CURL_GLOBAL_DEFAULT);
-
-  //std::vector<struct level> levels = {{0, 2000}, {1000, 50}, {1000, 1}};
-  std::vector<struct level> levels = {{5, 50}, {20, 5}, {50, 1}};
-  //std::vector<struct level> levels = {{0, 2}, {50, 2}, {50, 1}};
-  size_t level_count = 1;
-
-  crawl::save_index(index, "full_index");
-
-  for (auto level: levels) {
-    crawl::run_round(level_count++, levels.size() + 1,
-        level.max_sites, level.max_pages, 
-        index, blacklist);
-  }
-
-  for (int i = 0; i < 5; i++) {
-    score_iteration(index);
-    save_index(index, "full_index");
-  }
-
-  curl_global_cleanup();
-
-  return 0;
 }
 

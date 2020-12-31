@@ -45,4 +45,18 @@ site * index_find_host(
 
 page * index_find_page(site *site, std::string url);
 
+
+
+void insert_site_index_seed(
+    index &index,
+    std::vector<std::string> url,
+    std::vector<std::string> &blacklist);
+
+void run_round(size_t level, size_t max_level,
+    size_t max_sites, size_t max_pages,
+    index &index,
+    std::vector<std::string> &blacklist);
+
+void score_iteration(index &index);
+
 }

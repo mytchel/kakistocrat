@@ -80,15 +80,21 @@ bool want_proto(std::string proto) {
 }
 
 bool bad_suffix(std::string path) {
-  return 
+  return
       has_suffix(path, "?share=twitter") ||
       has_suffix(path, ".txt") ||
+      has_suffix(path, ".md") ||
+      has_suffix(path, ".rss") ||
+      has_suffix(path, ".apk") ||
+      has_suffix(path, ".page") ||
+      has_suffix(path, ".JPG") ||
       has_suffix(path, ".jpg") ||
       has_suffix(path, ".png") ||
       has_suffix(path, ".gif") ||
       has_suffix(path, ".svg") ||
       has_suffix(path, ".mov") ||
       has_suffix(path, ".mp3") ||
+      has_suffix(path, ".mp4") ||
       has_suffix(path, ".flac") ||
       has_suffix(path, ".ogg") ||
       has_suffix(path, ".epub") ||
@@ -126,7 +132,8 @@ bool bad_prefix(std::string path) {
       has_prefix(path, "/account") ||
       has_prefix(path, "/uploads") ||
       has_prefix(path, "/cgit") ||
-      has_prefix(path, "/admin");
+      has_prefix(path, "/admin") ||
+      has_prefix(path, "/wp-login");
 }
 
 std::list<std::string> find_links_lex(
