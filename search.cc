@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <math.h>
 
 #include <cstdlib>
 #include <cstring>
@@ -91,16 +92,17 @@ int main(int argc, char *argv[]) {
 	docNos.length = ((uint32_t *)search_index)[1];
 	docNos.store = (uint32_t *)&search_index[2 * sizeof(uint32_t)];
 
-  printf("enter search: ");
-
 	// Accept input
 	char line[1024];
-	if (fgets(line, sizeof(line), stdin) != NULL) {
+	for (;;) {
+    printf("enter search: ");
+    if (fgets(line, sizeof(line), stdin) == NULL) break;
+
 		struct dynamic_array_kv_64 *result_list = search(search_index, line);
 
 		if (result_list == NULL) {
 			printf("No results\n");
-			exit(0);
+			continue;
 		}
 
 		dynamic_array_kv_64 result_rescored;
@@ -121,12 +123,16 @@ int main(int argc, char *argv[]) {
 
       double score = rsv * page->score;
 
+      if (signbit(score)) {
+        score = 0;
+      }
+
       dynamic_array_kv_64_append(&result_rescored, page_id, *(uint64_t *) &score);
     }
 
     results_sort(&result_rescored);
 
-		for (size_t i = 0; i < result_rescored.length; i++) {
+		for (size_t i = 0; i < result_rescored.length && i < 20; i++) {
 	    uint64_t page_id = dynamic_array_kv_64_at(&result_rescored, i)[0];
 			double score = *(double *)&dynamic_array_kv_64_at(&result_rescored, i)[1];
 
@@ -140,6 +146,7 @@ int main(int argc, char *argv[]) {
 			printf("    %s\n", page->url.c_str());
 		}
 
+    printf("\n");
 	}
 
   return 0;

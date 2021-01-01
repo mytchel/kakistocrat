@@ -41,7 +41,7 @@ int main(int argc, char *argv[]) {
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
-  std::vector<struct level> levels = {{0, 2000}, {1000, 50}, {1000, 1}};
+  std::vector<struct level> levels = {{0, 2000}, {500, 20}, {100, 1}};
   //std::vector<struct level> levels = {{5, 50}, {20, 5}, {50, 1}};
   //std::vector<struct level> levels = {{0, 2}, {50, 2}, {50, 1}};
   size_t level_count = 1;
