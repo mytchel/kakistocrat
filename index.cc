@@ -30,48 +30,6 @@ extern "C" {
 #include "x_cocomel/tokenizer.h"
 }
 
-void get_tag_name(char *buf, char *s) {
-  size_t i;
-  for (i = 0; i < 31; i++) {
-    char c = s[i];
-    if (c == '\0' || c == ' ' || c == '\t') break;
-    else buf[i] = c;
-  }
-
-  buf[i] = '\0';
-}
-
-bool should_skip_tag(char *t) {
-  return strcmp(t, "script") == 0 ||
-         strcmp(t, "style") == 0 ||
-         strcmp(t, "head") == 0;
-}
-
-void skip_tag(char *tag_name_main, tokenizer *tok, str tok_buffer) {
-	enum token_type token;
-
-  char tag_name_end[33];
-  tag_name_end[0] = '/';
-  strcpy(tag_name_end + 1, tag_name_main);
-
-  int i = 0;
-  do {
-    token = tokenizer_next(tok, tok_buffer);
-
-    if (token == TAG) {
-      char tag_name[32];
-      get_tag_name(tag_name, str_c(tok_buffer));
-
-      if (strcmp(tag_name_end, tag_name) == 0) {
-        break;
-
-      } else if (should_skip_tag(tag_name)) {
-        skip_tag(tag_name, tok, tok_buffer);
-      }
-    }
-  } while (token != END);
-}
-
 void index_write(char const *filename, char *buffer, struct dynamic_array_kv_64 *docNos, struct hash_table *dictionary)
 {
   FILE *fh = fopen(filename, "w");
@@ -90,14 +48,12 @@ void index_write(char const *filename, char *buffer, struct dynamic_array_kv_64 
 	offset += docNos->length * sizeof(uint32_t) * 2;
 	for (size_t i = 0; i < docNos->length; i++) {
 
-    printf("save docno %i (offset = 0x%x)\n", i, offset);
-
 		((uint32_t *)&buffer[docNos_offset])[0] = offset;
 		((uint32_t *)&buffer[docNos_offset])[1] = dynamic_array_kv_64_at(docNos, i)[1];
 		docNos_offset += sizeof(uint32_t) * 2;
 
-    printf("write name 0x%p (offset = 0x%x)\n", (char *)dynamic_array_kv_64_at(docNos, i)[0], offset);
-		((uint64_t *)&buffer[offset] = dynamic_array_kv_64_at(docNos, i)[0];
+    printf("write %i id %llu (offset = 0x%x)\n", i, dynamic_array_kv_64_at(docNos, i)[0], offset);
+		*((uint64_t *)&buffer[offset]) = dynamic_array_kv_64_at(docNos, i)[0];
     offset += sizeof(uint64_t);
 	}
 
@@ -113,16 +69,6 @@ void index_write(char const *filename, char *buffer, struct dynamic_array_kv_64 
 int main(int argc, char *argv[]) {
   crawl::index index;
   crawl::load_index(index, "full_index");
-
-  std::ofstream file;
-
-  std::string path = "cocomel_list";
-  file.open(path, std::ios::out | std::ios::trunc | std::ios::binary);
-
-  if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
-    return 1;
-  }
 
 	struct dynamic_array_kv_64 docNos;
 	dynamic_array_kv_64_init(&docNos);
@@ -143,13 +89,9 @@ int main(int argc, char *argv[]) {
   int i = 0;
 
   for (auto &site: index.sites) {
-    if (i > 10000) break;
-
     printf("site %lu %s\n", site.id, site.host.c_str());
     for (auto &page: site.pages) {
       uint64_t id = ((uint64_t) site.id) << 32 | page.id;
-
-      i++;
 
       std::ifstream pfile;
 
@@ -159,9 +101,6 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "error opening file %s\n", page.path.c_str());
         continue;
       }
-
-      std::streamsize size = pfile.tellg();
-      pfile.seekg(0, std::ios::beg);
 
       pfile.read(buf, max_size);
 
@@ -176,9 +115,9 @@ int main(int argc, char *argv[]) {
 
         if (token == TAG) {
           char tag_name[32];
-          get_tag_name(tag_name, str_c(tok_buffer));
-          if (should_skip_tag(tag_name)) {
-            skip_tag(tag_name, &tok, tok_buffer);
+          tokenizer_get_tag_name(tag_name, str_c(tok_buffer));
+          if (tokenizer_should_skip_tag(tag_name)) {
+            tokenizer_skip_tag(tag_name, &tok, tok_buffer);
           }
 
         } else if (token == WORD) {
@@ -190,8 +129,6 @@ int main(int argc, char *argv[]) {
       pfile.close();
     }
   }
-
-  file.close();
 
   printf("saving index\n");
 

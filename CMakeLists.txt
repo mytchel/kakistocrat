@@ -24,7 +24,22 @@ find_package(Threads REQUIRED)
 
 target_link_libraries(crawl Threads::Threads)
 
-add_executable(test test.cc crawl.cc scrape.cc util.cc
+add_executable(index index.cc crawl.cc scrape.cc util.cc
+	x_cocomel/bst.c
+	x_cocomel/hash_table.c
+	x_cocomel/memory.c
+	x_cocomel/posting.c
+	x_cocomel/vbyte)
+
+target_link_libraries(index ${CURL_LIBRARIES})
+target_link_libraries(index lexbor)
+target_link_libraries(index Threads::Threads)
+
+target_include_directories(index PUBLIC ${CURL_INCLUDE_DIRS})
+target_include_directories(index PUBLIC ${LEXBOR_INCLUDES})
+
+
+add_executable(search search.cc crawl.cc scrape.cc util.cc
 	x_cocomel/bst.c
 	x_cocomel/hash_table.c
 	x_cocomel/memory.c
@@ -32,11 +47,11 @@ add_executable(test test.cc crawl.cc scrape.cc util.cc
 	x_cocomel/search.c
 	x_cocomel/vbyte)
 
-target_link_libraries(test ${CURL_LIBRARIES})
-target_link_libraries(test lexbor)
-target_link_libraries(test Threads::Threads)
+target_link_libraries(search ${CURL_LIBRARIES})
+target_link_libraries(search lexbor)
+target_link_libraries(search Threads::Threads)
 
-target_include_directories(test PUBLIC ${CURL_INCLUDE_DIRS})
-target_include_directories(test PUBLIC ${LEXBOR_INCLUDES})
+target_include_directories(search PUBLIC ${CURL_INCLUDE_DIRS})
+target_include_directories(search PUBLIC ${LEXBOR_INCLUDES})
 
 

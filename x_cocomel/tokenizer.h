@@ -1,6 +1,7 @@
 #ifndef TOKENIZER_H
 #define TOKENIZER_H
 
+#include <stdbool.h>
 #include "char.h"
 #include "memory.h"
 #include "str.h"
@@ -87,6 +88,48 @@ static inline enum token_type tokenizer_next(struct tokenizer *t, struct str buf
 		}
 
 	return END;
+}
+
+static inline void tokenizer_get_tag_name(char *buf, char *s) {
+  size_t i;
+  for (i = 0; i < 31; i++) {
+    char c = s[i];
+    if (c == '\0' || c == ' ' || c == '\t') break;
+    else buf[i] = c;
+  }
+
+  buf[i] = '\0';
+}
+
+static inline bool tokenizer_should_skip_tag(char *t) {
+  return strcmp(t, "script") == 0 ||
+         strcmp(t, "style") == 0 ||
+         strcmp(t, "head") == 0;
+}
+
+static inline void tokenizer_skip_tag(char *tag_name_main, struct tokenizer *tok, struct str tok_buffer) {
+	enum token_type token;
+
+  char tag_name_end[33];
+  tag_name_end[0] = '/';
+  strcpy(tag_name_end + 1, tag_name_main);
+
+  int i = 0;
+  do {
+    token = tokenizer_next(tok, tok_buffer);
+
+    if (token == TAG) {
+      char tag_name[32];
+      tokenizer_get_tag_name(tag_name, str_c(tok_buffer));
+
+      if (strcmp(tag_name_end, tag_name) == 0) {
+        break;
+
+      } else if (tokenizer_should_skip_tag(tag_name)) {
+        tokenizer_skip_tag(tag_name, tok, tok_buffer);
+      }
+    }
+  } while (token != END);
 }
 
 #endif
