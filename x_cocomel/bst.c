@@ -8,7 +8,7 @@ void bst_insert(struct bst *b, struct str key, uint32_t val, uint32_t *length)
 	{
 	for (;;)
 		{
-		int cmp = string_cmp(str_c(key), b->key);
+		int cmp = strcmp(str_c(key), b->key);
 
 		if (cmp < 0)
 			{
@@ -48,7 +48,8 @@ char *bst_write(struct bst *b, char *start, char *ptr_buffer, char *val_buffer)
 			{
 			((uint32_t *)ptr_buffer)[0] = val_buffer - start;
 			ptr_buffer += sizeof(uint32_t);
-			val_buffer += string_copy(val_buffer, b->key);
+            strcpy(val_buffer, b->key);
+			val_buffer += strlen(b->key) + 1;
 
 			((uint32_t *)ptr_buffer)[0] = val_buffer - start;
 			ptr_buffer += sizeof(uint32_t);

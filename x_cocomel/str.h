@@ -17,7 +17,7 @@
 
 #include <stdint.h>
 #include <string.h>
-#include "char.h"
+#include <ctype.h>
 #include "memory.h"
 
 struct str
@@ -100,24 +100,15 @@ static inline int string_suffix(const char *suf, const char *str)
 	return 1;
 	}
 
-/* also from musl */
-static inline int string_cmp(const char *l, const char *r)
-	{
-	for (; *l == *r && *l; l++, r++)
-		;
-	return *(unsigned char *)l - *(unsigned char *)r;
-	}
-
-
 static inline void string_tolower(char *str)
 	{
-	while ((*str = char_tolower(*str)))
+	while ((*str = tolower(*str)))
 		++str;
 	}
 
 static inline void string_toupper(char *str)
 	{
-	while ((*str = char_toupper(*str)))
+	while ((*str = toupper(*str)))
 		++str;
 	}
 

@@ -22,7 +22,8 @@
 
 #include "util.h"
 #include "scrape.h"
-#include "crawl.h"
+#include "crawl_util.h"
+#include "crawler.h"
 
 int main(int argc, char *argv[]) {
   std::vector<std::string> blacklist = util::load_list("../mine/blacklist");
@@ -30,7 +31,7 @@ int main(int argc, char *argv[]) {
 
   crawl::index index;
 
-  load_index(index, "full_index");
+  index.load("index.scrape");
 
   crawl::insert_site_index_seed(index, initial_seed, blacklist);
 
@@ -41,22 +42,18 @@ int main(int argc, char *argv[]) {
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
-  std::vector<struct level> levels = {{0, 2000}, {500, 20}, {100, 1}};
-  //std::vector<struct level> levels = {{5, 50}, {20, 5}, {50, 1}};
+  //std::vector<struct level> levels = {{0, 1000}, {500, 10}, {100, 1}};
+  std::vector<struct level> levels = {{0, 200}, {20, 5}, {50, 1}};
   //std::vector<struct level> levels = {{0, 2}, {50, 2}, {50, 1}};
-  size_t level_count = 1;
+  size_t level_count = 0;
 
-  crawl::save_index(index, "full_index");
+  index.save("index.scrape");
 
   for (auto level: levels) {
-    crawl::run_round(level_count++, levels.size() + 1,
-        level.max_sites, level.max_pages, 
+    crawl::run_round(level_count++, levels.size(),
+        level.max_sites, level.max_pages,
+        500,
         index, blacklist);
-  }
-
-  for (int i = 0; i < 5; i++) {
-    crawl::score_iteration(index);
-    crawl::save_index(index, "full_index");
   }
 
   curl_global_cleanup();

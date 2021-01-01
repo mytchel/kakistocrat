@@ -8,8 +8,8 @@ struct index_url {
 };
 
 void
-scrape(int max_pages, 
-    const std::string host, 
+scrape(int max_pages,
+    const std::string host,
     std::list<index_url> &url_index);
 
 }

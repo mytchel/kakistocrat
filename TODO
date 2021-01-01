@@ -13,3 +13,8 @@ just keep adding. Don't do it in stages.
 bugs:
     can get duplicate urls with the same path. Probably due to 
     add others not checking for path uniquness
+
+Might help to group by domain rather than host. Possibly with exceptions.
+
+Scores from a domain should count for less.
+

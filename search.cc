@@ -19,37 +19,58 @@
 #include <sstream>
 #include <cstdint>
 
-#include "util.h"
-#include "scrape.h"
-#include "crawl.h"
-
 extern "C" {
 
 #include "x_cocomel/dynamic_array_kv_64.h"
 #include "x_cocomel/dynamic_array_kv_32.h"
+#include "x_cocomel/dynamic_array_64.h"
+#include "x_cocomel/vbyte.h"
 #include "x_cocomel/posting.h"
 #include "x_cocomel/hash_table.h"
-#include "x_cocomel/tokenizer.h"
-#include "x_cocomel/search.h"
 
 }
 
-crawl::page* find_page(crawl::index &index, uint64_t id) {
-  uint32_t site_id = (uint32_t) (id >> 32);
-  uint32_t page_id = (uint32_t) (id & 0xffffffff);
+#include "util.h"
+#include "scrape.h"
+#include "crawl_util.h"
+#include "scorer.h"
+#include "tokenizer.h"
 
-  for (auto &site: index.sites) {
-    if (site.id != site_id) continue;
-    for (auto &page: site.pages) {
-      if (page.id == page_id) {
-        return &page;
-      }
-    }
+static struct dynamic_array_kv_64 *intersect_postings(struct dynamic_array_64 *postings) {
+	struct dynamic_array_kv_64 *result = (struct dynamic_array_kv_64 *) malloc(sizeof(struct dynamic_array_kv_64));
+	dynamic_array_kv_64_init(result);
 
-    return NULL;
-  }
+	size_t *indexes = (size_t *)malloc(sizeof(size_t) * postings->length);
+	for (size_t i = 0; i < postings->length; i++)
+		indexes[i] = 0;
 
-  return NULL;
+	while (indexes[0] < ((struct dynamic_array_kv_64 *)postings->store[0])->length) {
+		size_t id = dynamic_array_kv_64_at((struct dynamic_array_kv_64 *)postings->store[0], indexes[0])[0];
+		int canAdd = 1;
+		for (size_t i = 1; i < postings->length; i++) {
+			while (indexes[i] < ((struct dynamic_array_kv_64 *)postings->store[i])->length && 
+                        dynamic_array_kv_64_at((struct dynamic_array_kv_64 *)postings->store[i], indexes[i])[0] < id)
+				indexes[i]++;
+
+			if (indexes[i] == ((struct dynamic_array_kv_64 *)postings->store[i])->length)
+				return result;
+			if (dynamic_array_kv_64_at((struct dynamic_array_kv_64 *)postings->store[i], indexes[i])[0] != id)
+				canAdd = 0;
+		}
+
+        if (canAdd) {
+			double rsv = 0;
+			for (size_t i = 0; i < postings->length; i++) {
+				double w = *(double *)&dynamic_array_kv_64_at((struct dynamic_array_kv_64 *)postings->store[i], indexes[i])[1];
+                rsv += w;
+            }
+
+			dynamic_array_kv_64_append(result, id, *(uint64_t *)&rsv);
+		}
+		indexes[0]++;
+	}
+
+	return result;
 }
 
 static void results_sort(struct dynamic_array_kv_64 *results) {
@@ -69,13 +90,94 @@ static void results_sort(struct dynamic_array_kv_64 *results) {
 	}
 }
 
-int main(int argc, char *argv[]) {
-  crawl::index index;
-  crawl::load_index(index, "full_index");
+static void rank(struct dynamic_array_kv_64 *posting, struct dynamic_array_kv_32 *docNos, double avgdl) {
+	double wt = log2((docNos->length - posting->length + 0.5) / (posting->length + 0.5));
+	for (size_t i = 0; i < posting->length; i++) {
+		size_t docId = dynamic_array_kv_64_at(posting, i)[0] - 1;
+		size_t tf = dynamic_array_kv_64_at(posting, i)[1];
+		size_t docLength = (size_t)dynamic_array_kv_32_at(docNos, docId)[1];
+		double K = 1.2 * (0.25 + 0.75 * (double) docLength / avgdl);
+		double w = wt * 2.2 * tf / (K + tf);
+		dynamic_array_kv_64_at(posting, i)[1] = *(uint64_t *)&w;
+	}
+}
 
-  char *search_index = (char *) malloc(1024*1024*1024);
+struct dynamic_array_kv_64 *search(char *index, char *line) {
+	double avgdl = 0;
+
+	// Decode index
+	struct dynamic_array_kv_32 docNos;
+	dynamic_array_kv_32_init(&docNos);
+	docNos.length = ((uint32_t *)index)[1];
+	docNos.store = (uint32_t *)&index[2 * sizeof(uint32_t)];
+
+	size_t dict_offset = ((uint32_t *)index)[0];
+	struct hash_table dictionary;
+	hash_table_init(&dictionary);
+	hash_table_read(&dictionary, &index[dict_offset]);
+
+	// Find average document length
+	for (size_t i = 0; i < docNos.length; i++)
+		avgdl += dynamic_array_kv_32_at(&docNos, i)[1];
+	avgdl /= docNos.length;
+
+	char tok_buffer_store[260]; // Provide underlying storage for tok_buffer
+	struct str tok_buffer;
+//	str_init(&tok_buffer);
+	tok_buffer.store = tok_buffer_store;
+
+	tokenizer::token_type token;
+  tokenizer::tokenizer tok;
+
+	// Perform the search
+	struct dynamic_array_64 terms;
+	dynamic_array_64_init(&terms);
+	tok.init(line, strlen(line));
+	do {
+		token = tok.next(tok_buffer);
+    if (token == tokenizer::WORD) {
+		  string_tolower(str_c(tok_buffer));
+		  dynamic_array_64_append(&terms, (uint64_t)str_dup_c(tok_buffer));
+		}
+	} while (token != tokenizer::END);
+
+	if (terms.length == 0) {
+    return NULL;
+  }
+
+	struct dynamic_array_64 postings;
+	dynamic_array_64_init(&postings);
+
+	// Find results for strings
+	for (size_t i = 0; i < terms.length; i++) {
+		struct posting *post_compressed = hash_table_find(&dictionary, (char *)terms.store[i]);
+		if (post_compressed == NULL) {
+      printf("hash find failed for '%s'\n", terms.store[i]);
+			return NULL;
+    } else {
+	    struct dynamic_array_kv_64 *post = posting_decompress(post_compressed);
+			rank(post, &docNos, avgdl);
+			dynamic_array_64_append(&postings, (uint64_t)post);
+		}
+	}
+
+	struct dynamic_array_kv_64 *result_list = intersect_postings(&postings);
+
+	results_sort(result_list);
+
+	return result_list;
+}
+
+int main(int argc, char *argv[]) {
+  scorer::scores index_scores;
+
+  index_scores.load("index.scores");
+
+  char *index = (char *) malloc(1024*1024*1024);
 
   std::ifstream file;
+
+  printf("load index.dat\n");
 
   file.open("index.dat", std::ios::in | std::ios::binary);
 
@@ -84,13 +186,15 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  file.read(search_index, 1024*1024*1024);
+  file.read(index, 1024*1024*1024);
 
 	// Decode index
 	struct dynamic_array_kv_32 docNos;
 	dynamic_array_kv_32_init(&docNos);
-	docNos.length = ((uint32_t *)search_index)[1];
-	docNos.store = (uint32_t *)&search_index[2 * sizeof(uint32_t)];
+	docNos.length = ((uint32_t *)index)[1];
+	docNos.store = (uint32_t *)&index[2 * sizeof(uint32_t)];
+
+  printf("docnos len %i\n", docNos.length);
 
 	// Accept input
 	char line[1024];
@@ -98,7 +202,7 @@ int main(int argc, char *argv[]) {
     printf("enter search: ");
     if (fgets(line, sizeof(line), stdin) == NULL) break;
 
-		struct dynamic_array_kv_64 *result_list = search(search_index, line);
+		struct dynamic_array_kv_64 *result_list = search(index, line);
 
 		if (result_list == NULL) {
 			printf("No results\n");
@@ -113,15 +217,15 @@ int main(int argc, char *argv[]) {
 			double rsv = *(double *)&dynamic_array_kv_64_at(result_list, i)[1];
 
       size_t offset = dynamic_array_kv_32_at(&docNos, docId)[0];
-      uint64_t page_id = *((uint64_t *) (search_index + offset));
+      uint64_t page_id = *((uint64_t *) (index + offset));
 
-      auto page = find_page(index, page_id);
+      auto page = index_scores.find_page(page_id);
       if (page == NULL) {
         printf("failed to find page id: %llu\n", page_id);
         continue;
       }
 
-      double score = rsv * page->score;
+      double score = rsv  + rsv * page->score;
 
       if (signbit(score)) {
         score = 0;
@@ -136,7 +240,7 @@ int main(int argc, char *argv[]) {
 	    uint64_t page_id = dynamic_array_kv_64_at(&result_rescored, i)[0];
 			double score = *(double *)&dynamic_array_kv_64_at(&result_rescored, i)[1];
 
-      auto page = find_page(index, page_id);
+      auto page = index_scores.find_page(page_id);
       if (page == NULL) {
         printf("failed to find page id: %llu\n", page_id);
         return 1;

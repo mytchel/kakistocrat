@@ -18,30 +18,28 @@
 #include <sstream>
 #include <cstdint>
 
-#include "util.h"
-#include "scrape.h"
-#include "crawl.h"
-
 extern "C" {
 
 #include "x_cocomel/dynamic_array_kv_64.h"
 #include "x_cocomel/posting.h"
 #include "x_cocomel/hash_table.h"
-#include "x_cocomel/tokenizer.h"
 }
+
+#include "util.h"
+#include "scrape.h"
+#include "crawl_util.h"
+#include "tokenizer.h"
 
 void index_write(char const *filename, char *buffer, struct dynamic_array_kv_64 *docNos, struct hash_table *dictionary)
 {
   FILE *fh = fopen(filename, "w");
   if (fh == NULL) {
-    fprintf(stderr, "ERROR: Failed to open index.dat for writing\n");
+    fprintf(stderr, "ERROR: Failed to open %s. for writing\n", filename);
     exit(1);
   }
 
   // Write to output buffer
   uint32_t offset = sizeof(uint32_t) * 2;
-
-  printf("save docnos map\n");
 
   ((uint32_t *)buffer)[1] = docNos->length;
   uint32_t docNos_offset = offset;
@@ -52,12 +50,9 @@ void index_write(char const *filename, char *buffer, struct dynamic_array_kv_64 
 		((uint32_t *)&buffer[docNos_offset])[1] = dynamic_array_kv_64_at(docNos, i)[1];
 		docNos_offset += sizeof(uint32_t) * 2;
 
-    printf("write %i id %llu (offset = 0x%x)\n", i, dynamic_array_kv_64_at(docNos, i)[0], offset);
 		*((uint64_t *)&buffer[offset]) = dynamic_array_kv_64_at(docNos, i)[0];
     offset += sizeof(uint64_t);
 	}
-
-  printf("save dictionary\n");
 
 	((uint32_t *)buffer)[0] = offset;
   offset += hash_table_write(dictionary, &buffer[offset]);
@@ -68,7 +63,7 @@ void index_write(char const *filename, char *buffer, struct dynamic_array_kv_64 
 
 int main(int argc, char *argv[]) {
   crawl::index index;
-  crawl::load_index(index, "full_index");
+  index.load("index.scrape");
 
 	struct dynamic_array_kv_64 docNos;
 	dynamic_array_kv_64_init(&docNos);
@@ -82,16 +77,16 @@ int main(int argc, char *argv[]) {
   char tok_buffer_store[516]; // Provide underlying storage for tok_buffer
 	struct str tok_buffer;
 	tok_buffer.store = tok_buffer_store;
-	enum token_type token;
+	tokenizer::token_type token;
 
-  struct tokenizer tok;
+  tokenizer::tokenizer tok;
 
   int i = 0;
 
   for (auto &site: index.sites) {
     printf("site %lu %s\n", site.id, site.host.c_str());
     for (auto &page: site.pages) {
-      uint64_t id = ((uint64_t) site.id) << 32 | page.id;
+      uint64_t id = crawl::page_id(site.id, page.id).to_value();
 
       std::ifstream pfile;
 
@@ -106,25 +101,25 @@ int main(int argc, char *argv[]) {
 
       size_t len = pfile.gcount();
 
-			tokenizer_init(&tok, buf, len);
+			tok.init(buf, len);
 
 		  dynamic_array_kv_64_append(&docNos, id, 0);
 
       do {
-				token = tokenizer_next(&tok, tok_buffer);
+				token = tok.next(tok_buffer);
 
-        if (token == TAG) {
+        if (token == tokenizer::TAG) {
           char tag_name[32];
-          tokenizer_get_tag_name(tag_name, str_c(tok_buffer));
-          if (tokenizer_should_skip_tag(tag_name)) {
-            tokenizer_skip_tag(tag_name, &tok, tok_buffer);
+          tokenizer::get_tag_name(tag_name, str_c(tok_buffer));
+          if (tokenizer::should_skip_tag(tag_name)) {
+            tok.skip_tag(tag_name, tok_buffer);
           }
 
-        } else if (token == WORD) {
+        } else if (token == tokenizer::WORD) {
 					dynamic_array_kv_64_back(&docNos)[1]++;
 					hash_table_insert(&dictionary, tok_buffer, docNos.length);
 				}
-			} while (token != END);
+			} while (token != tokenizer::END);
 
       pfile.close();
     }

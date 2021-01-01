@@ -38,16 +38,20 @@ void hash_table_insert(struct hash_table *h, struct str key, uint32_t val)
 struct posting *hash_table_find(struct hash_table *h, char *key)
 	{
 			uint32_t index = hash(key);
-			if (h->store[index] == NULL)
+			if (h->store[index] == NULL) {
 				return NULL;
+            }
 
 			uint32_t length = *(uint32_t *)h->store[index];
 
 			uint32_t *vec = (uint32_t *)((char *)h->store[index] + sizeof(uint32_t));
 
-			for (size_t i = 0; i < length; i++)
-				if (string_cmp(key, (char *)h->store[index] + vec[i*2]) == 0)
+			for (size_t i = 0; i < length; i++) {
+                char *s = (char *)h->store[index] + vec[i*2];
+				if (strcmp(key, (char *)h->store[index] + vec[i*2]) == 0) {
 					return (struct posting *)((char *)h->store[index] + vec[i*2+1]);
+                }
+            }
 
 			return NULL;
 	}

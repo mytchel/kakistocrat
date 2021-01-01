@@ -25,7 +25,7 @@
 
 namespace scrape {
 
-/* resizable buffer */ 
+/* resizable buffer */
 typedef struct {
   char *buf;
   size_t max, size;
@@ -119,7 +119,7 @@ bool bad_suffix(std::string path) {
 }
 
 bool bad_prefix(std::string path) {
-  return 
+  return
       has_prefix(path, "/signup") ||
       has_prefix(path, "/login") ||
       has_prefix(path, "/forgot") ||
@@ -138,7 +138,7 @@ bool bad_prefix(std::string path) {
 
 std::list<std::string> find_links_lex(
       lxb_html_parser_t *parser,
-      memory *mem, 
+      memory *mem,
       std::string page_url)
 {
   std::list<std::string> urls;
@@ -151,7 +151,7 @@ std::list<std::string> find_links_lex(
   document = lxb_html_parse(parser, (const lxb_char_t *) mem->buf, mem->size);
   if (document == NULL) {
     printf("Failed to create Document object\n");
-    return urls; 
+    return urls;
   }
 
   collection = lxb_dom_collection_make(&document->dom_document, 128);
@@ -183,9 +183,9 @@ std::list<std::string> find_links_lex(
 
       size_t len;
       char *s = (char *) lxb_dom_element_get_attribute(
-            element, 
-            (const lxb_char_t*) attr_name, 
-            attr_len, 
+            element,
+            (const lxb_char_t*) attr_name,
+            attr_len,
             &len);
 
       if (s == NULL) {
@@ -199,13 +199,13 @@ std::list<std::string> find_links_lex(
       // from-current-dir
       // javascript: skip
       // //host/page keep protocol
-      
+
       std::string url(s);
 
       if (url.empty() || url.front() == '#')
         continue;
 
-      if (!util::bare_minimum_valid_url(url)) 
+      if (!util::bare_minimum_valid_url(url))
         continue;
 
       auto proto = util::get_proto(url);
@@ -215,24 +215,24 @@ std::list<std::string> find_links_lex(
       } else if (!want_proto(proto))  {
         continue;
       }
- 
+
       auto host = util::get_host(url);
       if (host.empty()) {
         host = page_host;
       }
-       
+
       auto path = util::get_path(url);
-      
-      if (bad_suffix(path)) 
+
+      if (bad_suffix(path))
         continue;
 
-      if (bad_prefix(path)) 
+      if (bad_prefix(path))
         continue;
 
       if (!path.empty() && path.front() != '/') {
         path = page_dir + "/" + path;
       }
-   
+
       auto fixed = proto + "://" + host + path;
       urls.push_back(fixed);
   }
@@ -246,9 +246,9 @@ std::list<std::string> find_links_lex(
 void save_file(std::string path, std::string url, memory *mem)
 {
   std::ofstream file;
- 
+
   file.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
-  
+
   if (!file.is_open()) {
     fprintf(stderr, "error opening file %s for %s\n", path.c_str(), url.c_str());
     return;
@@ -285,8 +285,8 @@ bool index_check_path(
   return false;
 }
 
-void insert_urls(std::string host, 
-      index_url &url, 
+void insert_urls(std::string host,
+      index_url &url,
       std::list<std::string> urls,
       std::list<struct index_url> &url_index,
       std::list<std::string> &url_bad,
@@ -295,7 +295,7 @@ void insert_urls(std::string host,
   for (auto &u: urls) {
     auto u_host = util::get_host(u);
     if (u_host.empty()) continue;
-      
+
     url.links.insert(u);
 
     if (u_host == host) {
@@ -308,7 +308,7 @@ void insert_urls(std::string host,
       }
 
       if (bad) continue;
-   
+
       if (index_check(url_index, u)) {
         continue;
       }
@@ -326,11 +326,11 @@ void insert_urls(std::string host,
       if (index_check_path(url_index, p)) {
         continue;
       }
-   
+
       struct index_url i = {u, p};
 
       url_scanning.push_back(i);
-    } 
+    }
   }
 }
 
@@ -350,8 +350,8 @@ struct index_url pick_next(std::list<struct index_url> &urls) {
 }
 
 void
-scrape(int max_pages, 
-    const std::string host, 
+scrape(int max_pages,
+    const std::string host,
     std::list<struct index_url> &url_index)
 {
   printf("scraping %s for up to %i pages\n", host.c_str(), max_pages);
@@ -376,7 +376,7 @@ scrape(int max_pages,
 
   int fail_net = 0;
   int fail_web = 0;
-  
+
   size_t max_size = 1024 * 1024 * 10;
   char *c = (char *) malloc(max_size);
   memory mem{c, max_size, 0};
@@ -395,7 +395,7 @@ scrape(int max_pages,
       printf("%s reached max pages\n", host.c_str());
       break;
     }
-    
+
     if (fail_net > 1 + url_index.size() / 4) {
       printf("%s reached max fail net %i / %lu\n", host.c_str(),
           fail_net, url_index.size());
@@ -407,7 +407,7 @@ scrape(int max_pages,
           fail_web, url_index.size());
       break;
     }
- 
+
     auto u = pick_next(url_scanning);
 
     char s[util::max_url_len];
@@ -434,9 +434,9 @@ scrape(int max_pages,
                 host.c_str(), url_index.size(), url_scanning.size(),
                 url_bad.size());
           }
-          
+
           insert_urls(host, u, urls, url_index, url_bad, url_scanning);
-          
+
           url_index.push_back(u);
 
         } else {
@@ -459,10 +459,12 @@ scrape(int max_pages,
       fail_net++;
     }
   }
-  
+
   curl_easy_cleanup(curl_handle);
   free(mem.buf);
-  
+
   lxb_html_parser_destroy(parser);
 }
 }
+
+

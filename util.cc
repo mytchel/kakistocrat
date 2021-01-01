@@ -29,38 +29,47 @@ std::string get_proto(std::string url) {
     if (c == ':') {
       return std::string(s.begin(), s.end());
 
-    } else if (c == '/' || c == '#' || c == '&') {
+    } else if (c == '-' || c == '%' || c == '/' || c == '#' || c == '&') {
       break;
 
     } else {
       s.push_back(tolower(c));
     }
   }
-      
+
   return "";
 }
 
 std::string get_host(std::string url) {
-  int slashes = 0;
+  int chars = 0, slashes = 0;
   bool need_host = false;
   std::vector<char> s;
 
   for (auto c: url) {
-    if (slashes == 0 && c == ':') {
+    chars++;
+
+    if (c == '%' || c == '&' || c == '#') {
+      return "";
+
+    } else if (slashes == 0 && c == ':') {
       need_host = true;
 
+    } else if (c == '/') {
+      slashes++;
+      if (chars == 2 && slashes == 2) {
+        need_host = true;
+      } else if (slashes == 3) {
+        break;
+      }
+
     } else if (need_host) {
-      if (c == '/') {
-        if (++slashes == 3) {
-          break;
-        }
-      } else if (slashes == 2) {
+      if (slashes == 2) {
         if (c == '@') {
           s.clear();
         } else {
           s.push_back(c);
         }
-      } else {
+      } else if (c != '/') {
         return "";
       }
     }
@@ -107,7 +116,7 @@ std::string get_path(std::string url) {
   int slashes = 0;
   bool need_host = false;
   std::vector<char> s;
-  
+
   for (auto c: url) {
     if (slashes == 0 && c == ':') {
       need_host = true;
@@ -161,6 +170,11 @@ std::string get_dir(std::string path) {
 
 std::string make_path(std::string url) {
   auto host = get_host(url);
+  if (host.empty()) {
+    printf("make path bad input '%s'\n", url.c_str());
+    exit(1);
+  }
+
   auto path = get_path(url);
   auto path_parts = split_path(path);
 
@@ -174,7 +188,7 @@ std::string make_path(std::string url) {
 
   for (int i = 0; i < path_parts.size(); i++) {
     auto &part = path_parts[i];
-    
+
     bool need_dir = i + 1 < path_parts.size();
     bool exists = false;
 
@@ -191,7 +205,7 @@ std::string make_path(std::string url) {
       } else if (!need_dir && is_dir) {
         p = file_path + "/" + part + "/index";
       }
-    
+
       exists = stat(p.c_str(), &s) != -1;
 
     } else {
@@ -222,7 +236,7 @@ bool bare_minimum_valid_url(std::string url) {
   }
 
   for (auto &c : url) {
-    if (c == '\t' || c == '\n') {
+    if (c == ' ' || c == '\t' || c == '\n') {
       return false;
     }
   }
@@ -250,7 +264,7 @@ std::vector<std::string> load_list(std::string path) {
     printf("     %s\n", line.c_str());
     values.push_back(line);
   }
-    
+
   printf("\n");
 
   file.close();
