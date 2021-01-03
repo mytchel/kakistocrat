@@ -5,11 +5,6 @@ robot file
 
 Support other protocols, gemeni, gopher.
 
-Make crawl less of a staged thing. 
-Split up the score initially and score as sites are finished.
-Then pick out the next highest scored site to scrape and
-just keep adding. Don't do it in stages.
-
 bugs:
     can get duplicate urls with the same path. Probably due to 
     add others not checking for path uniquness
