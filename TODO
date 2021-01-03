@@ -18,3 +18,5 @@ Might help to group by domain rather than host. Possibly with exceptions.
 
 Scores from a domain should count for less.
 
+Hostnames cannot have { in them
+

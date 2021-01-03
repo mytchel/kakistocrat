@@ -2,7 +2,7 @@
 namespace scrape {
 
 void
-scrape(site *s);
+scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int i);
 
 }
 

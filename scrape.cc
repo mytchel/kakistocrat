@@ -232,14 +232,13 @@ void site::finish_bad_http(index_url u, int code) {
   active--;
   url_bad.push_back(u.url);
 
-  switch (code) {
-    case 404:
-    case 301:
-      break;
-    default:
-      printf("miss %d %s\n", code, u.url.c_str());
-      fail_web++;
-      break;
+  if (code == 404 || code == 301) {
+    return;
+  } else if (code > 400) {
+    fail_web++;
+  } else {
+    printf("miss %d %s\n", code, u.url.c_str());
+    fail_web++;
   }
 }
 

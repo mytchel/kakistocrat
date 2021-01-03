@@ -20,6 +20,8 @@
 
 #include <curl/curl.h>
 
+#include "channel.h"
+
 #include "util.h"
 #include "scrape.h"
 #include "scraper.h"
@@ -61,7 +63,7 @@ page* site_find_add_page(site *site,
   return &site->pages.emplace_back(id, url, path, false);
 }
 
-void insert_site_index(
+size_t insert_site_index(
     index &index,
     site *isite,
     size_t max_add_sites,
@@ -160,17 +162,19 @@ void insert_site_index(
 
   size_t add_sites = 0;
   for (auto &l: linked_sites) {
-    if (add_sites++ > max_add_sites) {
-      break;
-    }
-
     for (auto &s: new_sites) {
       if (s.host == l.host) {
         index.sites.push_back(s);
         break;
       }
     }
+
+    if (++add_sites >= max_add_sites) {
+      break;
+    }
   }
+
+  return add_sites;
 }
 
 void insert_site_index_seed(
@@ -199,120 +203,34 @@ void insert_site_index_seed(
   }
 }
 
-size_t site_ref_count(site &site) {
-  size_t sum = 0;
-  for (auto &p: site.pages) {
-    sum += p.links.size();
-  }
-  return sum;
-}
-
-struct thread_data {
-  scrape::site t_site;
-  std::future<void> future;
-
-  thread_data(size_t max_pages, site *s);
-  thread_data() : t_site() {}
-
-  bool finished() {
-    return future.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
-  }
-
-  void begin() {
-    future = std::async(std::launch::async,
-        [this]() {
-          scrape::scrape(&t_site);
-        });
-  }
-};
-
-thread_data::thread_data(size_t max_pages, site *s) :
-  t_site(s->host, max_pages)
+site* get_next_site(index &index)
 {
-  for (auto &p: s->pages) {
-    t_site.url_scanning.emplace_back(p.url, p.path);
-  }
-}
+  site *s = NULL;
 
-std::string* get_next_host(index &index)
-{
-  std::string *host = NULL;
-  size_t level = 1000;
+  auto start = std::chrono::steady_clock::now();
 
   for (auto &site: index.sites) {
     if (site.scraping) continue;
     if (site.scraped) continue;
 
-    if (site.level < level) {
-      level = site.level;
-      host = &site.host;
+    if (s == NULL || site.level < s->level) {
+      s = &site;
     }
   }
 
-  if (host != NULL) {
-    return host;
-  } else {
-    return NULL;
-  }
-}
-
-thread_data pop_finished_thread(std::list<thread_data> &threads)
-{
-  while (threads.size() > 0) {
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-
-    auto t = threads.begin();
-    while (t != threads.end()) {
-      if (t->finished()) {
-        auto tt = std::move(*t);
-        threads.erase(t++);
-        return tt;
-      } else {
-        t++;
-      }
-    }
+  auto end = std::chrono::steady_clock::now();
+  std::chrono::duration<double, std::milli> elapsed = end - start;
+  if (elapsed.count() > 100) {
+    printf("get next site took %ims\n", elapsed.count());
   }
 
-  thread_data dummy;
-  return dummy;
+  return s;
 }
 
-bool maybe_start_thread(
-    std::vector<level> &levels,
-    std::list<thread_data> &threads,
-    index &index,
+void crawl(std::vector<level> levels, index &index,
     std::vector<std::string> &blacklist)
 {
-  auto host = get_next_host(index);
-
-  if (host == NULL) {
-    return false;
-  }
-
-  auto site = index.find_host(*host);
-  if (site == NULL) {
-    printf("site %s not found in index.\n", host->c_str());
-    exit(1);
-  }
-
-  site->scraping = true;
-
-  printf("start thread for '%s' level %i (max_pages = %i)\n",
-      host->c_str(), site->level,
-      levels[site->level].max_pages);
-
-  threads.emplace_back(levels[site->level].max_pages, site);
-  threads.back().begin();
-
-  return true;
-}
-
-void crawl(std::vector<level> levels,
-    size_t max_threads,
-    index &index,
-    std::vector<std::string> &blacklist)
-{
-  std::list<thread_data> threads;
+  size_t scrapped_sites = 0;
 
   for (auto &s: index.sites) {
     if (!s.scraped) continue;
@@ -324,48 +242,117 @@ void crawl(std::vector<level> levels,
 
     if (fails > s.pages.size() / 4) {
       s.scraped = false;
+    } else {
+      scrapped_sites++;
     }
   }
 
-  while (threads.size() < max_threads) {
-    if (!maybe_start_thread(levels, threads, index, blacklist)) {
-      break;
-    }
+  auto n_threads = std::thread::hardware_concurrency();
+
+  printf("starting %i threads\n", n_threads);
+
+  Channel<scrape::site*> in_channels[n_threads];
+  Channel<scrape::site*> out_channels[n_threads];
+  Channel<bool> stat_channels[n_threads];
+  bool thread_stats[n_threads];
+
+  std::vector<std::thread> threads;
+  for (size_t i = 0; i < n_threads; i++) {
+    auto th = std::thread([](
+          Channel<scrape::site*> &in,
+          Channel<scrape::site*> &out,
+          Channel<bool> &stat, int i) {
+        scrape::scraper(in, out, stat, i);
+    },
+        std::ref(in_channels[i]),
+        std::ref(out_channels[i]),
+        std::ref(stat_channels[i]), i);
+
+    threads.emplace_back(std::move(th));
   }
 
-  while (threads.size() > 0) {
-    printf("waiting on %i threads\n", threads.size());
+  std::list<scrape::site> scrapping_sites;
 
-    auto t = pop_finished_thread(threads);
+  int iteration = 0;
+  while (true) {
+    if (++iteration % 50 == 0) {
+      printf("main crawled %i / %i sites\n",
+          scrapped_sites, index.sites.size());
 
-    auto site = index.find_host(t.t_site.host);
-    if (site == NULL) {
-      printf("site %s not found in index.\n", t.t_site.host.c_str());
-      exit(1);
+      // Save the current index so exiting early doesn't loose
+      // all the work that has been done
+      index.save("index.scrape");
     }
 
-    printf("thread finished for %s level %i\n", site->host.c_str(), site->level);
+    bool delay = false;
+    bool all_blocked = true;
 
-    site->scraped = true;
-    site->scraping = false;
-
-    insert_site_index(index, site, levels[site->level].max_add_sites,
-        t.t_site.url_scanned, blacklist);
-
-    // Save the current index so exiting early doesn't loose
-    // all the work that has been done
-    index.save("index.scrape");
-
-    while (threads.size() < max_threads) {
-      if (!maybe_start_thread(levels, threads, index, blacklist)) {
-        break;
+    for (size_t i = 0; i < n_threads; i++) {
+      if (!stat_channels[i].empty()) {
+        thread_stats[i] << stat_channels[i];
+        all_blocked &= !thread_stats[i];
       }
+
+      if (thread_stats[i]) {
+        auto site = get_next_site(index);
+        if (site != NULL) {
+          site->scraping = true;
+
+          scrapping_sites.emplace_back(site->host, levels[site->level].max_pages);
+          auto &s = scrapping_sites.back();
+
+          for (auto &p: site->pages) {
+            s.url_scanning.emplace_back(p.url, p.path);
+          }
+
+          &s >> in_channels[i];
+
+        } else {
+          delay = true;
+        }
+      }
+
+      if (out_channels[i].empty()) continue;
+
+      scrape::site *s;
+      s << out_channels[i];
+
+      auto site = index.find_host(s->host);
+      if (site == NULL) {
+        printf("site '%s' not found in index.\n", s->host.c_str());
+        exit(1);
+      }
+
+      site->scraped = true;
+      site->scraping = false;
+
+      size_t added = insert_site_index(index, site, levels[site->level].max_add_sites,
+          s->url_scanned, blacklist);
+
+      printf("site finished for %s level %i with %i pages, %i external\n",
+          site->host.c_str(), site->level, s->url_scanned.size(), added);
+
+      scrapping_sites.remove_if([s](const scrape::site &ss) {
+          return &ss == s;
+          });
+
+      scrapped_sites++;
+    }
+
+    if (delay || all_blocked) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    } else {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
   }
 
   index.save("index.scrape");
 
-  printf("all done\n");
+  // Wait for all threads to finish
+  for (size_t i = 0; i < n_threads; i++) {
+    //std::nullptr_t >> in_channels[i];
+    threads.at(i).join();
+  }
 }
 
 }

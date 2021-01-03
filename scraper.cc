@@ -23,6 +23,7 @@
 #include <chrono>
 #include <thread>
 
+#include "channel.h"
 #include "util.h"
 #include "scrape.h"
 #include "scraper.h"
@@ -154,8 +155,8 @@ CURL *make_handle(site* s, index_url u)
   curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
   curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
   curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 10L);
-  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 5L);
-  curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 2L);
+  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10L);
+  curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 5L);
 
   // Potentially stops issues but doesn't seem to change much.
   curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1L);
@@ -170,19 +171,21 @@ CURL *make_handle(site* s, index_url u)
 }
 
 void
-scrape(site *site)
+scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid)
 {
   lxb_status_t status;
   lxb_html_parser_t *parser;
   parser = lxb_html_parser_create();
   status = lxb_html_parser_init(parser);
 
+  printf("thread %i started\n", tid);
+
   if (status != LXB_STATUS_OK) {
-    printf("Failed to create HTML parser\n");
+    printf("%i Failed to create HTML parser\n", tid);
     exit(1);
   }
 
-  size_t max_con = 100;
+  size_t max_con = 300;
   size_t max_host = 6;
 
   CURLM *multi_handle = curl_multi_init();
@@ -194,11 +197,59 @@ scrape(site *site)
   curl_multi_setopt(multi_handle, CURLMOPT_PIPELINING, CURLPIPE_MULTIPLEX);
 #endif
 
-  while (!site->finished()) {
+  std::list<site*> sites;
 
-    while (site->have_next(max_host)) {
-      auto u = site->pop_next();
-      curl_multi_add_handle(multi_handle, make_handle(site, u));
+  size_t active_connections = 0;
+
+  bool accepting = true;
+  int stat_i = 0;
+  while (true) {
+    bool n_accepting = active_connections < max_con * 0.9;
+    if (accepting != n_accepting) {
+      n_accepting >> stat;
+      accepting = n_accepting;
+    }
+
+    if (++stat_i % 1000 == 0)
+      printf("%i with %i active for %i sites\n", tid, active_connections, sites.size());
+
+    bool adding = true;
+    while (active_connections < max_con && adding) {
+      adding = false;
+      auto s = sites.begin();
+      while (s != sites.end()) {
+        if ((*s)->finished()) {
+          *s >> out;
+          s = sites.erase(s);
+          continue;
+        }
+
+        if ((*s)->have_next(max_host)) {
+          auto u = (*s)->pop_next();
+          curl_multi_add_handle(multi_handle, make_handle(*s, u));
+          active_connections++;
+          adding = true;
+        }
+
+        s++;
+      }
+    }
+
+    if (!in.empty()) {
+      site *s;
+      s << in;
+
+      if (s == NULL) {
+        printf("%i got finish\n", tid);
+        break;
+      }
+
+      sites.push_back(s);
+    }
+
+    if (sites.empty()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      continue;
     }
 
     curl_multi_wait(multi_handle, NULL, 0, 1000, NULL);
@@ -249,12 +300,16 @@ scrape(site *site)
 
         curl_multi_remove_handle(multi_handle, handle);
         curl_easy_cleanup(handle);
+
+        active_connections--;
       }
     }
   }
 
   curl_multi_cleanup(multi_handle);
   lxb_html_parser_destroy(parser);
+
+  printf("%i ending\n", tid);
 }
 }
 

@@ -38,11 +38,11 @@ int main(int argc, char *argv[]) {
   signal(SIGPIPE, SIG_IGN);
   curl_global_init(CURL_GLOBAL_ALL);
 
-  std::vector<crawl::level> levels = {{200, 50}, {5, 5}, {1, 0}};
+  std::vector<crawl::level> levels = {{200, 10}, {5, 2}, {1, 0}};
 
   index.save("index.scrape");
 
-  crawl::crawl(levels, 100, index, blacklist);
+  crawl::crawl(levels, index, blacklist);
 
   curl_global_cleanup();
 

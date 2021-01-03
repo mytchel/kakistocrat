@@ -10,9 +10,7 @@ struct level {
   size_t max_add_sites;
 };
 
-void crawl(std::vector<level> levels,
-    size_t max_threads,
-    index &index,
+void crawl(std::vector<level> levels, index &index,
     std::vector<std::string> &blacklist);
 
 }

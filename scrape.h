@@ -41,7 +41,9 @@ struct site {
   bool finished();
 
   bool have_next(size_t max_active) {
-    return url_scanning.size() > 0 && active < max_active;
+    return url_scanning.size() > 0
+      && active < max_active
+      && url_scanned.size() + active < max_pages;
   }
 
   index_url pop_next();
