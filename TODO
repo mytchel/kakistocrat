@@ -18,6 +18,8 @@ bugs:
     Hostnames cannot have { in them
       check fix
 
+    Tokenizer doesn't handle <open-closing tags/>
+
 eventually:
 
     Timeout of sites. Geekhack should fail rather than take 3 fucking hours.
