@@ -42,7 +42,7 @@ int main(int argc, char *argv[]) {
 
   index.save("index.scrape");
 
-  crawl::crawl(levels, 1000, index, blacklist);
+  crawl::crawl(levels, 100, index, blacklist);
 
   curl_global_cleanup();
 

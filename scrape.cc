@@ -24,13 +24,41 @@
 
 namespace scrape {
 
+void curl_data::save()
+{
+  std::ofstream file;
+
+  if (buf == NULL) {
+    printf("save '%s' but no buffer\n", url.url.c_str());
+    return;
+  }
+
+  file.open(url.path, std::ios::out | std::ios::binary | std::ios::trunc);
+
+  if (!file.is_open()) {
+    fprintf(stderr, "error opening file %s for %s\n", url.path.c_str(), url.url.c_str());
+    return;
+  }
+
+  file.write(buf, size);
+
+  file.close();
+}
+
 size_t curl_cb_buffer_write(void *contents, size_t sz, size_t nmemb, void *ctx)
 {
-  curl_buffer *buf = (curl_buffer *) ctx;
+  curl_data *buf = (curl_data *) ctx;
   size_t realsize = sz * nmemb;
 
   if (buf->max < buf->size + realsize) {
     return 0;
+  }
+
+  if (buf->buf == NULL) {
+    buf->buf = (char *) malloc(buf->max);
+    if (buf->buf == NULL) {
+      return 0;
+    }
   }
 
   memcpy(&(buf->buf[buf->size]), contents, realsize);
@@ -127,22 +155,6 @@ bool bad_prefix(std::string path) {
       has_prefix(path, "/wp-login");
 }
 
-void save_file(std::string path, std::string url, curl_buffer *buf)
-{
-  std::ofstream file;
-
-  file.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
-
-  if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s for %s\n", path.c_str(), url.c_str());
-    return;
-  }
-
-  file.write(buf->buf, buf->size);
-
-  file.close();
-}
-
 bool index_check(
     std::list<index_url> &url_index,
     std::string url)
@@ -212,10 +224,56 @@ void site::finish(
     }
   }
 
+  active--;
   url_scanned.push_back(url);
 }
 
+void site::finish_bad_http(index_url u, int code) {
+  active--;
+  url_bad.push_back(u.url);
+
+  switch (code) {
+    case 404:
+    case 301:
+      break;
+    default:
+      printf("miss %d %s\n", code, u.url.c_str());
+      fail_web++;
+      break;
+  }
+}
+
+void site::finish_bad_net(index_url u, bool actually_bad) {
+  active--;
+  url_bad.push_back(u.url);
+  if (actually_bad) {
+    fail_net++;
+  }
+}
+
+index_url site::pop_next() {
+  auto best = url_scanning.begin();
+
+  // TODO: keep the list sorted?
+  for (auto u = url_scanning.begin(); u != url_scanning.end(); u++) {
+    // TODO: base on count too
+    if ((*u).url.length() < (*best).url.length()) {
+      best = u;
+    }
+  }
+
+  active++;
+
+  index_url r(*best);
+  url_scanning.erase(best);
+  return r;
+}
+
 bool site::finished() {
+  if (active > 0) {
+    return false;
+  }
+
   if (url_scanning.empty()) {
     return true;
   }
@@ -238,22 +296,6 @@ bool site::finished() {
   }
 
   return false;
-}
-
-index_url site::pop_next() {
-  auto best = url_scanning.begin();
-
-  // TODO: keep the list sorted?
-  for (auto u = url_scanning.begin(); u != url_scanning.end(); u++) {
-    // TODO: base on count too
-    if ((*u).url.length() < (*best).url.length()) {
-      best = u;
-    }
-  }
-
-  index_url r(*best);
-  url_scanning.erase(best);
-  return r;
 }
 
 }

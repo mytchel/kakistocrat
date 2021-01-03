@@ -31,7 +31,7 @@ namespace scrape {
 
 std::list<std::string> find_links_lex(
       lxb_html_parser_t *parser,
-      curl_buffer *buf,
+      curl_data *buf,
       std::string page_url)
 {
   std::list<std::string> urls;
@@ -40,6 +40,11 @@ std::list<std::string> find_links_lex(
   lxb_dom_element_t *element;
   lxb_html_document_t *document;
   lxb_dom_collection_t *collection;
+
+  if (buf->buf == NULL) {
+    printf("buffer for %s has no data\n", page_url.c_str());
+    return urls;
+  }
 
   document = lxb_html_parse(parser, (const lxb_char_t *) buf->buf, buf->size);
   if (document == NULL) {
@@ -136,6 +141,34 @@ std::list<std::string> find_links_lex(
   return urls;
 }
 
+CURL *make_handle(site* s, index_url u)
+{
+  curl_data *d = new curl_data(s, u, 1024 * 1024 * 10);
+
+  CURL *curl_handle = curl_easy_init();
+
+  curl_easy_setopt(curl_handle, CURLOPT_PRIVATE, d);
+  curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, curl_cb_header_write);
+  curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_cb_buffer_write);
+  curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, d);
+  curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+  curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
+  curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 10L);
+  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 5L);
+  curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 2L);
+
+  // Potentially stops issues but doesn't seem to change much.
+  curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1L);
+
+  curl_easy_setopt(curl_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
+
+  char url[util::max_url_len];
+  strncpy(url, u.url.c_str(), sizeof(url));
+  curl_easy_setopt(curl_handle, CURLOPT_URL, url);
+
+  return curl_handle;
+}
+
 void
 scrape(site *site)
 {
@@ -149,67 +182,78 @@ scrape(site *site)
     exit(1);
   }
 
-  CURL *curl_handle;
-  CURLcode res;
+  size_t max_con = 100;
+  size_t max_host = 6;
 
-  size_t max_size = 1024 * 1024 * 10;
-  char *c = (char *) malloc(max_size);
-  curl_buffer buf(c, max_size);
+  CURLM *multi_handle = curl_multi_init();
+  curl_multi_setopt(multi_handle, CURLMOPT_MAX_TOTAL_CONNECTIONS, max_con);
+  curl_multi_setopt(multi_handle, CURLMOPT_MAX_HOST_CONNECTIONS, max_host);
 
-  curl_handle = curl_easy_init();
-
-  curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_cb_buffer_write);
-  curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, &buf);
-  curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, curl_cb_header_write);
-  curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-  curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
-  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
-
-  // Potentially stops issues but doesn't seem to change much.
-  curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1L);
+  /* enables http/2 if available */
+#ifdef CURLPIPE_MULTIPLEX
+  curl_multi_setopt(multi_handle, CURLMOPT_PIPELINING, CURLPIPE_MULTIPLEX);
+#endif
 
   while (!site->finished()) {
-    auto u = site->pop_next();
 
-    char s[util::max_url_len];
-    strcpy(s, u.url.c_str());
-    curl_easy_setopt(curl_handle, CURLOPT_URL, s);
+    while (site->have_next(max_host)) {
+      auto u = site->pop_next();
+      curl_multi_add_handle(multi_handle, make_handle(site, u));
+    }
 
-    buf.reset();
+    curl_multi_wait(multi_handle, NULL, 0, 1000, NULL);
+    int still_running = 0;
+    curl_multi_perform(multi_handle, &still_running);
 
-    res = curl_easy_perform(curl_handle);
-    if (res == CURLE_OK) {
-      long res_status;
-      curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &res_status);
+    int msgs_left;
+    CURLMsg *m = NULL;
+    while ((m = curl_multi_info_read(multi_handle, &msgs_left))) {
+      if(m->msg == CURLMSG_DONE) {
+        CURL *handle = m->easy_handle;
+        curl_data *d;
+        char *url;
 
-      if (res_status == 200) {
-        char *ctype;
-        curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_TYPE, &ctype);
+        curl_easy_getinfo(handle, CURLINFO_PRIVATE, &d);
+        curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &url);
 
-        auto urls = find_links_lex(parser, &buf, u.url);
+        CURLcode res = m->data.result;
 
-        save_file(u.path, u.url, &buf);
+        if (res == CURLE_OK) {
+          long res_status;
+          curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &res_status);
+          if (res_status == 200) {
+            char *ctype;
+            curl_easy_getinfo(handle, CURLINFO_CONTENT_TYPE, &ctype);
 
-        site->finish(u, urls);
+            d->save();
 
-      } else {
-        site->finish_bad_http(u, (int) res_status);
+            auto urls = find_links_lex(parser, d, std::string(url));
+
+            d->m_site->finish(d->url, urls);
+
+          } else {
+            d->m_site->finish_bad_http(d->url, (int) res_status);
+          }
+
+        } else {
+          bool bad = false;
+          if (res != CURLE_WRITE_ERROR) {
+            printf("miss %s %s\n", curl_easy_strerror(res), d->url.url.c_str());
+            bad = true;
+          }
+
+          d->m_site->finish_bad_net(d->url, bad);
+        }
+
+        delete d;
+
+        curl_multi_remove_handle(multi_handle, handle);
+        curl_easy_cleanup(handle);
       }
-
-    } else {
-      bool bad = false;
-      if (res != CURLE_WRITE_ERROR) {
-        printf("miss %s %s\n", curl_easy_strerror(res), u.url.c_str());
-        bad = true;
-      }
-
-      site->finish_bad_net(u, bad);
     }
   }
 
-  curl_easy_cleanup(curl_handle);
-  free(buf.buf);
-
+  curl_multi_cleanup(multi_handle);
   lxb_html_parser_destroy(parser);
 }
 }
