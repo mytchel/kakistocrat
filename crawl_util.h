@@ -31,6 +31,13 @@ struct page {
   std::string url;
   std::string path;
   std::vector<page_id> links;
+
+  page(uint32_t i, std::string u, std::string p, bool s) :
+    id(i), url(u), path(p), scraped(s) {}
+
+  page(uint32_t i, std::string u,
+      std::string p, bool s, std::vector<page_id> l) :
+    id(i), url(u), path(p), scraped(s), links(l) {}
 };
 
 struct site {
@@ -38,6 +45,7 @@ struct site {
   std::string host;
   size_t level;
   bool scraped{false};
+  bool scraping{false};
 
   std::uint32_t next_id{1};
   std::list<page> pages;
@@ -45,6 +53,12 @@ struct site {
   page* find_page(uint32_t id);
   page* find_page(std::string url);
   page* find_page_by_path(std::string path);
+
+  site(uint32_t i, std::string h, size_t l) :
+    id(i), host(h), level(l) {}
+
+  site(uint32_t i, std::string h, size_t l, bool s) :
+    id(i), host(h), level(l), scraped(s) {}
 };
 
 struct index {

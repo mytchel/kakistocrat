@@ -20,6 +20,11 @@
 #include <iostream>
 #include <fstream>
 
+#include <chrono>
+#include <thread>
+
+using namespace std::chrono_literals;
+
 #include "util.h"
 #include "scrape.h"
 
@@ -31,14 +36,14 @@ typedef struct {
   size_t max, size;
 } memory;
 
+extern "C" {
+
 size_t grow_buffer(void *contents, size_t sz, size_t nmemb, void *ctx)
 {
   memory *mem = (memory*) ctx;
   size_t realsize = sz * nmemb;
 
   if (mem->max < mem->size + realsize) {
-    printf("file too big\n");
-
     return 0;
   }
 
@@ -57,6 +62,8 @@ size_t header_callback(char *buffer, size_t size, size_t nitems, void *userdata)
   }
 
   return nitems * size;
+}
+
 }
 
 bool has_suffix(std::string const &s, std::string const &suffix) {
@@ -354,8 +361,6 @@ scrape(int max_pages,
     const std::string host,
     std::list<struct index_url> &url_index)
 {
-  printf("scraping %s for up to %i pages\n", host.c_str(), max_pages);
-
   std::list<index_url> url_scanning(url_index);
   std::list<std::string> url_bad;
 
@@ -390,19 +395,23 @@ scrape(int max_pages,
   curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
   curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
 
+  // Potentially stops issues but doesn't seem to change much.
+  curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1L);
+
+
   while (!url_scanning.empty()) {
     if (url_index.size() >= max_pages) {
       printf("%s reached max pages\n", host.c_str());
       break;
     }
 
-    if (fail_net > 1 + url_index.size() / 4) {
+    if (fail_net > 10 && fail_net > 1 + url_index.size() / 4) {
       printf("%s reached max fail net %i / %lu\n", host.c_str(),
           fail_net, url_index.size());
       break;
     }
 
-    if (fail_web > 1 + url_index.size() / 2) {
+    if (fail_web > 10 && fail_web > 1 + url_index.size() / 2) {
       printf("%s reached max fail web %i / %lu\n", host.c_str(),
           fail_web, url_index.size());
       break;
@@ -430,8 +439,11 @@ scrape(int max_pages,
           save_file(u.path, u.url, &mem);
 
           if (url_index.size() > 0 && url_index.size() % 50 == 0) {
-            printf("%s %lu / %lu with %lu failures\n",
-                host.c_str(), url_index.size(), url_scanning.size(),
+            printf("%s %lu / %lu (max %lu) with %lu failures\n",
+                host.c_str(),
+                url_index.size(),
+                url_scanning.size(),
+                max_pages,
                 url_bad.size());
           }
 
@@ -445,18 +457,26 @@ scrape(int max_pages,
         }
 
       } else {
-        if ((int) res_status != 404) {
-          printf("miss %d %s\n", (int) res_status, u.url.c_str());
+        switch ((int) res_status) {
+          case 404:
+          case 301:
+            break;
+          default:
+            printf("miss %d %s\n", (int) res_status, u.url.c_str());
+            fail_web++;
+            break;
         }
 
         url_bad.push_back(u.url);
-        fail_web++;
       }
 
     } else {
-      printf("miss %s %s\n", curl_easy_strerror(res), u.url.c_str());
       url_bad.push_back(u.url);
-      fail_net++;
+
+      if (res != CURLE_WRITE_ERROR) {
+        printf("miss %s %s\n", curl_easy_strerror(res), u.url.c_str());
+        fail_net++;
+      }
     }
   }
 

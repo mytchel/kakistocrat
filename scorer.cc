@@ -58,7 +58,7 @@ void scores::iteration()
       p.score += score->second;
     }
 
-    p.score /= p.level;
+    p.score /= (1 + p.level);
 
     sum += p.score;
   }
@@ -77,8 +77,14 @@ void scores::init(crawl::index &index)
   n_pages = 0;
 
   for (auto &s: index.sites) {
-    n_pages += s.pages.size();
+    for (auto &p: s.pages) {
+      if (p.scraped) {
+        n_pages++;
+      }
+    }
   }
+
+  printf("init from scrape with %lu pages\n", n_pages);
 
   /*
    * TODO:
@@ -97,7 +103,6 @@ void scores::init(crawl::index &index)
   double base = c * r / n;
 
 
-
   for (size_t i = 0; i < max_level; i++) {
     level_scores.push_back(0);
   }
@@ -105,9 +110,11 @@ void scores::init(crawl::index &index)
   auto &l = level_counts.at(s.level);
 */
 
+  double score = 1.0 / (double) n_pages;
+
   for (auto &s: index.sites) {
     for (auto &p: s.pages) {
-      double score = 1.0 / (double) n_pages;
+      if (!p.scraped) continue;
 
       crawl::page_id id(s.id, p.id);
 
@@ -123,6 +130,31 @@ void scores::init(crawl::index &index)
     }
   }
 
+  for (auto &i: pages) {
+    auto &p = i.second;
+
+    crawl::page_id page_id(p.id);
+
+    std::vector<uint64_t> fixed_links;
+
+    for (auto &l: p.links) {
+      auto p = find_page(l);
+      if (p != NULL) {
+        fixed_links.push_back(l);
+      }
+    }
+
+    p.links = fixed_links;
+  }
+
+  double sum = 0;
+
+  for (auto &i: pages) {
+    auto &p = i.second;
+    sum += p.score;
+  }
+
+  printf("total score = %f\n", sum);
 }
 
 void scores::save(std::string path)

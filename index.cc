@@ -86,6 +86,8 @@ int main(int argc, char *argv[]) {
   for (auto &site: index.sites) {
     printf("site %lu %s\n", site.id, site.host.c_str());
     for (auto &page: site.pages) {
+      if (!page.scraped) continue;
+
       uint64_t id = crawl::page_id(site.id, page.id).to_value();
 
       std::ifstream pfile;

@@ -1,0 +1,4 @@
+# Web crawler, Indexer, Page Ranker and Searcher
+
+You will probably need to increase the result of `ulimit -n` or reduce the number of pages scanned at a time.
+

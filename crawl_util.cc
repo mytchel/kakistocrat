@@ -33,26 +33,18 @@ void index::save(std::string path)
   }
 
   for (auto &site: sites) {
-    bool has_pages = false;
-    for (auto &p: site.pages) {
-      if (!p.scraped) continue;
-      has_pages = true;
-      break;
-    }
-
-    if (!has_pages) continue;
-
     file << site.id << "\t";
     file << site.host << "\t";
-    file << site.level << "\n";
+    file << site.level << "\t";
+    file << site.scraped;
+    file << "\n";
 
     for (auto &p: site.pages) {
-      if (!p.scraped) continue;
-
       file << "\t";
       file << p.id << "\t";
       file << p.url << "\t";
-      file << p.path;
+      file << p.path << "\t";
+      file << p.scraped;
 
       for (auto &l: p.links) {
         file << "\t" << l.site << " " << l.page;
@@ -87,37 +79,42 @@ void index::load(std::string path)
       uint32_t id;
       std::string host;
       size_t level;
+      bool scraped;
 
       ss >> id;
       ss >> host;
       ss >> level;
+      ss >> scraped;
 
-      site s = {id, host, level};
-      sites.push_back(s);
+      printf("load index '%s' scraped %i\n", host.c_str(), scraped);
+
+      sites.emplace_back(id, host, level, scraped);
 
     } else {
-      uint32_t id;
+      std::string tmp;
+      std::string id_s;
       std::string url;
       std::string path;
+      std::string scraped_s;
 
-      std::string id_s, tmp;
       std::getline(ss, tmp, '\t');
       std::getline(ss, id_s, '\t');
       std::getline(ss, url, '\t');
       std::getline(ss, path, '\t');
+      std::getline(ss, scraped_s, '\t');
 
-      id = std::stoi(id_s);
+      uint32_t id = std::stoi(id_s);
+      bool scraped = scraped_s == "1";
 
-      page p = {true, id, url, path};
+      std::vector<page_id> links;
 
       uint32_t ls, lp;
       while (ss >> ls && ss >> lp) {
-        page_id id(ls, lp);
-        p.links.push_back(id);
+        links.emplace_back(ls, lp);
       }
 
       auto &site = sites.back();
-      site.pages.push_back(std::move(p));
+      site.pages.emplace_back(id, url, path, scraped, links);
     }
   }
 

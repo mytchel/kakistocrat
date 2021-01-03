@@ -4,10 +4,13 @@ project(webscraper)
 
 set (CMAKE_CXX_STANDARD 17)
 
+set(ENV{PKG_CONFIG_DIR} "")
+set(ENV{PKG_CONFIG_LIBDIR} "/opt/curl/lib/pkgconfig:/usr/lib/pkgconfig:${CMAKE_SYSROOT}/usr/share/pkgconfig")
+set(ENV{PKG_CONFIG_SYSROOT_DIR} ${CMAKE_SYSROOT})
+
 #set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 find_package(CURL REQUIRED)
-find_package(LibXml2 REQUIRED)
 
 add_subdirectory(x_lexbor)
 

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include <cstdlib>
 #include <cstring>
@@ -35,26 +36,14 @@ int main(int argc, char *argv[]) {
 
   crawl::insert_site_index_seed(index, initial_seed, blacklist);
 
-  struct level {
-    size_t max_sites;
-    size_t max_pages;
-  };
+  signal(SIGPIPE, SIG_IGN);
+  curl_global_init(CURL_GLOBAL_ALL);
 
-  curl_global_init(CURL_GLOBAL_DEFAULT);
-
-  //std::vector<struct level> levels = {{0, 1000}, {500, 10}, {100, 1}};
-  std::vector<struct level> levels = {{0, 200}, {20, 5}, {50, 1}};
-  //std::vector<struct level> levels = {{0, 2}, {50, 2}, {50, 1}};
-  size_t level_count = 0;
+  std::vector<crawl::level> levels = {{200, 50}, {20, 5}, {5, 0}};
 
   index.save("index.scrape");
 
-  for (auto level: levels) {
-    crawl::run_round(level_count++, levels.size(),
-        level.max_sites, level.max_pages,
-        500,
-        index, blacklist);
-  }
+  crawl::crawl(levels, 1000, index, blacklist);
 
   curl_global_cleanup();
 
