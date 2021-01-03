@@ -22,7 +22,8 @@
 
 #include "util.h"
 #include "scrape.h"
-#include "crawl_util.h"
+#include "scraper.h"
+#include "crawl.h"
 #include "crawler.h"
 
 namespace crawl {
@@ -207,93 +208,62 @@ size_t site_ref_count(site &site) {
 }
 
 struct thread_data {
-  std::string host;
-
-  uint32_t next_id;
-
-  std::vector<std::string> urls;
-
-  std::list<scrape::index_url> url_index;
-
+  scrape::site t_site;
   std::future<void> future;
-  bool done{false};
+
+  thread_data(size_t max_pages, site *s);
+  thread_data() : t_site() {}
+
+  bool finished() {
+    return future.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+  }
+
+  void begin() {
+    future = std::async(std::launch::async,
+        [this]() {
+          scrape::scrape(&t_site);
+        });
+  }
 };
 
-template<typename T>
-bool future_is_ready(std::future<T>& t){
-    return t.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+thread_data::thread_data(size_t max_pages, site *s) :
+  t_site(s->host, max_pages)
+{
+  for (auto &p: s->pages) {
+    t_site.url_scanning.emplace_back(p.url, p.path);
+  }
 }
 
 std::string* get_next_host(index &index)
 {
-  struct host_data {
-    std::string *host;
-    size_t level;
-    size_t score;
-  };
-
-  std::vector<host_data> hosts;
-
-  hosts.reserve(index.sites.size());
+  std::string *host = NULL;
+  size_t level = 1000;
 
   for (auto &site: index.sites) {
     if (site.scraping) continue;
     if (site.scraped) continue;
 
-    host_data h = {&site.host, site.level, site_ref_count(site)};
-    hosts.push_back(std::move(h));
+    if (site.level < level) {
+      level = site.level;
+      host = &site.host;
+    }
   }
 
-  if (hosts.empty()) {
+  if (host != NULL) {
+    return host;
+  } else {
     return NULL;
   }
-
-  auto host = std::max_element(hosts.begin(), hosts.end(),
-      [](host_data &a, host_data &b) {
-        if (a.level == b.level) {
-          return a.score > b.score;
-        } else {
-          return a.level > b.level;
-        }
-      });
-
-  return host->host;
-}
-
-void start_thread(
-    std::list<thread_data> &threads,
-    size_t max_pages,
-    site *site)
-{
-  thread_data t;
-
-  t.host = site->host;
-
-  t.urls.reserve(site->pages.size());
-
-  for (auto &p: site->pages) {
-    scrape::index_url u = {p.url, p.path};
-
-    t.url_index.push_back(u);
-  }
-
-  threads.push_back(std::move(t));
-
-  auto &tt = threads.back();
-  tt.future = std::async(std::launch::async,
-      [max_pages, &tt]() {
-        scrape::scrape(max_pages, tt.host, tt.url_index);
-      });
 }
 
 thread_data pop_finished_thread(std::list<thread_data> &threads)
 {
   while (threads.size() > 0) {
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    std::this_thread::sleep_for(std::chrono::seconds(1));
 
     auto t = threads.begin();
     while (t != threads.end()) {
-      if (future_is_ready(t->future)) {
+      if (t->finished()) {
         auto tt = std::move(*t);
         threads.erase(t++);
         return tt;
@@ -316,7 +286,6 @@ bool maybe_start_thread(
   auto host = get_next_host(index);
 
   if (host == NULL) {
-    printf("didn't find any hosts\n");
     return false;
   }
 
@@ -332,7 +301,8 @@ bool maybe_start_thread(
       host->c_str(), site->level,
       levels[site->level].max_pages);
 
-  start_thread(threads, levels[site->level].max_pages, site);
+  threads.emplace_back(levels[site->level].max_pages, site);
+  threads.back().begin();
 
   return true;
 }
@@ -368,21 +338,19 @@ void crawl(std::vector<level> levels,
 
     auto t = pop_finished_thread(threads);
 
-    auto site = index.find_host(t.host);
+    auto site = index.find_host(t.t_site.host);
     if (site == NULL) {
-      printf("site %s not found in index.\n", t.host.c_str());
+      printf("site %s not found in index.\n", t.t_site.host.c_str());
       exit(1);
     }
 
-    printf("thread finished for %s level %i\n", t.host.c_str(), site->level);
+    printf("thread finished for %s level %i\n", site->host.c_str(), site->level);
 
     site->scraped = true;
     site->scraping = false;
 
     insert_site_index(index, site, levels[site->level].max_add_sites,
-        t.url_index, blacklist);
-
-    t.url_index.clear();
+        t.t_site.url_scanned, blacklist);
 
     // Save the current index so exiting early doesn't loose
     // all the work that has been done

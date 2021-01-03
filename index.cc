@@ -26,8 +26,7 @@ extern "C" {
 }
 
 #include "util.h"
-#include "scrape.h"
-#include "crawl_util.h"
+#include "crawl.h"
 #include "tokenizer.h"
 
 void index_write(char const *filename, char *buffer, struct dynamic_array_kv_64 *docNos, struct hash_table *dictionary)

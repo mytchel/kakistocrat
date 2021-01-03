@@ -21,8 +21,7 @@
 #include <curl/curl.h>
 
 #include "util.h"
-#include "scrape.h"
-#include "crawl_util.h"
+#include "crawl.h"
 #include "scorer.h"
 
 int main(int argc, char *argv[]) {

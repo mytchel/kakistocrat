@@ -31,8 +31,7 @@ extern "C" {
 }
 
 #include "util.h"
-#include "scrape.h"
-#include "crawl_util.h"
+#include "crawl.h"
 #include "scorer.h"
 #include "tokenizer.h"
 

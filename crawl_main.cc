@@ -22,8 +22,7 @@
 #include <curl/curl.h>
 
 #include "util.h"
-#include "scrape.h"
-#include "crawl_util.h"
+#include "crawl.h"
 #include "crawler.h"
 
 int main(int argc, char *argv[]) {
@@ -39,7 +38,7 @@ int main(int argc, char *argv[]) {
   signal(SIGPIPE, SIG_IGN);
   curl_global_init(CURL_GLOBAL_ALL);
 
-  std::vector<crawl::level> levels = {{200, 50}, {20, 5}, {5, 0}};
+  std::vector<crawl::level> levels = {{200, 50}, {5, 5}, {1, 0}};
 
   index.save("index.scrape");
 
