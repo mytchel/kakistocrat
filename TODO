@@ -1,17 +1,32 @@
-Checking dates of file
-Timeout of sites. Geekhack should fail rather than take 3 fucking hours.
-Site map (this can have last modified date which should be used)
-robot file
+next:
+    home rolled parser for link scrapping.
 
-Support other protocols, gemeni, gopher.
+    robots.txt
+    sitemaps
+    date checking
+        put date with each page. Check header and exit early.
+        check site map for date.
+
+        Change site scapper to take current dates and put any
+        unchanged urls in a seperate list and don't update the index
+        with them.
 
 bugs:
-    can get duplicate urls with the same path. Probably due to 
+    can get duplicate urls with the same path. Probably due to
     add others not checking for path uniquness
 
-Might help to group by domain rather than host. Possibly with exceptions.
+    Hostnames cannot have { in them
+      check fix
 
-Scores from a domain should count for less.
+eventually:
 
-Hostnames cannot have { in them
+    Timeout of sites. Geekhack should fail rather than take 3 fucking hours.
+    Site map (this can have last modified date which should be used)
+    robot file
+
+    Support other protocols, gemeni, gopher.
+
+    Might help to group by domain rather than host. Possibly with exceptions.
+
+    Scores from a domain should count for less.
 

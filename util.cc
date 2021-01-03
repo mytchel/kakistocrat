@@ -29,7 +29,7 @@ std::string get_proto(std::string url) {
     if (c == ':') {
       return std::string(s.begin(), s.end());
 
-    } else if (c == '-' || c == '%' || c == '/' || c == '#' || c == '&') {
+    } else if (!('a' <= c && c <= 'z') && !('A' <= c && c <= 'Z')) {
       break;
 
     } else {
@@ -48,7 +48,10 @@ std::string get_host(std::string url) {
   for (auto c: url) {
     chars++;
 
-    if (c == '%' || c == '&' || c == '#') {
+    if (c != '/' && c != ':' && c != '@'
+            && !('a' <= c && c <= 'z') && !('A' <= c && c <= 'Z')
+            && c != '.' && c != '-')
+    {
       return "";
 
     } else if (slashes == 0 && c == ':') {
