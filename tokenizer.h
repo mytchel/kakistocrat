@@ -1,6 +1,6 @@
 namespace tokenizer {
 
-enum token_type {TAG, WORD, END};
+enum token_type {TAG, TAGC, WORD, END};
 
 struct tokenizer {
 	size_t index;

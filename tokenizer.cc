@@ -34,9 +34,14 @@ token_type tokenizer::next(struct str buffer) {
         i++;
       }
 
-      buf[i] = '\0';
+      if (i > 0 && buf[i-1] == '/') {
+        buf[i-1] = '\0';
+			  return TAGC;
 
-			return TAG;
+      } else {
+        buf[i] = '\0';
+			  return TAG;
+      }
 
 		// Number
     } else if (isdigit(document[index])) {
