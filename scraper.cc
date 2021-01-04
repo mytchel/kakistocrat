@@ -30,9 +30,102 @@
 
 namespace scrape {
 
+struct curl_data {
+  char *buf{NULL};
+  size_t size{0};
+  size_t max;
+
+  site *m_site;
+  index_url url;
+
+  bool unchanged{false};
+
+  curl_data(site *s, index_url u, size_t m) :
+      m_site(s), url(u), max(m) {}
+
+  ~curl_data() {
+    if (buf) free(buf);
+  }
+
+  void finish(std::string effective_url);
+  void finish_bad_http(int code);
+  void finish_bad_net(CURLcode res);
+
+  void save();
+};
+
+size_t curl_cb_buffer_write(void *contents, size_t sz, size_t nmemb, void *ctx)
+{
+  curl_data *d = (curl_data *) ctx;
+  size_t realsize = sz * nmemb;
+
+  if (d->max < d->size + realsize) {
+    return 0;
+  }
+
+  if (d->buf == NULL) {
+    d->buf = (char *) malloc(d->max);
+    if (d->buf == NULL) {
+      return 0;
+    }
+  }
+
+  memcpy(&(d->buf[d->size]), contents, realsize);
+  d->size += realsize;
+
+  return realsize;
+}
+
+size_t curl_cb_header_write(char *buffer, size_t size, size_t nitems, void *ctx) {
+  curl_data *d = (curl_data *) ctx;
+
+  buffer[nitems*size] = 0;
+
+  if (strstr(buffer, "content-type:")) {
+    if (strstr(buffer, "text/html") == NULL) {
+      return 0;
+    }
+
+  } else if (strstr(buffer, "Last-Modified: ")) {
+    char *s = buffer + strlen("Last-Modified: ");
+
+    tm tm;
+    strptime(s, "%a, %d %b %Y %H:%M:%S", &tm);
+    time_t time = mktime(&tm);
+
+    if (d->url.last_scanned > time) {
+      d->unchanged = true;
+      return 0;
+    }
+  }
+
+  return nitems * size;
+}
+
+void curl_data::save()
+{
+  std::ofstream file;
+
+  if (buf == NULL) {
+    printf("save '%s' but no buffer\n", url.url.c_str());
+    return;
+  }
+
+  file.open(url.path, std::ios::out | std::ios::binary | std::ios::trunc);
+
+  if (!file.is_open()) {
+    fprintf(stderr, "error opening file %s for %s\n", url.path.c_str(), url.url.c_str());
+    return;
+  }
+
+  file.write(buf, size);
+
+  file.close();
+}
+
 std::list<std::string> find_links_lex(
       lxb_html_parser_t *parser,
-      curl_data *buf,
+      char *buf, size_t buf_len,
       std::string page_url)
 {
   std::list<std::string> urls;
@@ -42,12 +135,12 @@ std::list<std::string> find_links_lex(
   lxb_html_document_t *document;
   lxb_dom_collection_t *collection;
 
-  if (buf->buf == NULL) {
+  if (buf == NULL) {
     printf("buffer for %s has no data\n", page_url.c_str());
     return urls;
   }
 
-  document = lxb_html_parse(parser, (const lxb_char_t *) buf->buf, buf->size);
+  document = lxb_html_parse(parser, (const lxb_char_t *) buf, buf_len);
   if (document == NULL) {
     printf("Failed to create Document object\n");
     return urls;
@@ -142,6 +235,44 @@ std::list<std::string> find_links_lex(
   return urls;
 }
 
+void curl_data::finish(std::string effective_url) {
+  save();
+
+  lxb_status_t status;
+  lxb_html_parser_t *parser;
+  parser = lxb_html_parser_create();
+  status = lxb_html_parser_init(parser);
+
+  if (status != LXB_STATUS_OK) {
+    m_site->finish_bad(url, true);
+    return;
+  }
+
+  auto urls = find_links_lex(parser, buf, size, effective_url);
+
+  lxb_html_parser_destroy(parser);
+
+  m_site->finish(url, urls);
+}
+
+void curl_data::finish_bad_http(int code) {
+  m_site->finish_bad(url, true);
+}
+
+void curl_data::finish_bad_net(CURLcode res) {
+  if (unchanged) {
+    //m_site->finish_unchanged(url);
+    m_site->finish_bad(url, false);
+  } else {
+    if (res != CURLE_WRITE_ERROR) {
+      printf("miss %s %s\n", curl_easy_strerror(res), url.url.c_str());
+      m_site->finish_bad(url, true);
+    } else {
+      m_site->finish_bad(url, false);
+    }
+  }
+}
+
 CURL *make_handle(site* s, index_url u)
 {
   curl_data *d = new curl_data(s, u, 1024 * 1024 * 10);
@@ -174,17 +305,7 @@ CURL *make_handle(site* s, index_url u)
 void
 scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid)
 {
-  lxb_status_t status;
-  lxb_html_parser_t *parser;
-  parser = lxb_html_parser_create();
-  status = lxb_html_parser_init(parser);
-
   printf("thread %i started\n", tid);
-
-  if (status != LXB_STATUS_OK) {
-    printf("%i Failed to create HTML parser\n", tid);
-    exit(1);
-  }
 
   size_t max_con = 300;
   size_t max_host = 6;
@@ -274,32 +395,12 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid)
           long res_status;
           curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &res_status);
           if (res_status == 200) {
-            char *ctype;
-            curl_easy_getinfo(handle, CURLINFO_CONTENT_TYPE, &ctype);
-
-            d->save();
-
-            auto urls = find_links_lex(parser, d, std::string(url));
-
-            d->m_site->finish(d->url, urls);
-
+            d->finish(std::string(url));
           } else {
-            d->m_site->finish_bad_http(d->url, (int) res_status);
+            d->finish_bad_http((int) res_status);
           }
-
         } else {
-          if (d->unchanged) {
-            d->m_site->finish_unchanged(d->url);
-
-          } else {
-            bool bad = false;
-            if (res != CURLE_WRITE_ERROR) {
-              printf("miss %s %s\n", curl_easy_strerror(res), d->url.url.c_str());
-              bad = true;
-            }
-
-            d->m_site->finish_bad_net(d->url, bad);
-          }
+          d->finish_bad_net(res);
         }
 
         delete d;
@@ -313,7 +414,6 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid)
   }
 
   curl_multi_cleanup(multi_handle);
-  lxb_html_parser_destroy(parser);
 
   printf("%i ending\n", tid);
 }

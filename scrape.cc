@@ -25,75 +25,6 @@
 
 namespace scrape {
 
-void curl_data::save()
-{
-  std::ofstream file;
-
-  if (buf == NULL) {
-    printf("save '%s' but no buffer\n", url.url.c_str());
-    return;
-  }
-
-  file.open(url.path, std::ios::out | std::ios::binary | std::ios::trunc);
-
-  if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s for %s\n", url.path.c_str(), url.url.c_str());
-    return;
-  }
-
-  file.write(buf, size);
-
-  file.close();
-}
-
-size_t curl_cb_buffer_write(void *contents, size_t sz, size_t nmemb, void *ctx)
-{
-  curl_data *d = (curl_data *) ctx;
-  size_t realsize = sz * nmemb;
-
-  if (d->max < d->size + realsize) {
-    return 0;
-  }
-
-  if (d->buf == NULL) {
-    d->buf = (char *) malloc(d->max);
-    if (d->buf == NULL) {
-      return 0;
-    }
-  }
-
-  memcpy(&(d->buf[d->size]), contents, realsize);
-  d->size += realsize;
-
-  return realsize;
-}
-
-size_t curl_cb_header_write(char *buffer, size_t size, size_t nitems, void *ctx) {
-  curl_data *d = (curl_data *) ctx;
-
-  buffer[nitems*size] = 0;
-
-  if (strstr(buffer, "content-type:")) {
-    if (strstr(buffer, "text/html") == NULL) {
-      return 0;
-    }
-
-  } else if (strstr(buffer, "Last-Modified: ")) {
-    char *s = buffer + strlen("Last-Modified: ");
-
-    tm tm;
-    strptime(s, "%a, %d %b %Y %H:%M:%S", &tm);
-    time_t time = mktime(&tm);
-
-    if (d->url.last_scanned > time) {
-      d->unchanged = true;
-      return 0;
-    }
-  }
-
-  return nitems * size;
-}
-
 bool has_suffix(std::string const &s, std::string const &suffix) {
   if (s.length() >= suffix.length()) {
     return (0 == s.compare(s.length() - suffix.length(), suffix.length(), suffix));
@@ -241,24 +172,7 @@ void site::finish(
   active--;
 }
 
-void site::finish_bad_http(index_url url, int code) {
-  url.last_scanned = time(NULL);
-  url.ok = false;
-
-  url_bad.push_back(url);
-  active--;
-
-  if (code == 404 || code == 301) {
-    return;
-  } else if (code > 400) {
-    fail_web++;
-  } else {
-    printf("miss %d %s\n", code, url.url.c_str());
-    fail_web++;
-  }
-}
-
-void site::finish_bad_net(index_url url, bool actually_bad) {
+void site::finish_bad(index_url url, bool actually_bad) {
   url.last_scanned = time(NULL);
   url.ok = false;
 
@@ -266,7 +180,7 @@ void site::finish_bad_net(index_url url, bool actually_bad) {
   active--;
 
   if (actually_bad) {
-    fail_net++;
+    fail++;
   }
 }
 
@@ -302,15 +216,9 @@ bool site::finished() {
     return true;
   }
 
-  if (fail_net > 10 && fail_net > 1 + url_scanned.size() / 4) {
-    printf("%s reached max fail net %i / %lu\n", host.c_str(),
-        fail_net, url_scanned.size());
-    return true;
-  }
-
-  if (fail_web > 10 && fail_web > 1 + url_scanned.size() / 2) {
-    printf("%s reached max fail web %i / %lu\n", host.c_str(),
-        fail_web, url_scanned.size());
+  if (fail > 10 && fail > 1 + url_scanned.size() / 4) {
+    printf("%s reached max fail %i / %lu\n", host.c_str(),
+        fail, url_scanned.size());
     return true;
   }
 
