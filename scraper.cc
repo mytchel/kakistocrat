@@ -150,6 +150,7 @@ CURL *make_handle(site* s, index_url u)
 
   curl_easy_setopt(curl_handle, CURLOPT_PRIVATE, d);
   curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, curl_cb_header_write);
+  curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, d);
   curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_cb_buffer_write);
   curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, d);
   curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
@@ -287,13 +288,18 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid)
           }
 
         } else {
-          bool bad = false;
-          if (res != CURLE_WRITE_ERROR) {
-            printf("miss %s %s\n", curl_easy_strerror(res), d->url.url.c_str());
-            bad = true;
-          }
+          if (d->unchanged) {
+            d->m_site->finish_unchanged(d->url);
 
-          d->m_site->finish_bad_net(d->url, bad);
+          } else {
+            bool bad = false;
+            if (res != CURLE_WRITE_ERROR) {
+              printf("miss %s %s\n", curl_easy_strerror(res), d->url.url.c_str());
+              bad = true;
+            }
+
+            d->m_site->finish_bad_net(d->url, bad);
+          }
         }
 
         delete d;

@@ -26,24 +26,32 @@ struct page_id {
 };
 
 struct page {
-  bool scraped;
   std::uint32_t id;
   std::string url;
   std::string path;
+
+  time_t last_scanned{0};
+  bool valid{false};
+  bool scraped{false};
+
   std::vector<page_id> links;
 
-  page(uint32_t i, std::string u, std::string p, bool s) :
-    id(i), url(u), path(p), scraped(s) {}
+  page(uint32_t i, std::string u, std::string p) :
+    id(i), url(u), path(p) {}
 
-  page(uint32_t i, std::string u,
-      std::string p, bool s, std::vector<page_id> l) :
-    id(i), url(u), path(p), scraped(s), links(l) {}
+  page(uint32_t i, std::string u, std::string p, time_t t, bool v, bool s) :
+    id(i), url(u), path(p), last_scanned(t), valid(v), scraped(s) {}
+
+  page(uint32_t i, std::string u, std::string p, time_t t, bool v, bool s,
+        std::vector<page_id> l) :
+    id(i), url(u), path(p), last_scanned(t), valid(v), scraped(s), links(l) {}
 };
 
 struct site {
   std::uint32_t id;
   std::string host;
   size_t level;
+
   bool scraped{false};
   bool scraping{false};
 

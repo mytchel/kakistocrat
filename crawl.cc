@@ -13,6 +13,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstdint>
+#include <ctime>
 
 #include "util.h"
 #include "crawl.h"
@@ -40,10 +41,17 @@ void index::save(std::string path)
     file << "\n";
 
     for (auto &p: site.pages) {
+
+      std::tm * ptm = std::gmtime(&p.last_scanned);
+      char t_buffer[32];
+      std::strftime(t_buffer, 32, "%Y-%m-%d %H:%M:%S", ptm);
+
       file << "\t";
       file << p.id << "\t";
       file << p.url << "\t";
       file << p.path << "\t";
+      file << t_buffer << "\t";
+      file << p.valid << "\t";
       file << p.scraped;
 
       for (auto &l: p.links) {
@@ -95,15 +103,25 @@ void index::load(std::string path)
       std::string id_s;
       std::string url;
       std::string path;
+      std::string time_s;
+      std::string valid_s;
       std::string scraped_s;
 
       std::getline(ss, tmp, '\t');
       std::getline(ss, id_s, '\t');
       std::getline(ss, url, '\t');
       std::getline(ss, path, '\t');
+      std::getline(ss, time_s, '\t');
+      std::getline(ss, valid_s, '\t');
       std::getline(ss, scraped_s, '\t');
 
       uint32_t id = std::stoi(id_s);
+
+      tm tm;
+      strptime(time_s.c_str(), "%Y-%m-%d %H:%M:%S", &tm);
+      time_t time = mktime(&tm);
+
+      bool valid = valid_s == "1";
       bool scraped = scraped_s == "1";
 
       std::vector<page_id> links;
@@ -114,7 +132,7 @@ void index::load(std::string path)
       }
 
       auto &site = sites.back();
-      site.pages.emplace_back(id, url, path, scraped, links);
+      site.pages.emplace_back(id, url, path, time, valid, scraped, links);
     }
   }
 

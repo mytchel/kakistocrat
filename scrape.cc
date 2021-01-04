@@ -15,6 +15,7 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <ctime>
 
 #include <chrono>
 #include <thread>
@@ -47,30 +48,45 @@ void curl_data::save()
 
 size_t curl_cb_buffer_write(void *contents, size_t sz, size_t nmemb, void *ctx)
 {
-  curl_data *buf = (curl_data *) ctx;
+  curl_data *d = (curl_data *) ctx;
   size_t realsize = sz * nmemb;
 
-  if (buf->max < buf->size + realsize) {
+  if (d->max < d->size + realsize) {
     return 0;
   }
 
-  if (buf->buf == NULL) {
-    buf->buf = (char *) malloc(buf->max);
-    if (buf->buf == NULL) {
+  if (d->buf == NULL) {
+    d->buf = (char *) malloc(d->max);
+    if (d->buf == NULL) {
       return 0;
     }
   }
 
-  memcpy(&(buf->buf[buf->size]), contents, realsize);
-  buf->size += realsize;
+  memcpy(&(d->buf[d->size]), contents, realsize);
+  d->size += realsize;
 
   return realsize;
 }
 
-size_t curl_cb_header_write(char *buffer, size_t size, size_t nitems, void *userdata) {
+size_t curl_cb_header_write(char *buffer, size_t size, size_t nitems, void *ctx) {
+  curl_data *d = (curl_data *) ctx;
+
   buffer[nitems*size] = 0;
+
   if (strstr(buffer, "content-type:")) {
     if (strstr(buffer, "text/html") == NULL) {
+      return 0;
+    }
+
+  } else if (strstr(buffer, "Last-Modified: ")) {
+    char *s = buffer + strlen("Last-Modified: ");
+
+    tm tm;
+    strptime(s, "%a, %d %b %Y %H:%M:%S", &tm);
+    time_t time = mktime(&tm);
+
+    if (d->url.last_scanned > time) {
+      d->unchanged = true;
       return 0;
     }
   }
@@ -192,15 +208,9 @@ void site::finish(
     url.links.insert(u);
 
     if (u_host == host) {
-      bool bad = false;
-      for (auto &b: url_bad) {
-        if (b == u) {
-          bad = true;
-          break;
-        }
+      if (index_check(url_bad, u)) {
+        continue;
       }
-
-      if (bad) continue;
 
       if (index_check(url_scanned, u)) {
         continue;
@@ -224,27 +234,37 @@ void site::finish(
     }
   }
 
-  active--;
+  url.last_scanned = time(NULL);
+  url.ok = true;
+
   url_scanned.push_back(url);
+  active--;
 }
 
-void site::finish_bad_http(index_url u, int code) {
+void site::finish_bad_http(index_url url, int code) {
+  url.last_scanned = time(NULL);
+  url.ok = false;
+
+  url_bad.push_back(url);
   active--;
-  url_bad.push_back(u.url);
 
   if (code == 404 || code == 301) {
     return;
   } else if (code > 400) {
     fail_web++;
   } else {
-    printf("miss %d %s\n", code, u.url.c_str());
+    printf("miss %d %s\n", code, url.url.c_str());
     fail_web++;
   }
 }
 
-void site::finish_bad_net(index_url u, bool actually_bad) {
+void site::finish_bad_net(index_url url, bool actually_bad) {
+  url.last_scanned = time(NULL);
+  url.ok = false;
+
+  url_bad.push_back(url);
   active--;
-  url_bad.push_back(u.url);
+
   if (actually_bad) {
     fail_net++;
   }
@@ -253,6 +273,7 @@ void site::finish_bad_net(index_url u, bool actually_bad) {
 index_url site::pop_next() {
   auto best = url_scanning.begin();
 
+  /*
   // TODO: keep the list sorted?
   for (auto u = url_scanning.begin(); u != url_scanning.end(); u++) {
     // TODO: base on count too
@@ -260,7 +281,7 @@ index_url site::pop_next() {
       best = u;
     }
   }
-
+*/
   active++;
 
   index_url r(*best);
@@ -278,7 +299,6 @@ bool site::finished() {
   }
 
   if (url_scanned.size() >= max_pages) {
-    printf("%s reached max pages\n", host.c_str());
     return true;
   }
 

@@ -43,8 +43,7 @@ bool check_blacklist(
   return false;
 }
 
-page* site_find_add_page(site *site,
-    std::string url)
+page* site_find_add_page(site *site, std::string url)
 {
   auto p = site->find_page(url);
   if (p != NULL) {
@@ -60,7 +59,7 @@ page* site_find_add_page(site *site,
 
   auto id = site->next_id++;
 
-  return &site->pages.emplace_back(id, url, path, false);
+  return &site->pages.emplace_back(id, url, path);
 }
 
 size_t insert_site_index(
@@ -73,11 +72,13 @@ size_t insert_site_index(
   for (auto &u: site_index) {
     auto p = isite->find_page(u.url);
     if (p == NULL) {
-      isite->pages.emplace_back(isite->next_id++, u.url, u.path, true);
+      isite->pages.emplace_back(isite->next_id++,
+          u.url, u.path, u.last_scanned, u.ok, true);
 
     } else {
+      p->last_scanned = u.last_scanned;
+      p->valid = u.ok;
       p->scraped = true;
-      p->path = u.path;
     }
   }
 
@@ -203,6 +204,18 @@ void insert_site_index_seed(
   }
 }
 
+bool have_next_site(index &index)
+{
+  for (auto &site: index.sites) {
+    if (site.scraping) continue;
+    if (site.scraped) continue;
+
+    return true;
+  }
+
+  return false;
+}
+
 site* get_next_site(index &index)
 {
   site *s = NULL;
@@ -233,6 +246,7 @@ void crawl(std::vector<level> levels, index &index,
   size_t scrapped_sites = 0;
 
   for (auto &s: index.sites) {
+    s.scraped = false; // TODO
     if (!s.scraped) continue;
 
     size_t fails = 0;
@@ -274,7 +288,7 @@ void crawl(std::vector<level> levels, index &index,
   std::list<scrape::site> scrapping_sites;
 
   int iteration = 0;
-  while (true) {
+  while (!scrapping_sites.empty() || have_next_site(index)) {
     if (++iteration % 50 == 0) {
       printf("main crawled %i / %i sites\n",
           scrapped_sites, index.sites.size());
@@ -293,23 +307,18 @@ void crawl(std::vector<level> levels, index &index,
         all_blocked &= !thread_stats[i];
       }
 
-      if (thread_stats[i]) {
+      if (thread_stats[i] && have_next_site(index)) {
         auto site = get_next_site(index);
-        if (site != NULL) {
-          site->scraping = true;
+        site->scraping = true;
 
-          scrapping_sites.emplace_back(site->host, levels[site->level].max_pages);
-          auto &s = scrapping_sites.back();
+        scrapping_sites.emplace_back(site->host, levels[site->level].max_pages);
+        auto &s = scrapping_sites.back();
 
-          for (auto &p: site->pages) {
-            s.url_scanning.emplace_back(p.url, p.path);
-          }
-
-          &s >> in_channels[i];
-
-        } else {
-          delay = true;
+        for (auto &p: site->pages) {
+          s.url_scanning.emplace_back(p.url, p.path, p.last_scanned, p.valid);
         }
+
+        &s >> in_channels[i];
       }
 
       if (out_channels[i].empty()) continue;
@@ -339,20 +348,26 @@ void crawl(std::vector<level> levels, index &index,
       scrapped_sites++;
     }
 
-    if (delay || all_blocked) {
+    if (all_blocked || !have_next_site(index)) {
       std::this_thread::sleep_for(std::chrono::milliseconds(250));
     } else {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
   }
 
+  printf("main finished\n");
+
   index.save("index.scrape");
 
+  printf("main cleanup threads\n");
   // Wait for all threads to finish
   for (size_t i = 0; i < n_threads; i++) {
-    //std::nullptr_t >> in_channels[i];
+    scrape::site *s = NULL;
+    s >> in_channels[i];
     threads.at(i).join();
   }
+
+  printf("main end\n");
 }
 
 }

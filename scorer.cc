@@ -78,7 +78,7 @@ void scores::init(crawl::index &index)
 
   for (auto &s: index.sites) {
     for (auto &p: s.pages) {
-      if (p.scraped) {
+      if (p.valid) {
         n_pages++;
       }
     }
@@ -114,7 +114,7 @@ void scores::init(crawl::index &index)
 
   for (auto &s: index.sites) {
     for (auto &p: s.pages) {
-      if (!p.scraped) continue;
+      if (!p.valid) continue;
 
       crawl::page_id id(s.id, p.id);
 
