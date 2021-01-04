@@ -29,7 +29,10 @@ std::string get_proto(std::string url) {
     if (c == ':') {
       return std::string(s.begin(), s.end());
 
-    } else if (!('a' <= c && c <= 'z') && !('A' <= c && c <= 'Z')) {
+    } else if (
+        !('a' <= c && c <= 'z') &&
+        !('A' <= c && c <= 'Z') &&
+        !('0' <= c && c <= '9')) {
       break;
 
     } else {
@@ -49,7 +52,9 @@ std::string get_host(std::string url) {
     chars++;
 
     if (c != '/' && c != ':' && c != '@'
-            && !('a' <= c && c <= 'z') && !('A' <= c && c <= 'Z')
+            && !('a' <= c && c <= 'z')
+            && !('A' <= c && c <= 'Z')
+            && !('0' <= c && c <= '9')
             && c != '.' && c != '-')
     {
       return "";
@@ -72,8 +77,6 @@ std::string get_host(std::string url) {
         } else {
           s.push_back(c);
         }
-      } else if (c != '/') {
-        return "";
       }
     }
   }
