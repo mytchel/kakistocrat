@@ -22,7 +22,7 @@ void hash_table_init(struct hash_table *h)
 		}
 	}
 
-void hash_table_insert(struct hash_table *h, struct str key, uint32_t val)
+void hash_table_insert(struct hash_table *h, struct str *key, uint32_t val)
 	{
 	uint32_t index = hash(str_c(key));
 	if (h->store[index] == NULL)

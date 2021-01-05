@@ -1,10 +1,10 @@
-#include "str.h"
+#include "../str.h"
 #include "memory.h"
 #include "posting.h"
 
 #include "bst.h"
 
-void bst_insert(struct bst *b, struct str key, uint32_t val, uint32_t *length)
+void bst_insert(struct bst *b, struct str *key, uint32_t val, uint32_t *length)
 	{
 	for (;;)
 		{

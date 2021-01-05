@@ -13,12 +13,17 @@ struct tokenizer {
      document = doc;
   }
 
-  token_type next(struct str buffer);
-  void skip_tag(char *tag_name_main, struct str tok_buffer);
+  token_type next(struct str *buffer);
+  void skip_tag(char *tag_name_main, struct str *tok_buffer);
 };
 
-void get_tag_name(char *buf, char *s);
-bool should_skip_tag(char *t);
+bool should_skip_tag(char *tag_name);
+
+const size_t tag_name_max_len = 64;
+void get_tag_name(char *tag_name, char *token);
+
+const size_t attr_value_max_len = 512;
+bool get_tag_attr(char *attr_value, const char *attr_name, char *token);
 
 }
 

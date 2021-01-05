@@ -21,6 +21,7 @@
 
 extern "C" {
 
+#include "str.h"
 #include "x_cocomel/dynamic_array_kv_64.h"
 #include "x_cocomel/dynamic_array_kv_32.h"
 #include "x_cocomel/dynamic_array_64.h"
@@ -34,6 +35,11 @@ extern "C" {
 #include "crawl.h"
 #include "scorer.h"
 #include "tokenizer.h"
+
+static inline void string_tolower(char *str) {
+	while ((*str = tolower(*str)))
+		++str;
+}
 
 static struct dynamic_array_kv_64 *intersect_postings(struct dynamic_array_64 *postings) {
 	struct dynamic_array_kv_64 *result = (struct dynamic_array_kv_64 *) malloc(sizeof(struct dynamic_array_kv_64));
@@ -122,8 +128,7 @@ struct dynamic_array_kv_64 *search(char *index, char *line) {
 
 	char tok_buffer_store[260]; // Provide underlying storage for tok_buffer
 	struct str tok_buffer;
-//	str_init(&tok_buffer);
-	tok_buffer.store = tok_buffer_store;
+	str_init(&tok_buffer, tok_buffer_store, sizeof(tok_buffer_store));
 
 	tokenizer::token_type token;
   tokenizer::tokenizer tok;
@@ -133,10 +138,10 @@ struct dynamic_array_kv_64 *search(char *index, char *line) {
 	dynamic_array_64_init(&terms);
 	tok.init(line, strlen(line));
 	do {
-		token = tok.next(tok_buffer);
+		token = tok.next(&tok_buffer);
     if (token == tokenizer::WORD) {
-		  string_tolower(str_c(tok_buffer));
-		  dynamic_array_64_append(&terms, (uint64_t)str_dup_c(tok_buffer));
+		  string_tolower(str_c(&tok_buffer));
+		  dynamic_array_64_append(&terms, (uint64_t)str_dup_c(&tok_buffer));
 		}
 	} while (token != tokenizer::END);
 

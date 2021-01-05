@@ -1,16 +1,17 @@
+#include <stdio.h>
 #include <stdbool.h>
 #include <ctype.h>
 #include <stdlib.h>
 
 extern "C" {
-#include "x_cocomel/str.h"
+#include "str.h"
 }
 
 #include "tokenizer.h"
 
 namespace tokenizer {
 
-token_type tokenizer::next(struct str buffer) {
+token_type tokenizer::next(struct str *buffer) {
 	for (;;) {
 		// Whitespace
 		while(index < length && isspace(document[index]))
@@ -22,7 +23,7 @@ token_type tokenizer::next(struct str buffer) {
 
       // Ignored tags
     } else if (document[index] == '<') {
-      size_t i = 0;
+      size_t i = 0, b = 0;
 			char *buf = str_c(buffer);
 
       index++;
@@ -30,29 +31,36 @@ token_type tokenizer::next(struct str buffer) {
         if (document[index + i] == '>')
           break;
 
-        buf[i] = document[index + i];
+        if (i + 1 < str_max(buffer))
+          buf[b++] = document[index + i];
+
         i++;
       }
 
-      if (i > 0 && buf[i-1] == '/') {
-        buf[i-1] = '\0';
+      if (b > 0 && buf[b-1] == '/') {
+        buf[b-1] = '\0';
+			  str_resize(buffer, b);
 			  return TAGC;
 
       } else {
-        buf[i] = '\0';
+        buf[b++] = '\0';
+			  str_resize(buffer, b);
 			  return TAG;
       }
 
 		// Number
     } else if (isdigit(document[index])) {
-			int i = 0;
+			int i = 0, b = 0;
 			char *buf = str_c(buffer);
 			while (i < 256 && i + index < length && isdigit(document[index + i])) {
-				buf[i] = document[index + i];
+        if (i + 1 < str_max(buffer))
+				  buf[b++] = document[index + i];
+
 				i++;
 			}
-			buf[i] = '\0';
-			str_resize(buffer, i);
+
+			buf[b++] = '\0';
+			str_resize(buffer, b);
 
 			index += i;
 
@@ -60,14 +68,17 @@ token_type tokenizer::next(struct str buffer) {
 
 		// Word
     } else if (isalpha(document[index])) {
-			int i = 0;
+			int i = 0, b = 0;
 			char *buf = str_c(buffer);
 			while (i < 256 && i + index < length && isalpha(document[index + i])) {
-				buf[i] = tolower(document[index + i]);
+        if (i + 1 < str_max(buffer))
+				  buf[b++] = document[index + i];
+
 				i++;
 			}
-			buf[i] = '\0';
-			str_resize(buffer, i);
+
+      buf[b++] = '\0';
+			str_resize(buffer, b);
 
 			index += i;
 
@@ -82,18 +93,18 @@ token_type tokenizer::next(struct str buffer) {
 	return END;
 }
 
-void tokenizer::skip_tag(char *tag_name_main, struct str tok_buffer) {
+void tokenizer::skip_tag(char *tag_name_main, struct str *tok_buffer) {
 	enum token_type token;
 
-  char tag_name_end[33];
+  char tag_name_end[tag_name_max_len];
   tag_name_end[0] = '/';
-  strcpy(tag_name_end + 1, tag_name_main);
+  strncpy(tag_name_end + 1, tag_name_main, tag_name_max_len);
 
   do {
     token = next(tok_buffer);
 
     if (token == TAG) {
-      char tag_name[32];
+      char tag_name[tag_name_max_len];
       get_tag_name(tag_name, str_c(tok_buffer));
 
       if (strcmp(tag_name_end, tag_name) == 0) {
@@ -108,7 +119,7 @@ void tokenizer::skip_tag(char *tag_name_main, struct str tok_buffer) {
 
 void get_tag_name(char *buf, char *s) {
   size_t i;
-  for (i = 0; i < 31; i++) {
+  for (i = 0; i < tag_name_max_len - 1; i++) {
     char c = s[i];
     if (c == '\0' || c == ' ' || c == '\t') break;
     else buf[i] = c;
@@ -117,10 +128,88 @@ void get_tag_name(char *buf, char *s) {
   buf[i] = '\0';
 }
 
+bool get_tag_attr(char *attr_value, const char *attr_name, char *token) {
+  size_t i;
+  bool in_name = false;
+  bool in_value = false;
+  bool in_quote = false;
+  bool name_match = false;
+  bool name_matching = false;
+  size_t name_i = 0;
+  size_t v = 0;
+
+  for (i = 0; token[i] != '\0'; i++) {
+    if (in_value) {
+      if (token[i] == '\'' || token[i] == '"') {
+        in_quote = !in_quote;
+      }
+
+      if (name_match) {
+        if (v < attr_value_max_len) {
+          attr_value[v++] = token[i];
+        }
+      }
+
+      if (isspace(token[i])) {
+        if (in_quote) {
+          continue;
+        }
+      } else {
+        continue;
+      }
+    }
+
+    if (isspace(token[i])) {
+      if (name_match) {
+        attr_value[v++] = '\0';
+        return true;
+      }
+
+      in_name = false;
+      in_value = false;
+
+      continue;
+    }
+
+    if (token[i] == '=') {
+      in_name = false;
+      in_value = true;
+
+    } else {
+      if (!in_name) {
+        in_name = true;
+        name_i = 0;
+        name_match = false;
+        name_matching = true;
+      }
+
+      if (name_matching && !name_match && attr_name[name_i] == token[i]) {
+        name_i++;
+        name_matching = true;
+        if (attr_name[name_i] == '\0') {
+          name_match = true;
+        }
+
+      } else {
+        name_matching = false;
+        name_match = false;
+      }
+    }
+  }
+
+  if (name_match) {
+    attr_value[v++] = '\0';
+    return true;
+  }
+
+  return false;
+}
+
 bool should_skip_tag(char *t) {
   return strcmp(t, "script") == 0 ||
          strcmp(t, "style") == 0 ||
          strcmp(t, "head") == 0;
 }
+
 }
 

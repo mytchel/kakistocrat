@@ -9,8 +9,6 @@
 #include <sys/types.h>
 
 #include <curl/curl.h>
-#include "lexbor/html/html.h"
-#include <lexbor/dom/dom.h>
 
 #include <list>
 #include <vector>
@@ -27,6 +25,12 @@
 #include "util.h"
 #include "scrape.h"
 #include "scraper.h"
+
+extern "C" {
+#include "str.h"
+}
+
+#include "tokenizer.h"
 
 namespace scrape {
 
@@ -123,114 +127,90 @@ void curl_data::save()
   file.close();
 }
 
-std::list<std::string> find_links_lex(
-      lxb_html_parser_t *parser,
+std::optional<std::string> process_link(
+    std::string page_proto,
+    std::string page_host,
+    std::string page_dir,
+    std::string url)
+{
+  // http://
+  // https://
+  // #same-page skip
+  // /from-root
+  // from-current-dir
+  // javascript: skip
+  // //host/page keep protocol
+
+  if (url.empty() || url.front() == '#')
+    return {};
+
+  if (!util::bare_minimum_valid_url(url))
+    return {};
+
+  auto proto = util::get_proto(url);
+  if (proto.empty()) {
+    proto = page_proto;
+
+  } else if (!want_proto(proto))  {
+    return {};
+  }
+
+  auto host = util::get_host(url);
+  if (host.empty()) {
+    host = page_host;
+  }
+
+  auto path = util::get_path(url);
+
+  if (bad_suffix(path))
+    return {};
+
+  if (bad_prefix(path))
+    return {};
+
+  if (!path.empty() && path.front() != '/') {
+    path = page_dir + "/" + path;
+  }
+
+  return proto + "://" + host + path;
+}
+
+std::list<std::string> find_links(
       char *buf, size_t buf_len,
       std::string page_url)
 {
   std::list<std::string> urls;
 
-  lxb_status_t status;
-  lxb_dom_element_t *element;
-  lxb_html_document_t *document;
-  lxb_dom_collection_t *collection;
+  char tok_buffer_store[1024];
+	struct str tok_buffer;
+	str_init(&tok_buffer, tok_buffer_store, sizeof(tok_buffer_store));
 
-  if (buf == NULL) {
-    printf("buffer for %s has no data\n", page_url.c_str());
-    return urls;
-  }
+  tokenizer::token_type token;
+  tokenizer::tokenizer tok;
 
-  document = lxb_html_parse(parser, (const lxb_char_t *) buf, buf_len);
-  if (document == NULL) {
-    printf("Failed to create Document object\n");
-    return urls;
-  }
-
-  collection = lxb_dom_collection_make(&document->dom_document, 128);
-  if (collection == NULL) {
-    printf("Failed to create Collection object");
-    exit(1);
-  }
-
-  if (document->body == NULL) {
-    return urls;
-  }
-
-  status = lxb_dom_elements_by_tag_name(lxb_dom_interface_element(document->body),
-                                        collection,
-                                        (const lxb_char_t *) "a", 1);
-  if (status != LXB_STATUS_OK) {
-      printf("Failed to get elements by name\n");
-      exit(1);
-  }
+  tok.init(buf, buf_len);
 
   auto page_proto = util::get_proto(page_url);
   auto page_host = util::get_host(page_url);
   auto page_dir = util::get_dir(util::get_path(page_url));
 
-  char attr_name[] = "href";
-  size_t attr_len = 4;
-  for (size_t i = 0; i < lxb_dom_collection_length(collection); i++) {
-      element = lxb_dom_collection_element(collection, i);
+  do {
+    token = tok.next(&tok_buffer);
 
-      size_t len;
-      char *s = (char *) lxb_dom_element_get_attribute(
-            element,
-            (const lxb_char_t*) attr_name,
-            attr_len,
-            &len);
-
-      if (s == NULL) {
-        continue;
+    if (token == tokenizer::TAG) {
+      char tag_name[tokenizer::tag_name_max_len];
+      tokenizer::get_tag_name(tag_name, str_c(&tok_buffer));
+      if (strcmp(tag_name, "a") == 0) {
+        char attr[tokenizer::attr_value_max_len];
+        if (tokenizer::get_tag_attr(attr, "href", str_c(&tok_buffer))) {
+          auto s = process_link(page_proto, page_host, page_dir, std::string(attr));
+          if (s.has_value()) {
+            urls.push_back(*s);
+          }
+        }
       }
-
-      // http://
-      // https://
-      // #same-page skip
-      // /from-root
-      // from-current-dir
-      // javascript: skip
-      // //host/page keep protocol
-
-      std::string url(s);
-
-      if (url.empty() || url.front() == '#')
-        continue;
-
-      if (!util::bare_minimum_valid_url(url))
-        continue;
-
-      auto proto = util::get_proto(url);
-      if (proto.empty()) {
-        proto = page_proto;
-
-      } else if (!want_proto(proto))  {
-        continue;
-      }
-
-      auto host = util::get_host(url);
-      if (host.empty()) {
-        host = page_host;
-      }
-
-      auto path = util::get_path(url);
-
-      if (bad_suffix(path))
-        continue;
-
-      if (bad_prefix(path))
-        continue;
-
-      if (!path.empty() && path.front() != '/') {
-        path = page_dir + "/" + path;
-      }
-
-      auto fixed = proto + "://" + host + path;
-      urls.push_back(fixed);
-  }
-
-  lxb_dom_collection_destroy(collection, true);
-  lxb_html_document_destroy(document);
+    }
+  } while (token != tokenizer::END);
 
   return urls;
 }
@@ -238,19 +218,7 @@ std::list<std::string> find_links_lex(
 void curl_data::finish(std::string effective_url) {
   save();
 
-  lxb_status_t status;
-  lxb_html_parser_t *parser;
-  parser = lxb_html_parser_create();
-  status = lxb_html_parser_init(parser);
-
-  if (status != LXB_STATUS_OK) {
-    m_site->finish_bad(url, true);
-    return;
-  }
-
-  auto urls = find_links_lex(parser, buf, size, effective_url);
-
-  lxb_html_parser_destroy(parser);
+  auto urls = find_links(buf, size, effective_url);
 
   m_site->finish(url, urls);
 }
@@ -261,7 +229,7 @@ void curl_data::finish_bad_http(int code) {
 
 void curl_data::finish_bad_net(CURLcode res) {
   if (unchanged) {
-    //m_site->finish_unchanged(url);
+   //m_site->finish_unchanged(url);
     m_site->finish_bad(url, false);
   } else {
     if (res != CURLE_WRITE_ERROR) {

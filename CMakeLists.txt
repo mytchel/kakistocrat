@@ -12,24 +12,24 @@ set(ENV{PKG_CONFIG_SYSROOT_DIR} ${CMAKE_SYSROOT})
 
 find_package(CURL REQUIRED)
 
-add_subdirectory(x_lexbor)
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
 
-add_executable(crawl crawl_main.cc crawler.cc crawl.cc scraper.cc scrape.cc util.cc)
+add_executable(crawl crawl_main.cc crawler.cc crawl.cc scraper.cc scrape.cc tokenizer.cc
+    util.cc
+    str.c
+	x_cocomel/memory.c)
 
 target_include_directories(crawl PUBLIC ${CURL_INCLUDE_DIRS})
 target_include_directories(crawl PUBLIC ${LEXBOR_INCLUDES})
 
 target_link_libraries(crawl ${CURL_LIBRARIES})
-target_link_libraries(crawl lexbor)
-
-set(THREADS_PREFER_PTHREAD_FLAG ON)
-find_package(Threads REQUIRED)
 
 target_link_libraries(crawl Threads::Threads)
 
 add_executable(scorer score_main.cc scorer.cc crawl.cc util.cc)
 
-add_executable(index index.cc crawl.cc util.cc tokenizer.cc
+add_executable(index index.cc crawl.cc util.cc tokenizer.cc str.c
 	x_cocomel/bst.c
 	x_cocomel/hash_table.c
 	x_cocomel/memory.c
@@ -37,14 +37,13 @@ add_executable(index index.cc crawl.cc util.cc tokenizer.cc
 	x_cocomel/vbyte)
 
 target_link_libraries(index ${CURL_LIBRARIES})
-target_link_libraries(index lexbor)
 target_link_libraries(index Threads::Threads)
 
 target_include_directories(index PUBLIC ${CURL_INCLUDE_DIRS})
 target_include_directories(index PUBLIC ${LEXBOR_INCLUDES})
 
 
-add_executable(search search.cc scorer.cc crawl.cc util.cc tokenizer.cc
+add_executable(search search.cc scorer.cc crawl.cc util.cc tokenizer.cc str.c
 	x_cocomel/bst.c
 	x_cocomel/hash_table.c
 	x_cocomel/memory.c
@@ -52,7 +51,6 @@ add_executable(search search.cc scorer.cc crawl.cc util.cc tokenizer.cc
 	x_cocomel/vbyte)
 
 target_link_libraries(search ${CURL_LIBRARIES})
-target_link_libraries(search lexbor)
 target_link_libraries(search Threads::Threads)
 
 target_include_directories(search PUBLIC ${CURL_INCLUDE_DIRS})

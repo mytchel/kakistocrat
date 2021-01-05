@@ -20,6 +20,7 @@
 
 extern "C" {
 
+#include "str.h"
 #include "x_cocomel/dynamic_array_kv_64.h"
 #include "x_cocomel/posting.h"
 #include "x_cocomel/hash_table.h"
@@ -75,9 +76,9 @@ int main(int argc, char *argv[]) {
 
   char tok_buffer_store[516]; // Provide underlying storage for tok_buffer
 	struct str tok_buffer;
-	tok_buffer.store = tok_buffer_store;
-	tokenizer::token_type token;
+	str_init(&tok_buffer, tok_buffer_store, sizeof(tok_buffer_store));
 
+	tokenizer::token_type token;
   tokenizer::tokenizer tok;
 
   int i = 0;
@@ -107,18 +108,18 @@ int main(int argc, char *argv[]) {
 		  dynamic_array_kv_64_append(&docNos, id, 0);
 
       do {
-				token = tok.next(tok_buffer);
+				token = tok.next(&tok_buffer);
 
         if (token == tokenizer::TAG) {
-          char tag_name[32];
-          tokenizer::get_tag_name(tag_name, str_c(tok_buffer));
+          char tag_name[tokenizer::tag_name_max_len];
+          tokenizer::get_tag_name(tag_name, str_c(&tok_buffer));
           if (tokenizer::should_skip_tag(tag_name)) {
-            tok.skip_tag(tag_name, tok_buffer);
+            tok.skip_tag(tag_name, &tok_buffer);
           }
 
         } else if (token == tokenizer::WORD) {
 					dynamic_array_kv_64_back(&docNos)[1]++;
-					hash_table_insert(&dictionary, tok_buffer, docNos.length);
+					hash_table_insert(&dictionary, &tok_buffer, docNos.length);
 				}
 			} while (token != tokenizer::END);
 
