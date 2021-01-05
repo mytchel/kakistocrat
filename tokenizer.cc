@@ -142,9 +142,8 @@ bool get_tag_attr(char *attr_value, const char *attr_name, char *token) {
     if (in_value) {
       if (token[i] == '\'' || token[i] == '"') {
         in_quote = !in_quote;
-      }
 
-      if (name_match) {
+      } else if (name_match) {
         if (v < attr_value_max_len) {
           attr_value[v++] = token[i];
         }
