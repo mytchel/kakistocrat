@@ -335,6 +335,7 @@ void crawl(std::vector<level> levels, index &index,
       site->scraped = true;
       site->scraping = false;
 
+      // TODO: changes for unchanged?
       size_t added = insert_site_index(index, site, levels[site->level].max_add_sites,
           s->url_scanned, blacklist);
 

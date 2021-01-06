@@ -17,6 +17,8 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <sstream>
+#include <algorithm>
 
 #include <chrono>
 #include <thread>
@@ -34,18 +36,26 @@ extern "C" {
 
 namespace scrape {
 
+enum request_type { URL, ROBOTS, SITEMAP };
+
 struct curl_data {
   char *buf{NULL};
   size_t size{0};
   size_t max;
 
   site *m_site;
+
+  request_type req_type;
+
   index_url url;
 
   bool unchanged{false};
 
+  curl_data(site *s, request_type r, size_t m) :
+      m_site(s), req_type(r), url(), max(m) {}
+
   curl_data(site *s, index_url u, size_t m) :
-      m_site(s), url(u), max(m) {}
+      m_site(s), req_type(URL), url(u), max(m) {}
 
   ~curl_data() {
     if (buf) free(buf);
@@ -56,6 +66,9 @@ struct curl_data {
   void finish_bad_net(CURLcode res);
 
   void save();
+
+  std::list<std::string> find_links(std::string page_url);
+  void process_robots();
 };
 
 size_t curl_cb_buffer_write(void *contents, size_t sz, size_t nmemb, void *ctx)
@@ -175,9 +188,7 @@ std::optional<std::string> process_link(
   return proto + "://" + host + path;
 }
 
-std::list<std::string> find_links(
-      char *buf, size_t buf_len,
-      std::string page_url)
+std::list<std::string> curl_data::find_links(std::string page_url)
 {
   std::list<std::string> urls;
 
@@ -188,7 +199,7 @@ std::list<std::string> find_links(
   tokenizer::token_type token;
   tokenizer::tokenizer tok;
 
-  tok.init(buf, buf_len);
+  tok.init(buf, size);
 
   auto page_proto = util::get_proto(page_url);
   auto page_host = util::get_host(page_url);
@@ -215,29 +226,97 @@ std::list<std::string> find_links(
   return urls;
 }
 
-void curl_data::finish(std::string effective_url) {
-  save();
+void curl_data::process_robots() {
+  m_site->disallow_path.clear();
 
-  auto urls = find_links(buf, size, effective_url);
+  std::string file = std::string(buf, buf + size);
 
-  m_site->finish(url, urls);
+  std::istringstream fss(file);
+
+  printf("process robots %s\n", m_site->host.c_str());
+
+  bool matching_useragent = true;
+
+  std::string line;
+  while (std::getline(fss, line, '\n')) {
+    if (line.empty() || line[0] == '#') continue;
+
+    line.erase(std::remove_if(line.begin(), line.end(),
+            [](char c) { return std::isspace(static_cast<unsigned char>(c)); }),
+        line.end());
+
+    std::istringstream lss(line);
+
+    std::string key, value;
+    std::getline(lss, key, ':');
+    std::getline(lss, value);
+
+    if (key.empty() || value.empty()) continue;
+
+    printf("process robots %s : %s -> '%s' = '%s'\n", m_site->host.c_str(), line.c_str(), key.c_str(), value.c_str());
+    if (key == "User-agent") {
+      if (value == "*") {
+        matching_useragent = true;
+      } else {
+        matching_useragent = false;
+      }
+
+    } else if (key == "Disallow") {
+      if (matching_useragent) {
+        m_site->disallow_path.push_back(value);
+      }
+
+    } else if (key == "Sitemap") {
+
+    }
+  }
+
 }
 
+void curl_data::finish(std::string effective_url) {
+  if (req_type == URL) {
+    auto urls = find_links(effective_url);
+    save();
+    m_site->finish(url, urls);
+
+  } else if (req_type == ROBOTS) {
+    printf("got response for robots for %s\n", m_site->host.c_str());
+
+    process_robots();
+
+    m_site->getting_robots = false;
+    m_site->got_robots = true;
+  }
+}
+
+// TODO: try http after https for robots?
+
 void curl_data::finish_bad_http(int code) {
-  m_site->finish_bad(url, true);
+  if (req_type == URL) {
+    m_site->finish_bad(url, true);
+
+  } else if (req_type == ROBOTS) {
+    m_site->getting_robots = false;
+    m_site->got_robots = true;
+  }
 }
 
 void curl_data::finish_bad_net(CURLcode res) {
-  if (unchanged) {
-   //m_site->finish_unchanged(url);
-    m_site->finish_bad(url, false);
-  } else {
-    if (res != CURLE_WRITE_ERROR) {
-      printf("miss %s %s\n", curl_easy_strerror(res), url.url.c_str());
-      m_site->finish_bad(url, true);
+  if (req_type == URL) {
+    if (unchanged) {
+      m_site->finish_unchanged(url);
     } else {
-      m_site->finish_bad(url, false);
+      if (res != CURLE_WRITE_ERROR) {
+        printf("miss %s %s\n", curl_easy_strerror(res), url.url.c_str());
+        m_site->finish_bad(url, true);
+      } else {
+        m_site->finish_bad(url, false);
+      }
     }
+
+  } else if (req_type == ROBOTS) {
+    m_site->getting_robots = false;
+    m_site->got_robots = true;
   }
 }
 
@@ -254,7 +333,7 @@ CURL *make_handle(site* s, index_url u)
   curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, d);
   curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
   curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
-  curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 10L);
+  curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 3L);
   curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10L);
   curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 5L);
 
@@ -266,6 +345,33 @@ CURL *make_handle(site* s, index_url u)
   char url[util::max_url_len];
   strncpy(url, u.url.c_str(), sizeof(url));
   curl_easy_setopt(curl_handle, CURLOPT_URL, url);
+
+  return curl_handle;
+}
+
+CURL *make_handle_other(site* s, request_type r, std::string url)
+{
+  curl_data *d = new curl_data(s, r, 1024 * 1024 * 10);
+
+  CURL *curl_handle = curl_easy_init();
+
+  curl_easy_setopt(curl_handle, CURLOPT_PRIVATE, d);
+  curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_cb_buffer_write);
+  curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, d);
+  curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+  curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
+  curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 3L);
+  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10L);
+  curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 5L);
+
+  // Potentially stops issues but doesn't seem to change much.
+  curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1L);
+
+  curl_easy_setopt(curl_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
+
+  char c_url[util::max_url_len];
+  strncpy(c_url, url.c_str(), sizeof(c_url));
+  curl_easy_setopt(curl_handle, CURLOPT_URL, c_url);
 
   return curl_handle;
 }
@@ -314,9 +420,18 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid)
           continue;
         }
 
-        if ((*s)->have_next(max_host)) {
-          auto u = (*s)->pop_next();
-          curl_multi_add_handle(multi_handle, make_handle(*s, u));
+        if ((*s)->got_robots) {
+          if ((*s)->have_next(max_host)) {
+            auto u = (*s)->pop_next();
+            curl_multi_add_handle(multi_handle, make_handle(*s, u));
+            active_connections++;
+            adding = true;
+          }
+
+        } else if (!(*s) ->getting_robots) {
+          (*s) ->getting_robots = true;
+          std::string url = "https://" + (*s)->host + "/robots.txt";
+          curl_multi_add_handle(multi_handle, make_handle_other(*s, ROBOTS, url));
           active_connections++;
           adding = true;
         }

@@ -10,6 +10,8 @@ struct index_url {
 
   std::set<std::string> links;
 
+  index_url() : url(""), path("") {}
+
   index_url(std::string u, std::string p) :
     url(u), path(p) {}
 
@@ -33,6 +35,8 @@ struct site {
   std::list<index_url> url_bad;
 
   std::list<std::string> disallow_path;
+  bool getting_robots{false};
+  bool got_robots{false};
 
   size_t max_pages;
   size_t active{0};

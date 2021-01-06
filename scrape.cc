@@ -172,6 +172,13 @@ void site::finish(
   active--;
 }
 
+void site::finish_unchanged(index_url url) {
+  url.ok = true;
+
+  url_unchanged.push_back(url);
+  active--;
+}
+
 void site::finish_bad(index_url url, bool actually_bad) {
   url.last_scanned = time(NULL);
   url.ok = false;
@@ -212,13 +219,14 @@ bool site::finished() {
     return true;
   }
 
-  if (url_scanned.size() >= max_pages) {
+  size_t s = url_scanned.size() + url_unchanged.size();
+
+  if (s >= max_pages) {
     return true;
   }
 
-  if (fail > 10 && fail > 1 + url_scanned.size() / 4) {
-    printf("%s reached max fail %i / %lu\n", host.c_str(),
-        fail, url_scanned.size());
+  if (fail > 10 && fail > 1 + s / 4) {
+    printf("%s reached max fail %i / %lu\n", host.c_str(), fail, s);
     return true;
   }
 
