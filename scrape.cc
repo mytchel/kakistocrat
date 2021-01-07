@@ -130,6 +130,8 @@ void site::add_disallow(std::string path) {
 void site::process_sitemap_entry(
     std::string url, std::optional<time_t> lastmod)
 {
+  if (url.empty()) return;
+
   auto u = url_pending.begin();
   while (u != url_pending.end()) {
     if (u->url == url) {
@@ -278,7 +280,6 @@ bool site::should_finish() {
   }
 
   if (fail > 10 && fail > url_scanned.size() / 4) {
-    printf("%s reached max fail %i / %lu\n", host.c_str(), fail, url_scanned.size());
     return true;
   }
 

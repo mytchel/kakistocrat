@@ -367,8 +367,6 @@ void curl_data::process_sitemap() {
 
 void curl_data::finish(std::string effective_url) {
   if (req_type == URL) {
-    printf("finish '%s'\n", url.url.c_str());
-
     auto urls = find_links(effective_url);
     save();
     m_site->finish(url, urls);
@@ -390,7 +388,6 @@ void curl_data::finish(std::string effective_url) {
 
 void curl_data::finish_bad_http(int code) {
   if (req_type == URL) {
-    printf("%i : %s\n", code, url.url.c_str());
     m_site->finish_bad(url, true);
 
   } else if (req_type == ROBOTS) {
@@ -405,12 +402,9 @@ void curl_data::finish_bad_http(int code) {
 void curl_data::finish_bad_net(CURLcode res) {
   if (req_type == URL) {
     if (unchanged) {
-      printf("unchanged '%s'\n", url.url.c_str());
       m_site->finish_unchanged(url);
 
     } else {
-      printf("miss (%i) %s %s\n", (int) res, curl_easy_strerror(res), url.url.c_str());
-
       if (res != CURLE_WRITE_ERROR) {
         if (res != CURLE_OPERATION_TIMEDOUT) {
           printf("miss (%i) %s %s\n", (int) res, curl_easy_strerror(res), url.url.c_str());
@@ -444,7 +438,7 @@ CURL *make_handle(site* s, index_url u)
   curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
   curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
   curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 3L);
-  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 5L);
+  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10L);
   curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 5L);
 
   // Needed for multi threading with sig pipe block
@@ -527,14 +521,11 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid)
       last_log = std::chrono::system_clock::now();
       printf("%i with %i connections for %i sites\n",
           tid, active_connections, sites.size());
+
       for (auto &s: sites) {
         printf("  %i has site %2i scanning '%s'\n", tid,
             s->url_scanning.size(),
             s->host.c_str());
-
-        for (auto &p: s->url_scanning) {
-          printf("    %i site waiting on '%s'\n", tid, p.url.c_str());
-        }
       }
     }
 
@@ -551,14 +542,12 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid)
         } else if (!(*s) ->getting_robots && !(*s)->got_robots) {
           (*s)->getting_robots = true;
           std::string url = "https://" + (*s)->host + "/robots.txt";
-          printf("start robots %s\n", url.c_str());
           curl_multi_add_handle(multi_handle, make_handle_other(*s, ROBOTS, url));
           active_connections++;
           adding = true;
 
         } else if (!(*s)->sitemap_url_pending.empty()) {
           std::string url = (*s)->sitemap_url_pending.front();
-          printf("start sitemap %s\n", url.c_str());
           (*s)->sitemap_url_pending.pop_front();
           (*s)->sitemap_url_getting.push_back(url);
 
@@ -569,7 +558,6 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid)
         } else if ((*s)->got_robots && (*s)->sitemap_url_getting.empty()) {
           auto u = (*s)->get_next();
           if (u) {
-            printf("start %s\n", u->url.c_str());
             curl_multi_add_handle(multi_handle, make_handle(*s, *u));
             active_connections++;
             adding = true;

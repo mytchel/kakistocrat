@@ -194,7 +194,7 @@ std::string make_path(std::string url) {
   auto host = get_host(url);
   if (host.empty()) {
     printf("make path bad input '%s'\n", url.c_str());
-    exit(1);
+    return "junk_path";
   }
 
   auto path = get_path(url);
@@ -258,7 +258,7 @@ bool bare_minimum_valid_url(std::string url) {
   }
 
   for (auto &c : url) {
-    if (c == ' ' || c == '\t' || c == '\n') {
+    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
       return false;
     }
   }

@@ -52,6 +52,8 @@ struct site {
   std::string host;
   size_t level;
 
+  time_t last_scanned{0};
+
   bool scraped{false};
   bool scraping{false};
 
@@ -65,8 +67,8 @@ struct site {
   site(uint32_t i, std::string h, size_t l) :
     id(i), host(h), level(l) {}
 
-  site(uint32_t i, std::string h, size_t l, bool s) :
-    id(i), host(h), level(l), scraped(s) {}
+  site(uint32_t i, std::string h, size_t l, time_t s) :
+    id(i), host(h), level(l), last_scanned(s) {}
 };
 
 struct index {

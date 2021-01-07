@@ -33,17 +33,23 @@ void index::save(std::string path)
     return;
   }
 
+  char t_buffer[32];
+
   for (auto &site: sites) {
     file << site.id << "\t";
     file << site.host << "\t";
     file << site.level << "\t";
-    file << site.scraped;
+
+    std::tm * stm = std::gmtime(&site.last_scanned);
+    std::strftime(t_buffer, 32, "%Y-%m-%d %H:%M:%S", stm);
+
+    file << t_buffer;
+
     file << "\n";
 
     for (auto &p: site.pages) {
 
       std::tm * ptm = std::gmtime(&p.last_scanned);
-      char t_buffer[32];
       std::strftime(t_buffer, 32, "%Y-%m-%d %H:%M:%S", ptm);
 
       file << "\t";
@@ -87,16 +93,18 @@ void index::load(std::string path)
       uint32_t id;
       std::string host;
       size_t level;
-      bool scraped;
+      std::string scraped_s;
 
       ss >> id;
       ss >> host;
       ss >> level;
-      ss >> scraped;
+      ss >> scraped_s;
 
-      printf("load index '%s' scraped %i\n", host.c_str(), scraped);
+      tm tm;
+      strptime(scraped_s.c_str(), "%Y-%m-%d %H:%M:%S", &tm);
+      time_t time = mktime(&tm);
 
-      sites.emplace_back(id, host, level, scraped);
+      sites.emplace_back(id, host, level, time);
 
     } else {
       std::string tmp;

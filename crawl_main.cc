@@ -36,9 +36,9 @@ int main(int argc, char *argv[]) {
 
   curl_global_init(CURL_GLOBAL_ALL);
 
-  //std::vector<crawl::level> levels = {{200, 10}, {5, 2}, {1, 0}};
+  std::vector<crawl::level> levels = {{200, 10}, {5, 5}, {1, 0}};
   //std::vector<crawl::level> levels = {{50, 5}, {1, 0}};
-  std::vector<crawl::level> levels = {{50, 0}};
+  //std::vector<crawl::level> levels = {{50, 0}};
 
   index.save("index.scrape");
 

@@ -248,23 +248,14 @@ void crawl(std::vector<level> levels, index &index,
 {
   size_t scrapped_sites = 0;
 
+  time_t now = time(NULL);
+
   for (auto &s: index.sites) {
-    //s.scraped = false; // TODO
-    if (!s.scraped) continue;
-
-    size_t fails = 0;
-    for (auto &p: s.pages) {
-      if (!p.scraped) fails++;
-    }
-
-    if (fails > s.pages.size() / 4) {
-      s.scraped = false;
-    } else {
-      scrapped_sites++;
-    }
+    s.scraped = s.last_scanned + 60 * 60 * 24 > now;
+    printf("load %i : %s\n", s.scraped, s.host.c_str());
   }
 
-  auto n_threads = 1;//std::thread::hardware_concurrency();
+  auto n_threads = std::thread::hardware_concurrency();
 
   printf("starting %i threads\n", n_threads);
 
@@ -310,20 +301,22 @@ void crawl(std::vector<level> levels, index &index,
         all_blocked &= !thread_stats[i];
       }
 
-      if (thread_stats[i] && have_next_site(index)) {
+      if (thread_stats[i]) {
         auto site = get_next_site(index);
-        site->scraping = true;
+        if (site != NULL) {
+          site->scraping = true;
 
-        std::list<scrape::index_url> urls;
+          std::list<scrape::index_url> urls;
 
-        for (auto &p: site->pages) {
-          urls.emplace_back(p.url, p.path, p.last_scanned, p.valid);
+          for (auto &p: site->pages) {
+            urls.emplace_back(p.url, p.path, p.last_scanned, p.valid);
+          }
+
+          scrapping_sites.emplace_back(site->host, levels[site->level].max_pages, urls);
+          auto &s = scrapping_sites.back();
+
+          &s >> in_channels[i];
         }
-
-        scrapping_sites.emplace_back(site->host, levels[site->level].max_pages, urls);
-        auto &s = scrapping_sites.back();
-
-        &s >> in_channels[i];
       }
 
       if (out_channels[i].empty()) continue;
@@ -339,6 +332,7 @@ void crawl(std::vector<level> levels, index &index,
 
       site->scraped = true;
       site->scraping = false;
+      site->last_scanned = time(NULL);
 
       // TODO: changes for unchanged?
       size_t added = insert_site_index(index, site, levels[site->level].max_add_sites,
