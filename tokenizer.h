@@ -15,6 +15,9 @@ struct tokenizer {
 
   token_type next(struct str *buffer);
   void skip_tag(char *tag_name_main, struct str *tok_buffer);
+  void load_tag_content(struct str *tok_buffer);
+
+  void consume_until(const char *s);
 };
 
 bool should_skip_tag(char *tag_name);

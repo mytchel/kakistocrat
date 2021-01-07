@@ -17,6 +17,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstdint>
+#include <optional>
 
 #include <curl/curl.h>
 
@@ -66,10 +67,10 @@ size_t insert_site_index(
     index &index,
     site *isite,
     size_t max_add_sites,
-    std::list<scrape::index_url> &site_index,
+    std::list<scrape::index_url> &page_list,
     std::vector<std::string> &blacklist)
 {
-  for (auto &u: site_index) {
+  for (auto &u: page_list) {
     auto p = isite->find_page(u.url);
     if (p == NULL) {
       isite->pages.emplace_back(isite->next_id++,
@@ -91,7 +92,7 @@ size_t insert_site_index(
 
   std::list<site_link_data> linked_sites;
 
-  for (auto &u: site_index) {
+  for (auto &u: page_list) {
     auto p = isite->find_page(u.url);
     if (p == NULL) continue;
 
@@ -99,7 +100,7 @@ size_t insert_site_index(
       auto host = util::get_host(l);
 
       if (host == isite->host) {
-        auto n_p = isite->find_page(u.url);
+        auto n_p = isite->find_page(l);
         if (n_p == NULL) continue;
 
         p->links.emplace_back(isite->id, n_p->id);
@@ -163,15 +164,17 @@ size_t insert_site_index(
 
   size_t add_sites = 0;
   for (auto &l: linked_sites) {
+    if (add_sites >= max_add_sites) {
+      break;
+    }
+
+    add_sites++;
+
     for (auto &s: new_sites) {
       if (s.host == l.host) {
         index.sites.push_back(s);
         break;
       }
-    }
-
-    if (++add_sites >= max_add_sites) {
-      break;
     }
   }
 
@@ -246,7 +249,7 @@ void crawl(std::vector<level> levels, index &index,
   size_t scrapped_sites = 0;
 
   for (auto &s: index.sites) {
-    s.scraped = false; // TODO
+    //s.scraped = false; // TODO
     if (!s.scraped) continue;
 
     size_t fails = 0;
@@ -261,7 +264,7 @@ void crawl(std::vector<level> levels, index &index,
     }
   }
 
-  auto n_threads = std::thread::hardware_concurrency();
+  auto n_threads = 1;//std::thread::hardware_concurrency();
 
   printf("starting %i threads\n", n_threads);
 
@@ -311,12 +314,14 @@ void crawl(std::vector<level> levels, index &index,
         auto site = get_next_site(index);
         site->scraping = true;
 
-        scrapping_sites.emplace_back(site->host, levels[site->level].max_pages);
-        auto &s = scrapping_sites.back();
+        std::list<scrape::index_url> urls;
 
         for (auto &p: site->pages) {
-          s.url_scanning.emplace_back(p.url, p.path, p.last_scanned, p.valid);
+          urls.emplace_back(p.url, p.path, p.last_scanned, p.valid);
         }
+
+        scrapping_sites.emplace_back(site->host, levels[site->level].max_pages, urls);
+        auto &s = scrapping_sites.back();
 
         &s >> in_channels[i];
       }
@@ -339,8 +344,9 @@ void crawl(std::vector<level> levels, index &index,
       size_t added = insert_site_index(index, site, levels[site->level].max_add_sites,
           s->url_scanned, blacklist);
 
-      printf("site finished for %s level %i with %i pages, %i external\n",
-          site->host.c_str(), site->level, s->url_scanned.size(), added);
+      printf("site finished for level %i with %3i (+ %3i unchanged) pages, %2i external: %s\n",
+          site->level, s->url_scanned.size(), s->url_unchanged.size(), added,
+          site->host.c_str());
 
       scrapping_sites.remove_if([s](const scrape::site &ss) {
           return &ss == s;

@@ -1,10 +1,4 @@
 next:
-    robots.txt
-    sitemaps
-    date checking
-        put date with each page. Check header and exit early.
-        check site map for date.
-
         Change site scapper to take current dates and put any
         unchanged urls in a seperate list and don't update the index
         with them.

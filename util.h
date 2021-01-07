@@ -1,6 +1,10 @@
 namespace util {
 
-const size_t max_url_len = 512;
+const size_t max_url_len = 256;
+
+bool has_suffix(std::string const &s, std::string const &suffix);
+
+bool has_prefix(std::string const &s, std::string const &prefix);
 
 std::string get_proto(std::string url);
 std::string get_host(std::string url);

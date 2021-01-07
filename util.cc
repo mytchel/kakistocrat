@@ -21,6 +21,22 @@
 
 namespace util {
 
+bool has_suffix(std::string const &s, std::string const &suffix) {
+  if (s.length() >= suffix.length()) {
+    return (0 == s.compare(s.length() - suffix.length(), suffix.length(), suffix));
+  } else {
+    return false;
+  }
+}
+
+bool has_prefix(std::string const &s, std::string const &prefix) {
+  if (s.length() >= prefix.length()) {
+    return (0 == s.compare(0, prefix.length(), prefix));
+  } else {
+    return false;
+  }
+}
+
 std::string get_proto(std::string url) {
   int slashes = 0;
   std::vector<char> s;

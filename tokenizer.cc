@@ -3,13 +3,33 @@
 #include <ctype.h>
 #include <stdlib.h>
 
+#include <string>
+#include <vector>
+
 extern "C" {
 #include "str.h"
 }
 
 #include "tokenizer.h"
+#include "util.h"
 
 namespace tokenizer {
+
+void tokenizer::consume_until(const char * s) {
+  size_t i = 0;
+  size_t l = strlen(s);
+
+  while (index < length) {
+    if (document[index++] == s[i]) {
+      i++;
+      if (i == l) {
+        return;
+      }
+    } else {
+      i = 0;
+    }
+  }
+}
 
 token_type tokenizer::next(struct str *buffer) {
 	for (;;) {
@@ -21,21 +41,22 @@ token_type tokenizer::next(struct str *buffer) {
 		if (index >= length) {
 			break;
 
-      // Ignored tags
+      // Tags
     } else if (document[index] == '<') {
       size_t i = 0, b = 0;
 			char *buf = str_c(buffer);
 
       index++;
-			while (i < 256 && i + index < length) {
-        if (document[index + i] == '>')
+			while (i + index < length) {
+        char c = document[index + i++] ;
+        if (c == '>')
           break;
 
-        if (i + 1 < str_max(buffer))
-          buf[b++] = document[index + i];
-
-        i++;
+        if (i < str_max(buffer))
+          buf[b++] = c;
       }
+
+      index += i;
 
       if (b > 0 && buf[b-1] == '/') {
         buf[b-1] = '\0';
@@ -44,6 +65,18 @@ token_type tokenizer::next(struct str *buffer) {
 
       } else {
         buf[b++] = '\0';
+
+        if (util::has_prefix(buf, "script")) {
+          consume_until("</script>");
+
+          return next(buffer);
+
+        } else if (util::has_prefix(buf, "style")) {
+          consume_until("</style>");
+
+          return next(buffer);
+        }
+
 			  str_resize(buffer, b);
 			  return TAG;
       }
@@ -52,7 +85,7 @@ token_type tokenizer::next(struct str *buffer) {
     } else if (isdigit(document[index])) {
 			int i = 0, b = 0;
 			char *buf = str_c(buffer);
-			while (i < 256 && i + index < length && isdigit(document[index + i])) {
+			while (i + index < length && isdigit(document[index + i])) {
         if (i + 1 < str_max(buffer))
 				  buf[b++] = document[index + i];
 
@@ -70,7 +103,7 @@ token_type tokenizer::next(struct str *buffer) {
     } else if (isalpha(document[index])) {
 			int i = 0, b = 0;
 			char *buf = str_c(buffer);
-			while (i < 256 && i + index < length && isalpha(document[index + i])) {
+			while (i + index < length && isalpha(document[index + i])) {
         if (i + 1 < str_max(buffer))
 				  buf[b++] = document[index + i];
 
@@ -115,6 +148,23 @@ void tokenizer::skip_tag(char *tag_name_main, struct str *tok_buffer) {
       }
     }
   } while (token != END);
+}
+
+void tokenizer::load_tag_content(struct str *buffer) {
+  int i = 0, b = 0;
+  char *buf = str_c(buffer);
+
+  while (i + index < length && document[index + i] != '<') {
+    if (i + 1 < str_max(buffer))
+      buf[b++] = document[index + i];
+
+    i++;
+  }
+
+  buf[b++] = '\0';
+  str_resize(buffer, b);
+
+  index += i;
 }
 
 void get_tag_name(char *buf, char *s) {
@@ -205,9 +255,7 @@ bool get_tag_attr(char *attr_value, const char *attr_name, char *token) {
 }
 
 bool should_skip_tag(char *t) {
-  return strcmp(t, "script") == 0 ||
-         strcmp(t, "style") == 0 ||
-         strcmp(t, "head") == 0;
+  return strcmp(t, "head") == 0;
 }
 
 }

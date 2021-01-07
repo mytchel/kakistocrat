@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <unistd.h>
-#include <signal.h>
 
 #include <cstdlib>
 #include <cstring>
@@ -35,11 +34,11 @@ int main(int argc, char *argv[]) {
 
   crawl::insert_site_index_seed(index, initial_seed, blacklist);
 
-  signal(SIGPIPE, SIG_IGN);
   curl_global_init(CURL_GLOBAL_ALL);
 
   //std::vector<crawl::level> levels = {{200, 10}, {5, 2}, {1, 0}};
-  std::vector<crawl::level> levels = {{50, 5}, {1, 0}};
+  //std::vector<crawl::level> levels = {{50, 5}, {1, 0}};
+  std::vector<crawl::level> levels = {{50, 0}};
 
   index.save("index.scrape");
 

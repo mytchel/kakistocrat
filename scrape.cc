@@ -16,6 +16,7 @@
 #include <iostream>
 #include <fstream>
 #include <ctime>
+#include <optional>
 
 #include <chrono>
 #include <thread>
@@ -25,81 +26,66 @@
 
 namespace scrape {
 
-bool has_suffix(std::string const &s, std::string const &suffix) {
-  if (s.length() >= suffix.length()) {
-    return (0 == s.compare(s.length() - suffix.length(), suffix.length(), suffix));
-  } else {
-    return false;
-  }
-}
-
-bool has_prefix(std::string const &s, std::string const &prefix) {
-  if (s.length() >= prefix.length()) {
-    return (0 == s.compare(0, prefix.length(), prefix));
-  } else {
-    return false;
-  }
-}
-
 bool want_proto(std::string proto) {
   return proto.empty() || proto == "http" || proto == "https";
 }
 
 bool bad_suffix(std::string path) {
   return
-      has_suffix(path, "?share=twitter") ||
-      has_suffix(path, ".txt") ||
-      has_suffix(path, ".md") ||
-      has_suffix(path, ".rss") ||
-      has_suffix(path, ".apk") ||
-      has_suffix(path, ".page") ||
-      has_suffix(path, ".JPG") ||
-      has_suffix(path, ".jpg") ||
-      has_suffix(path, ".png") ||
-      has_suffix(path, ".gif") ||
-      has_suffix(path, ".svg") ||
-      has_suffix(path, ".mov") ||
-      has_suffix(path, ".mp3") ||
-      has_suffix(path, ".mp4") ||
-      has_suffix(path, ".flac") ||
-      has_suffix(path, ".ogg") ||
-      has_suffix(path, ".epub") ||
-      has_suffix(path, ".tar") ||
-      has_suffix(path, ".rar") ||
-      has_suffix(path, ".zip") ||
-      has_suffix(path, ".gz") ||
-      has_suffix(path, ".tgz") ||
-      has_suffix(path, ".xz") ||
-      has_suffix(path, ".bz2") ||
-      has_suffix(path, ".exe") ||
-      has_suffix(path, ".crate") ||
-      has_suffix(path, ".xml") ||
-      has_suffix(path, ".csv") ||
-      has_suffix(path, ".ppt") ||
-      has_suffix(path, ".sheet") ||
-      has_suffix(path, ".sh") ||
-      has_suffix(path, ".py") ||
-      has_suffix(path, ".js") ||
-      has_suffix(path, ".asc") ||
-      has_suffix(path, ".pdf");
+      util::has_suffix(path, "?share=twitter") ||
+      util::has_suffix(path, ".txt") ||
+      util::has_suffix(path, ".md") ||
+      util::has_suffix(path, ".rss") ||
+      util::has_suffix(path, ".apk") ||
+      util::has_suffix(path, ".page") ||
+      util::has_suffix(path, ".JPG") ||
+      util::has_suffix(path, ".jpg") ||
+      util::has_suffix(path, ".png") ||
+      util::has_suffix(path, ".gif") ||
+      util::has_suffix(path, ".svg") ||
+      util::has_suffix(path, ".mov") ||
+      util::has_suffix(path, ".mp3") ||
+      util::has_suffix(path, ".mp4") ||
+      util::has_suffix(path, ".flac") ||
+      util::has_suffix(path, ".ogg") ||
+      util::has_suffix(path, ".epub") ||
+      util::has_suffix(path, ".tar") ||
+      util::has_suffix(path, ".rar") ||
+      util::has_suffix(path, ".zip") ||
+      util::has_suffix(path, ".gz") ||
+      util::has_suffix(path, ".tgz") ||
+      util::has_suffix(path, ".xz") ||
+      util::has_suffix(path, ".bz2") ||
+      util::has_suffix(path, ".exe") ||
+      util::has_suffix(path, ".crate") ||
+      util::has_suffix(path, ".xml") ||
+      util::has_suffix(path, ".csv") ||
+      util::has_suffix(path, ".ppt") ||
+      util::has_suffix(path, ".sheet") ||
+      util::has_suffix(path, ".sh") ||
+      util::has_suffix(path, ".py") ||
+      util::has_suffix(path, ".js") ||
+      util::has_suffix(path, ".asc") ||
+      util::has_suffix(path, ".pdf");
 }
 
 bool bad_prefix(std::string path) {
   return
-      has_prefix(path, "/signup") ||
-      has_prefix(path, "/login") ||
-      has_prefix(path, "/forgot") ||
-      has_prefix(path, "/register") ||
-      has_prefix(path, "/admin") ||
-      has_prefix(path, "/signin") ||
-      has_prefix(path, "/cart") ||
-      has_prefix(path, "/checkout") ||
-      has_prefix(path, "/forum") ||
-      has_prefix(path, "/account") ||
-      has_prefix(path, "/uploads") ||
-      has_prefix(path, "/cgit") ||
-      has_prefix(path, "/admin") ||
-      has_prefix(path, "/wp-login");
+      util::has_prefix(path, "/api") ||
+      util::has_prefix(path, "/signup") ||
+      util::has_prefix(path, "/login") ||
+      util::has_prefix(path, "/forgot") ||
+      util::has_prefix(path, "/register") ||
+      util::has_prefix(path, "/admin") ||
+      util::has_prefix(path, "/signin") ||
+      util::has_prefix(path, "/cart") ||
+      util::has_prefix(path, "/checkout") ||
+      util::has_prefix(path, "/forum") ||
+      util::has_prefix(path, "/account") ||
+      util::has_prefix(path, "/uploads") ||
+      util::has_prefix(path, "/cgit") ||
+      util::has_prefix(path, "/admin") ||
+      util::has_prefix(path, "/wp-login");
 }
 
 bool index_check(
@@ -128,6 +114,65 @@ bool index_check_path(
   return false;
 }
 
+void site::add_disallow(std::string path) {
+  disallow_path.push_back(path);
+
+  auto u = url_pending.begin();
+  while (u != url_pending.end()) {
+    if (util::has_prefix(u->url, path)) {
+      u = url_pending.erase(u);
+    } else {
+      u++;
+    }
+  }
+}
+
+void site::process_sitemap_entry(
+    std::string url, std::optional<time_t> lastmod)
+{
+  auto u = url_pending.begin();
+  while (u != url_pending.end()) {
+    if (u->url == url) {
+      if (lastmod && *lastmod < u->last_scanned) {
+        url_unchanged.push_back(*u);
+        url_pending.erase(u);
+      }
+
+      return;
+    }
+
+    u++;
+  }
+
+  if (url_pending.size() > 4 * max_pages) {
+    return;
+  }
+
+  auto p = util::make_path(url);
+
+  if (index_check_path(url_scanned, p)) {
+    return;
+  }
+
+  if (index_check_path(url_pending, p)) {
+    return;
+  }
+
+  if (index_check_path(url_scanning, p)) {
+    return;
+  }
+
+  if (index_check_path(url_unchanged, p)) {
+    return;
+  }
+
+  if (url_pending.size() > 4 * max_pages) {
+    return;
+  }
+
+  url_pending.emplace_back(url, p);
+}
+
 void site::finish(
       index_url url,
       std::list<std::string> links)
@@ -139,6 +184,14 @@ void site::finish(
     url.links.insert(u);
 
     if (u_host == host) {
+      if (url_pending.size() > 4 * max_pages) {
+        continue;
+      }
+
+      if (disallow_url(u)) {
+        continue;
+      }
+
       if (index_check(url_bad, u)) {
         continue;
       }
@@ -147,7 +200,15 @@ void site::finish(
         continue;
       }
 
+      if (index_check(url_pending, u)) {
+        continue;
+      }
+
       if (index_check(url_scanning, u)) {
+        continue;
+      }
+
+      if (index_check(url_unchanged, u)) {
         continue;
       }
 
@@ -157,11 +218,19 @@ void site::finish(
         continue;
       }
 
+      if (index_check_path(url_pending, p)) {
+        continue;
+      }
+
       if (index_check_path(url_scanning, p)) {
         continue;
       }
 
-      url_scanning.emplace_back(u, p);
+      if (index_check_path(url_unchanged, p)) {
+        continue;
+      }
+
+      url_pending.emplace_back(u, p);
     }
   }
 
@@ -169,14 +238,18 @@ void site::finish(
   url.ok = true;
 
   url_scanned.push_back(url);
-  active--;
+
+  url_scanning.remove_if([&url](auto &u) { return u.url == url.url; });
 }
 
 void site::finish_unchanged(index_url url) {
   url.ok = true;
 
   url_unchanged.push_back(url);
-  active--;
+
+  url_scanning.remove_if([url](auto u) {
+        return u.url == url.url;
+      });
 }
 
 void site::finish_bad(index_url url, bool actually_bad) {
@@ -184,50 +257,77 @@ void site::finish_bad(index_url url, bool actually_bad) {
   url.ok = false;
 
   url_bad.push_back(url);
-  active--;
+
+
+  url_scanning.remove_if([url](auto u) {
+        return u.url == url.url;
+      });
 
   if (actually_bad) {
     fail++;
   }
 }
 
-index_url site::pop_next() {
-  auto best = url_scanning.begin();
-
-  /*
-  // TODO: keep the list sorted?
-  for (auto u = url_scanning.begin(); u != url_scanning.end(); u++) {
-    // TODO: base on count too
-    if ((*u).url.length() < (*best).url.length()) {
-      best = u;
-    }
+bool site::should_finish() {
+  if (url_pending.empty()) {
+    return true;
   }
-*/
-  active++;
 
-  index_url r(*best);
-  url_scanning.erase(best);
-  return r;
+  if (url_unchanged.size() + url_scanned.size() >= max_pages) {
+    return true;
+  }
+
+  if (fail > 10 && fail > url_scanned.size() / 4) {
+    printf("%s reached max fail %i / %lu\n", host.c_str(), fail, url_scanned.size());
+    return true;
+  }
+
+  return false;
+}
+
+std::optional<index_url> site::get_next() {
+  if (url_unchanged.size() + url_scanned.size() + url_scanning.size() >= max_pages) {
+    return {};
+
+  } else if (should_finish()) {
+    return {};
+  }
+
+  if (url_scanning.size() >= max_active) {
+    return {};
+  }
+
+  if (url_pending.empty()) {
+    return {};
+  }
+
+  auto u = url_pending.front();
+  url_pending.pop_front();
+
+  url_scanning.push_back(u);
+
+  return u;
 }
 
 bool site::finished() {
-  if (active > 0) {
+  if (!url_scanning.empty()) {
     return false;
   }
 
-  if (url_scanning.empty()) {
-    return true;
+  if (!sitemap_url_getting.empty() || !sitemap_url_pending.empty()) {
+    return false;
   }
 
-  size_t s = url_scanned.size() + url_unchanged.size();
+  return should_finish();
+}
 
-  if (s >= max_pages) {
-    return true;
-  }
+bool site::disallow_url(std::string u) {
+  auto path = util::get_path(u);
 
-  if (fail > 10 && fail > 1 + s / 4) {
-    printf("%s reached max fail %i / %lu\n", host.c_str(), fail, s);
-    return true;
+  for (auto disallow: disallow_path) {
+    if (util::has_prefix(path, disallow)) {
+      return true;
+    }
   }
 
   return false;
