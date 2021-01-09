@@ -29,6 +29,7 @@ struct page {
   std::uint32_t id;
   std::string url;
   std::string path;
+  std::string title{"unknown"};
 
   time_t last_scanned{0};
   bool valid{false};
@@ -39,12 +40,12 @@ struct page {
   page(uint32_t i, std::string u, std::string p) :
     id(i), url(u), path(p) {}
 
-  page(uint32_t i, std::string u, std::string p, time_t t, bool v, bool s) :
-    id(i), url(u), path(p), last_scanned(t), valid(v), scraped(s) {}
+  page(uint32_t i, std::string u, std::string p, std::string tt, time_t t, bool v, bool s) :
+    id(i), url(u), path(p), title(tt), last_scanned(t), valid(v), scraped(s) {}
 
-  page(uint32_t i, std::string u, std::string p, time_t t, bool v, bool s,
+  page(uint32_t i, std::string u, std::string p, std::string tt, time_t t, bool v, bool s,
         std::vector<page_id> l) :
-    id(i), url(u), path(p), last_scanned(t), valid(v), scraped(s), links(l) {}
+    id(i), url(u), path(p), title(tt), last_scanned(t), valid(v), scraped(s), links(l) {}
 };
 
 struct site {

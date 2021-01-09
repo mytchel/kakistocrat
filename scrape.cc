@@ -177,7 +177,8 @@ void site::process_sitemap_entry(
 
 void site::finish(
       index_url url,
-      std::list<std::string> links)
+      std::list<std::string> links,
+      std::string title)
 {
   for (auto &u: links) {
     auto u_host = util::get_host(u);
@@ -234,6 +235,14 @@ void site::finish(
 
       url_pending.emplace_back(u, p);
     }
+  }
+
+  url.title.clear();
+  for (auto c: title) {
+    if (c == '\t' || c == '\n' || c == '\r' || c == '\v')
+      continue;
+
+    url.title += c;
   }
 
   url.last_scanned = time(NULL);

@@ -18,6 +18,9 @@
 #include <sstream>
 #include <cstdint>
 #include <optional>
+#include <chrono>
+
+using namespace std::chrono_literals;
 
 #include <curl/curl.h>
 
@@ -53,6 +56,10 @@ page* site_find_add_page(site *site, std::string url)
 
   auto path = util::make_path(url);
 
+  if (site->find_page_by_path(path) != NULL) {
+    return NULL;
+  }
+
   p = site->find_page_by_path(path);
   if (p != NULL) {
     return p;
@@ -73,10 +80,13 @@ size_t insert_site_index(
   for (auto &u: page_list) {
     auto p = isite->find_page(u.url);
     if (p == NULL) {
-      isite->pages.emplace_back(isite->next_id++,
-          u.url, u.path, u.last_scanned, u.ok, true);
+      if (isite->find_page_by_path(u.path) == NULL) {
+        isite->pages.emplace_back(isite->next_id++,
+            u.url, u.path, u.title, u.last_scanned, u.ok, true);
+      }
 
     } else {
+      p->title = u.title;
       p->last_scanned = u.last_scanned;
       p->valid = u.ok;
       p->scraped = true;
@@ -127,31 +137,35 @@ size_t insert_site_index(
           site n_site(index.next_id++, host, isite->level + 1);
 
           auto n_p = site_find_add_page(&n_site, l);
+          if (n_p != NULL) {
 
-          p->links.emplace_back(n_site.id, n_p->id);
+            p->links.emplace_back(n_site.id, n_p->id);
 
-          new_sites.push_back(n_site);
+            new_sites.push_back(n_site);
 
-          site_link_data data = {host, 1};
-          linked_sites.push_back(data);
+            site_link_data data = {host, 1};
+            linked_sites.push_back(data);
+          }
 
         } else {
           auto o_p = site_find_add_page(o_site, l);
+          if (o_p != NULL) {
 
-          p->links.emplace_back(o_site->id, o_p->id);
+            p->links.emplace_back(o_site->id, o_p->id);
 
-          bool found = false;
-          for (auto &l: linked_sites) {
-            if (l.host == host) {
-              l.count++;
-              found = true;
-              break;
+            bool found = false;
+            for (auto &l: linked_sites) {
+              if (l.host == host) {
+                l.count++;
+                found = true;
+                break;
+              }
             }
-          }
 
-          if (!found) {
-            site_link_data data = {host, 1};
-            linked_sites.push_back(data);
+            if (!found) {
+              site_link_data data = {host, 1};
+              linked_sites.push_back(data);
+            }
           }
         }
       }
@@ -256,6 +270,8 @@ void crawl(std::vector<level> levels, index &index,
   }
 
   auto n_threads = std::thread::hardware_concurrency();
+  // TODO: get from file limit
+  size_t max_con_per_thread = 1000 / (2 * n_threads);
 
   printf("starting %i threads\n", n_threads);
 
@@ -266,30 +282,36 @@ void crawl(std::vector<level> levels, index &index,
 
   std::vector<std::thread> threads;
   for (size_t i = 0; i < n_threads; i++) {
-    auto th = std::thread([](
-          Channel<scrape::site*> &in,
-          Channel<scrape::site*> &out,
-          Channel<bool> &stat, int i) {
-        scrape::scraper(in, out, stat, i);
-    },
+    auto th = std::thread(
+        [](
+            Channel<scrape::site*> &in,
+            Channel<scrape::site*> &out,
+            Channel<bool> &stat,
+            int i, size_t m) {
+          scrape::scraper(in, out, stat, i, m);
+        },
         std::ref(in_channels[i]),
         std::ref(out_channels[i]),
-        std::ref(stat_channels[i]), i);
+        std::ref(stat_channels[i]),
+        i, max_con_per_thread);
 
     threads.emplace_back(std::move(th));
   }
 
   std::list<scrape::site> scrapping_sites;
 
-  int iteration = 0;
+  index.save("index.scrape");
+  auto last_save = std::chrono::system_clock::now();
+
   while (!scrapping_sites.empty() || have_next_site(index)) {
-    if (++iteration % 50 == 0) {
+    if (last_save + 10s < std::chrono::system_clock::now()) {
       printf("main crawled %i / %i sites\n",
           scrapped_sites, index.sites.size());
 
       // Save the current index so exiting early doesn't loose
       // all the work that has been done
       index.save("index.scrape");
+      last_save = std::chrono::system_clock::now();
     }
 
     bool delay = false;
@@ -350,7 +372,7 @@ void crawl(std::vector<level> levels, index &index,
     }
 
     if (all_blocked || !have_next_site(index)) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(250));
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
     } else {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }

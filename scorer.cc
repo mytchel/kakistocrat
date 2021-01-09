@@ -124,7 +124,7 @@ void scores::init(crawl::index &index)
         links.push_back(l.to_value());
       }
 
-      page n(id.to_value(), s.level, score, p.url, p.path, links);
+      page n(id.to_value(), s.level, score, p.url, p.path, p.title, links);
 
       pages.emplace(id.to_value(), n);
     }
@@ -177,7 +177,8 @@ void scores::save(std::string path)
     file << p.level << "\t";
     file << p.score << "\t";
     file << p.url << "\t";
-    file << p.path;
+    file << p.path << "\t";
+    file << p.title;
 
     for (auto &l: p.links) {
       file << "\t" << l;
@@ -212,6 +213,7 @@ void scores::load(std::string path)
     double score;
     std::string url;
     std::string path;
+    std::string title;
 
     std::string id_s, level_s, score_s;
     std::getline(ss, id_s, '\t');
@@ -219,6 +221,7 @@ void scores::load(std::string path)
     std::getline(ss, score_s, '\t');
     std::getline(ss, url, '\t');
     std::getline(ss, path, '\t');
+    std::getline(ss, title, '\t');
 
     id = std::stoull(id_s);
     level = std::stoul(level_s);
@@ -231,7 +234,7 @@ void scores::load(std::string path)
       links.push_back(l);
     }
 
-    page n(id, level, score, url, path, links);
+    page n(id, level, score, url, path, title, links);
     pages.emplace(id, n);
   }
 

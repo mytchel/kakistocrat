@@ -58,7 +58,8 @@ void index::save(std::string path)
       file << p.path << "\t";
       file << t_buffer << "\t";
       file << p.valid << "\t";
-      file << p.scraped;
+      file << p.scraped << "\t";
+      file << p.title;
 
       for (auto &l: p.links) {
         file << "\t" << l.site << " " << l.page;
@@ -114,6 +115,7 @@ void index::load(std::string path)
       std::string time_s;
       std::string valid_s;
       std::string scraped_s;
+      std::string title;
 
       std::getline(ss, tmp, '\t');
       std::getline(ss, id_s, '\t');
@@ -122,6 +124,7 @@ void index::load(std::string path)
       std::getline(ss, time_s, '\t');
       std::getline(ss, valid_s, '\t');
       std::getline(ss, scraped_s, '\t');
+      std::getline(ss, title, '\t');
 
       uint32_t id = std::stoi(id_s);
 
@@ -140,7 +143,7 @@ void index::load(std::string path)
       }
 
       auto &site = sites.back();
-      site.pages.emplace_back(id, url, path, time, valid, scraped, links);
+      site.pages.emplace_back(id, url, path, title, time, valid, scraped, links);
     }
   }
 

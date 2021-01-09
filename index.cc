@@ -107,17 +107,31 @@ int main(int argc, char *argv[]) {
 
 		  dynamic_array_kv_64_append(&docNos, id, 0);
 
+      bool in_head = false, in_title = false;
+
       do {
 				token = tok.next(&tok_buffer);
 
         if (token == tokenizer::TAG) {
           char tag_name[tokenizer::tag_name_max_len];
           tokenizer::get_tag_name(tag_name, str_c(&tok_buffer));
-          if (tokenizer::should_skip_tag(tag_name)) {
-            tok.skip_tag(tag_name, &tok_buffer);
+
+          auto t = std::string(tag_name);
+
+          if (t == "head") {
+            in_head = true;
+
+          } else if (t == "/head") {
+            in_head = false;
+
+          } else if (t == "title") {
+            in_title = true;
+
+          } else if (t == "/title") {
+            in_title = false;
           }
 
-        } else if (token == tokenizer::WORD) {
+        } else if ((in_title || !in_head) && token == tokenizer::WORD) {
 					dynamic_array_kv_64_back(&docNos)[1]++;
 					hash_table_insert(&dictionary, &tok_buffer, docNos.length);
 				}

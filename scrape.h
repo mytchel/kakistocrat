@@ -4,6 +4,7 @@ namespace scrape {
 struct index_url {
   std::string url;
   std::string path;
+  std::string title{""};
 
   time_t last_scanned{0};
   bool ok{false};
@@ -53,7 +54,7 @@ struct site {
   void process_sitemap_entry(std::string url, std::optional<time_t> lastmod);
   void add_disallow(std::string path);
 
-  void finish(index_url u, std::list<std::string> links);
+  void finish(index_url u, std::list<std::string> links, std::string title);
 
   void finish_unchanged(index_url u);
   void finish_bad(index_url u, bool actually_bad);

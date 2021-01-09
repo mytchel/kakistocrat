@@ -74,7 +74,7 @@ struct curl_data {
 
   void save();
 
-  std::list<std::string> find_links(std::string page_url);
+  std::list<std::string> find_links(std::string page_url, std::string &title);
   void process_robots();
   void process_sitemap();
 };
@@ -198,7 +198,7 @@ std::optional<std::string> process_link(
   return proto + "://" + host + path;
 }
 
-std::list<std::string> curl_data::find_links(std::string page_url)
+std::list<std::string> curl_data::find_links(std::string page_url, std::string &title)
 {
   std::list<std::string> urls;
 
@@ -221,6 +221,7 @@ std::list<std::string> curl_data::find_links(std::string page_url)
     if (token == tokenizer::TAG) {
       char tag_name[tokenizer::tag_name_max_len];
       tokenizer::get_tag_name(tag_name, str_c(&tok_buffer));
+
       if (strcmp(tag_name, "a") == 0) {
         char attr[tokenizer::attr_value_max_len];
         if (tokenizer::get_tag_attr(attr, "href", str_c(&tok_buffer))) {
@@ -229,10 +230,13 @@ std::list<std::string> curl_data::find_links(std::string page_url)
             urls.push_back(*s);
           }
         }
-      } else if (tokenizer::should_skip_tag(tag_name)) {
-        tok.skip_tag(tag_name, &tok_buffer);
+
+      } else if (strcmp(tag_name, "title") == 0) {
+        tok.consume_until("</title>", &tok_buffer);
+        title = std::string(str_c(&tok_buffer));
       }
     }
+
   } while (token != tokenizer::END);
 
   return urls;
@@ -367,9 +371,10 @@ void curl_data::process_sitemap() {
 
 void curl_data::finish(std::string effective_url) {
   if (req_type == URL) {
-    auto urls = find_links(effective_url);
+    std::string title = "";
+    auto urls = find_links(effective_url, title);
     save();
-    m_site->finish(url, urls);
+    m_site->finish(url, urls, title);
 
   } else if (req_type == ROBOTS) {
     process_robots();
@@ -481,7 +486,7 @@ CURL *make_handle_other(site* s, request_type r, std::string url)
 }
 
 void
-scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid)
+scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, size_t max_con)
 {
   printf("thread %i started\n", tid);
 
@@ -490,7 +495,6 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid)
   sigaddset(&sigpipe_mask, SIGPIPE);
   pthread_sigmask(SIG_BLOCK, &sigpipe_mask, NULL);
 
-  size_t max_con = 300;
   size_t max_host = 6;
 
   CURLM *multi_handle = curl_multi_init();
@@ -506,15 +510,19 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid)
 
   size_t active_connections = 0;
 
-  bool accepting = true;
-
   auto last_log = std::chrono::system_clock::now();
 
+  auto last_accepting = std::chrono::system_clock::now() - 100s;
+  bool accepting = false;
+
   while (true) {
-    bool n_accepting = active_connections < max_con * 0.9;
+    bool n_accepting = max_con - active_connections > max_host * 3;
     if (accepting != n_accepting) {
-      n_accepting >> stat;
-      accepting = n_accepting;
+      if (!n_accepting || last_accepting + 10s < std::chrono::system_clock::now()) {
+        n_accepting >> stat;
+        accepting = n_accepting;
+        last_accepting = std::chrono::system_clock::now();
+      }
     }
 
     if (last_log + 5s < std::chrono::system_clock::now()) {

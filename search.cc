@@ -282,6 +282,7 @@ int main(int argc, char *argv[]) {
 
 		  printf("%i %f %llu %s\n", i, score, page_id, page->path.c_str());
 			printf("    %s\n", page->url.c_str());
+			printf("    %s\n", page->title.c_str());
 		}
 
     printf("\n");
