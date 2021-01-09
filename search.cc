@@ -140,6 +140,7 @@ struct dynamic_array_kv_64 *search(
     struct dynamic_array_kv_32 *docNos,
     struct hash_table *dictionary,
     struct hash_table *dictionary_pair,
+    struct hash_table *dictionary_trine,
     char *line)
 {
 	double avgdl = 0;
@@ -159,7 +160,9 @@ struct dynamic_array_kv_64 *search(
 	struct str tok_buffer_pair;
 	str_init(&tok_buffer_pair, pair_buffer, sizeof(pair_buffer));
 
-  char prev_buffer[buf_len];
+  char trine_buffer[buf_len * 3 + 2];
+	struct str tok_buffer_trine;
+	str_init(&tok_buffer_trine, trine_buffer, sizeof(trine_buffer));
 
 	tokenizer::token_type token;
   tokenizer::tokenizer tok;
@@ -171,6 +174,10 @@ struct dynamic_array_kv_64 *search(
   struct dynamic_array_64 term_pairs;
 	dynamic_array_64_init(&term_pairs);
 
+  struct dynamic_array_64 term_trines;
+	dynamic_array_64_init(&term_trines);
+
+
   tok.init(line, strlen(line));
 
 	do {
@@ -180,16 +187,26 @@ struct dynamic_array_kv_64 *search(
 
       dynamic_array_64_append(&terms, (uint64_t)str_dup_c(&tok_buffer));
 
-      if (terms.length > 1) {
-        str_resize(&tok_buffer_pair, 0);
-        str_cat(&tok_buffer_pair, prev_buffer);
+      if (str_length(&tok_buffer_trine) > 0) {
+        str_cat(&tok_buffer_trine, " ");
+        str_cat(&tok_buffer_trine, str_c(&tok_buffer));
+
+        dynamic_array_64_append(&term_trines, (uint64_t)str_dup_c(&tok_buffer_trine));
+
+        str_resize(&tok_buffer_trine, 0);
+      }
+
+      if (str_length(&tok_buffer_pair) > 0) {
         str_cat(&tok_buffer_pair, " ");
         str_cat(&tok_buffer_pair, str_c(&tok_buffer));
 
         dynamic_array_64_append(&term_pairs, (uint64_t)str_dup_c(&tok_buffer_pair));
+
+        str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
       }
 
-      strcpy(prev_buffer, str_c(&tok_buffer));
+      str_resize(&tok_buffer_pair, 0);
+      str_cat(&tok_buffer_pair, str_c(&tok_buffer));
 		}
 	} while (token != tokenizer::END);
 
@@ -219,6 +236,20 @@ struct dynamic_array_kv_64 *search(
 		struct posting *post_compressed = hash_table_find(dictionary_pair, (char *) term_pairs.store[i]);
 		if (post_compressed == NULL) {
       printf("hash find failed for '%s'\n", term_pairs.store[i]);
+			continue;
+
+    } else {
+	    struct dynamic_array_kv_64 *post = posting_decompress(post_compressed);
+			rank(post, docNos, avgdl);
+			dynamic_array_64_append(&postings, (uint64_t)post);
+		}
+	}
+
+  // Find results for strings
+	for (size_t i = 0; i < term_trines.length; i++) {
+		struct posting *post_compressed = hash_table_find(dictionary_trine, (char *) term_trines.store[i]);
+		if (post_compressed == NULL) {
+      printf("hash find failed for '%s'\n", term_trines.store[i]);
 			continue;
 
     } else {
@@ -259,7 +290,7 @@ int main(int argc, char *argv[]) {
 	struct dynamic_array_kv_32 docNos;
 	dynamic_array_kv_32_init(&docNos);
 	docNos.length = ((uint32_t *)index)[0];
-	docNos.store = (uint32_t *)&index[3 * sizeof(uint32_t)];
+	docNos.store = (uint32_t *)&index[4 * sizeof(uint32_t)];
 
   printf("docnos len %i\n", docNos.length);
 
@@ -273,6 +304,11 @@ int main(int argc, char *argv[]) {
 	hash_table_init(&dictionary_pair);
 	hash_table_read(&dictionary_pair, &index[dict_pair_offset]);
 
+  size_t dict_trine_offset = ((uint32_t *)index)[3];
+	struct hash_table dictionary_trine;
+	hash_table_init(&dictionary_trine);
+	hash_table_read(&dictionary_trine, &index[dict_trine_offset]);
+
 	// Accept input
 	char line[1024];
 	while (true) {
@@ -280,7 +316,7 @@ int main(int argc, char *argv[]) {
     if (fgets(line, sizeof(line), stdin) == NULL) break;
 
 		struct dynamic_array_kv_64 *result_list =
-      search(&docNos, &dictionary, &dictionary_pair, line);
+      search(&docNos, &dictionary, &dictionary_pair, &dictionary_trine, line);
 
 		if (result_list == NULL) {
 			printf("No results\n");
