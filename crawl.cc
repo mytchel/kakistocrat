@@ -68,6 +68,7 @@ void index::save(std::string path)
       file << "\n";
     }
   }
+
   file.close();
 }
 
@@ -106,6 +107,8 @@ void index::load(std::string path)
       time_t time = mktime(&tm);
 
       sites.emplace_back(id, host, level, time);
+
+      next_id = id + 1;
 
     } else {
       std::string tmp;
