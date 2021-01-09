@@ -34,6 +34,10 @@ uint32_t str_length(struct str *s);
 
 void str_resize(struct str *s, uint32_t size);
 
+void str_cat(struct str *s, const char *c);
+
+void str_tolower(struct str *s);
+
 char *str_c(struct str *s);
 
 char *str_dup_c(struct str *s);

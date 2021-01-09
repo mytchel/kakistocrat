@@ -37,7 +37,22 @@ void str_resize(struct str *s, uint32_t size) {
 }
 
 char *str_c(struct str *s) {
-	return s->store;
+  return s->store;
+}
+
+void str_tolower(struct str *s) {
+  char *c = s->store;
+	while ((*c = tolower(*c)))
+		++c;
+}
+
+void str_cat(struct str *s, const char *c) {
+  size_t l = strlen(c);
+  if (s->len + l + 1 < s->max) {
+    memcpy(&s->store[s->len], c, l);
+    s->len += l;
+    s->store[s->len] = '\0';
+  }
 }
 
 char *str_dup_c(struct str *s) {

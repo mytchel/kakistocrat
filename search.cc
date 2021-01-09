@@ -36,14 +36,13 @@ extern "C" {
 #include "scorer.h"
 #include "tokenizer.h"
 
-static inline void string_tolower(char *str) {
-	while ((*str = tolower(*str)))
-		++str;
-}
-
 static struct dynamic_array_kv_64 *intersect_postings(struct dynamic_array_64 *postings) {
 	struct dynamic_array_kv_64 *result = (struct dynamic_array_kv_64 *) malloc(sizeof(struct dynamic_array_kv_64));
 	dynamic_array_kv_64_init(result);
+
+  if (postings->length == 0) {
+    return result;
+  }
 
 	size_t *indexes = (size_t *)malloc(sizeof(size_t) * postings->length);
 	for (size_t i = 0; i < postings->length; i++)
@@ -137,28 +136,30 @@ static void rank(struct dynamic_array_kv_64 *posting, struct dynamic_array_kv_32
 	}
 }
 
-struct dynamic_array_kv_64 *search(char *index, char *line) {
+struct dynamic_array_kv_64 *search(
+    struct dynamic_array_kv_32 *docNos,
+    struct hash_table *dictionary,
+    struct hash_table *dictionary_pair,
+    char *line)
+{
 	double avgdl = 0;
 
-	// Decode index
-	struct dynamic_array_kv_32 docNos;
-	dynamic_array_kv_32_init(&docNos);
-	docNos.length = ((uint32_t *)index)[1];
-	docNos.store = (uint32_t *)&index[2 * sizeof(uint32_t)];
-
-	size_t dict_offset = ((uint32_t *)index)[0];
-	struct hash_table dictionary;
-	hash_table_init(&dictionary);
-	hash_table_read(&dictionary, &index[dict_offset]);
-
 	// Find average document length
-	for (size_t i = 0; i < docNos.length; i++)
-		avgdl += dynamic_array_kv_32_at(&docNos, i)[1];
-	avgdl /= docNos.length;
+	for (size_t i = 0; i < docNos->length; i++)
+		avgdl += dynamic_array_kv_32_at(docNos, i)[1];
+	avgdl /= docNos->length;
 
-	char tok_buffer_store[260]; // Provide underlying storage for tok_buffer
+  const size_t buf_len = 512;
+
+  char tok_buffer_store[buf_len]; // Provide underlying storage for tok_buffer
 	struct str tok_buffer;
 	str_init(&tok_buffer, tok_buffer_store, sizeof(tok_buffer_store));
+
+  char pair_buffer[buf_len * 2 + 1];
+	struct str tok_buffer_pair;
+	str_init(&tok_buffer_pair, pair_buffer, sizeof(pair_buffer));
+
+  char prev_buffer[buf_len];
 
 	tokenizer::token_type token;
   tokenizer::tokenizer tok;
@@ -166,12 +167,29 @@ struct dynamic_array_kv_64 *search(char *index, char *line) {
 	// Perform the search
 	struct dynamic_array_64 terms;
 	dynamic_array_64_init(&terms);
-	tok.init(line, strlen(line));
+
+  struct dynamic_array_64 term_pairs;
+	dynamic_array_64_init(&term_pairs);
+
+  tok.init(line, strlen(line));
+
 	do {
 		token = tok.next(&tok_buffer);
     if (token == tokenizer::WORD) {
-		  string_tolower(str_c(&tok_buffer));
-		  dynamic_array_64_append(&terms, (uint64_t)str_dup_c(&tok_buffer));
+		  str_tolower(&tok_buffer);
+
+      dynamic_array_64_append(&terms, (uint64_t)str_dup_c(&tok_buffer));
+
+      if (terms.length > 1) {
+        str_resize(&tok_buffer_pair, 0);
+        str_cat(&tok_buffer_pair, prev_buffer);
+        str_cat(&tok_buffer_pair, " ");
+        str_cat(&tok_buffer_pair, str_c(&tok_buffer));
+
+        dynamic_array_64_append(&term_pairs, (uint64_t)str_dup_c(&tok_buffer_pair));
+      }
+
+      strcpy(prev_buffer, str_c(&tok_buffer));
 		}
 	} while (token != tokenizer::END);
 
@@ -184,13 +202,28 @@ struct dynamic_array_kv_64 *search(char *index, char *line) {
 
 	// Find results for strings
 	for (size_t i = 0; i < terms.length; i++) {
-		struct posting *post_compressed = hash_table_find(&dictionary, (char *)terms.store[i]);
+		struct posting *post_compressed = hash_table_find(dictionary, (char *) terms.store[i]);
 		if (post_compressed == NULL) {
       printf("hash find failed for '%s'\n", terms.store[i]);
-			return NULL;
+			continue;
+
     } else {
 	    struct dynamic_array_kv_64 *post = posting_decompress(post_compressed);
-			rank(post, &docNos, avgdl);
+			rank(post, docNos, avgdl);
+			dynamic_array_64_append(&postings, (uint64_t)post);
+		}
+	}
+
+  // Find results for strings
+	for (size_t i = 0; i < term_pairs.length; i++) {
+		struct posting *post_compressed = hash_table_find(dictionary_pair, (char *) term_pairs.store[i]);
+		if (post_compressed == NULL) {
+      printf("hash find failed for '%s'\n", term_pairs.store[i]);
+			continue;
+
+    } else {
+	    struct dynamic_array_kv_64 *post = posting_decompress(post_compressed);
+			rank(post, docNos, avgdl);
 			dynamic_array_64_append(&postings, (uint64_t)post);
 		}
 	}
@@ -225,18 +258,29 @@ int main(int argc, char *argv[]) {
 	// Decode index
 	struct dynamic_array_kv_32 docNos;
 	dynamic_array_kv_32_init(&docNos);
-	docNos.length = ((uint32_t *)index)[1];
-	docNos.store = (uint32_t *)&index[2 * sizeof(uint32_t)];
+	docNos.length = ((uint32_t *)index)[0];
+	docNos.store = (uint32_t *)&index[3 * sizeof(uint32_t)];
 
   printf("docnos len %i\n", docNos.length);
 
+ 	size_t dict_offset = ((uint32_t *)index)[1];
+	struct hash_table dictionary;
+	hash_table_init(&dictionary);
+	hash_table_read(&dictionary, &index[dict_offset]);
+
+ 	size_t dict_pair_offset = ((uint32_t *)index)[2];
+	struct hash_table dictionary_pair;
+	hash_table_init(&dictionary_pair);
+	hash_table_read(&dictionary_pair, &index[dict_pair_offset]);
+
 	// Accept input
 	char line[1024];
-	for (;;) {
+	while (true) {
     printf("enter search: ");
     if (fgets(line, sizeof(line), stdin) == NULL) break;
 
-		struct dynamic_array_kv_64 *result_list = search(index, line);
+		struct dynamic_array_kv_64 *result_list =
+      search(&docNos, &dictionary, &dictionary_pair, line);
 
 		if (result_list == NULL) {
 			printf("No results\n");
@@ -270,7 +314,7 @@ int main(int argc, char *argv[]) {
 
     results_sort(&result_rescored);
 
-		for (size_t i = 0; i < result_rescored.length && i < 20; i++) {
+		for (size_t i = 0; i < result_rescored.length && i < 10; i++) {
 	    uint64_t page_id = dynamic_array_kv_64_at(&result_rescored, i)[0];
 			double score = *(double *)&dynamic_array_kv_64_at(&result_rescored, i)[1];
 

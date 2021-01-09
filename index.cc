@@ -30,7 +30,10 @@ extern "C" {
 #include "crawl.h"
 #include "tokenizer.h"
 
-void index_write(char const *filename, char *buffer, struct dynamic_array_kv_64 *docNos, struct hash_table *dictionary)
+void index_write(char const *filename, char *buffer,
+    struct dynamic_array_kv_64 *docNos,
+    struct hash_table *dictionary,
+    struct hash_table *dictionary_pair)
 {
   FILE *fh = fopen(filename, "w");
   if (fh == NULL) {
@@ -39,9 +42,10 @@ void index_write(char const *filename, char *buffer, struct dynamic_array_kv_64 
   }
 
   // Write to output buffer
-  uint32_t offset = sizeof(uint32_t) * 2;
+  uint32_t offset = sizeof(uint32_t) * 3;
 
-  ((uint32_t *)buffer)[1] = docNos->length;
+  ((uint32_t *)buffer)[0] = docNos->length;
+
   uint32_t docNos_offset = offset;
 	offset += docNos->length * sizeof(uint32_t) * 2;
 	for (size_t i = 0; i < docNos->length; i++) {
@@ -54,10 +58,14 @@ void index_write(char const *filename, char *buffer, struct dynamic_array_kv_64 
     offset += sizeof(uint64_t);
 	}
 
-	((uint32_t *)buffer)[0] = offset;
+	((uint32_t *)buffer)[1] = offset;
   offset += hash_table_write(dictionary, &buffer[offset]);
 
+  ((uint32_t *)buffer)[2] = offset;
+  offset += hash_table_write(dictionary_pair, &buffer[offset]);
+
 	fwrite(buffer, sizeof(char), offset, fh);
+
 	fclose(fh);
 }
 
@@ -71,12 +79,23 @@ int main(int argc, char *argv[]) {
   struct hash_table dictionary;
 	hash_table_init(&dictionary);
 
+  struct hash_table dictionary_pair;
+	hash_table_init(&dictionary_pair);
+
   size_t max_size = 1024 * 1024 * 10;
   char *buf = (char *) malloc(max_size);
 
-  char tok_buffer_store[516]; // Provide underlying storage for tok_buffer
+  const size_t buf_len = 512;
+
+  char tok_buffer_store[buf_len]; // Provide underlying storage for tok_buffer
 	struct str tok_buffer;
 	str_init(&tok_buffer, tok_buffer_store, sizeof(tok_buffer_store));
+
+  char pair_buffer[buf_len * 2 + 1];
+	struct str tok_buffer_pair;
+	str_init(&tok_buffer_pair, pair_buffer, sizeof(pair_buffer));
+
+  char prev_buffer[buf_len];
 
 	tokenizer::token_type token;
   tokenizer::tokenizer tok;
@@ -108,6 +127,7 @@ int main(int argc, char *argv[]) {
 		  dynamic_array_kv_64_append(&docNos, id, 0);
 
       bool in_head = false, in_title = false;
+      bool break_pair = false;
 
       do {
 				token = tok.next(&tok_buffer);
@@ -131,9 +151,30 @@ int main(int argc, char *argv[]) {
             in_title = false;
           }
 
+          if (t == "a" || t == "strong") {
+            break_pair = false;
+          } else {
+            break_pair = true;
+          }
+
         } else if ((in_title || !in_head) && token == tokenizer::WORD) {
 					dynamic_array_kv_64_back(&docNos)[1]++;
-					hash_table_insert(&dictionary, &tok_buffer, docNos.length);
+
+          str_tolower(&tok_buffer);
+
+          hash_table_insert(&dictionary, &tok_buffer, docNos.length);
+
+          if (!break_pair) {
+            str_resize(&tok_buffer_pair, 0);
+            str_cat(&tok_buffer_pair, prev_buffer);
+            str_cat(&tok_buffer_pair, " ");
+            str_cat(&tok_buffer_pair, str_c(&tok_buffer));
+
+            hash_table_insert(&dictionary_pair, &tok_buffer_pair, docNos.length);
+          }
+
+          break_pair = false;
+          strcpy(prev_buffer, str_c(&tok_buffer));
 				}
 			} while (token != tokenizer::END);
 
@@ -144,7 +185,7 @@ int main(int argc, char *argv[]) {
   printf("saving index\n");
 
   char *out_buffer = (char *)malloc(1024*1024*1024);
-  index_write("index.dat", out_buffer, &docNos, &dictionary);
+  index_write("index.dat", out_buffer, &docNos, &dictionary, &dictionary_pair);
 
   return 0;
 }
