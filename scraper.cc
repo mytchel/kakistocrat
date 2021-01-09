@@ -189,6 +189,7 @@ std::optional<std::string> process_link(
   if (bad_prefix(path))
     return {};
 
+  // TODO: Pretty sure this is broken
   if (!path.empty() && path.front() != '/') {
     path = page_dir + "/" + path;
   }
@@ -254,6 +255,11 @@ std::list<std::string> curl_data::find_links(std::string page_url, std::string &
           }
         }
 
+        // TODO: only do this in head.
+        // https://whereismyspoon.co/category/main-dish/meat/
+        // this page has svg's with titles.
+        // also only take first
+        // and make sure not in a sub tag?.
       } else if (strcmp(tag_name, "title") == 0) {
         tok.consume_until("</title>", &tok_buffer);
         title = std::string(str_c(&tok_buffer));
