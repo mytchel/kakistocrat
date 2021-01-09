@@ -16,6 +16,7 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <cassert>
 
 #include "util.h"
 
@@ -37,7 +38,7 @@ bool has_prefix(std::string const &s, std::string const &prefix) {
   }
 }
 
-std::string get_proto(std::string url) {
+std::string get_proto(const std::string &url) {
   int slashes = 0;
   std::vector<char> s;
 
@@ -59,7 +60,7 @@ std::string get_proto(std::string url) {
   return "";
 }
 
-std::string get_host(std::string url) {
+std::string get_host(const std::string &url) {
   int chars = 0, slashes = 0;
   bool need_host = false;
   std::vector<char> s;
@@ -71,7 +72,8 @@ std::string get_host(std::string url) {
             && !('a' <= c && c <= 'z')
             && !('A' <= c && c <= 'Z')
             && !('0' <= c && c <= '9')
-            && c != '.' && c != '-')
+            && c != '-' && c != '_'
+            && c != '.')
     {
       return "";
 
@@ -134,7 +136,7 @@ std::vector<std::string> split_path(std::string s) {
   return path;
 }
 
-std::string get_path(std::string url) {
+std::string get_path(const std::string &url) {
   int slashes = 0;
   bool need_host = false;
   std::vector<char> s;
@@ -173,7 +175,7 @@ std::string get_path(std::string url) {
   return path;
 }
 
-std::string get_dir(std::string path) {
+std::string get_dir(const std::string &path) {
   auto parts = split_path(path);
   std::string dir = "";
 
@@ -190,10 +192,11 @@ std::string get_dir(std::string path) {
   return dir;
 }
 
-std::string make_path(std::string url) {
+std::string make_path(const std::string &url) {
   auto host = get_host(url);
   if (host.empty()) {
     printf("make path bad input '%s'\n", url.c_str());
+    assert(false);
     return "junk_path";
   }
 
@@ -252,13 +255,22 @@ std::string make_path(std::string url) {
   return file_path;
 }
 
-bool bare_minimum_valid_url(std::string url) {
-  if (url.length() >= max_url_len) {
+bool bare_minimum_valid_url(const std::string &url) {
+  if (url.length() + 1 >= max_url_len) {
     return false;
   }
 
-  for (auto &c : url) {
-    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+  auto cc = url.c_str();
+
+  for (size_t i = 0; i < url.length(); i++) {
+    char c = cc[i];
+
+    // covers all control characters, new lines, tabs, etc
+    if ((int) c < ' ') {
+      return false;
+
+    // del, & would it returns non ascii?
+    } else if ((int) c >= 127) {
       return false;
     }
   }

@@ -85,14 +85,12 @@ size_t curl_cb_buffer_write(void *contents, size_t sz, size_t nmemb, void *ctx)
   size_t realsize = sz * nmemb;
 
   if (d->max < d->size + realsize) {
-    printf("%i too big\n", d->size + realsize);
     return 0;
   }
 
   if (d->buf == NULL) {
     d->buf = (char *) malloc(d->max);
     if (d->buf == NULL) {
-      printf("malloc failed\n");
       return 0;
     }
   }
@@ -198,9 +196,27 @@ std::optional<std::string> process_link(
   return proto + "://" + host + path;
 }
 
+bool valid_url(std::string s) {
+  auto page_proto = util::get_proto(s);
+  auto page_host = util::get_host(s);
+  auto page_dir = util::get_dir(util::get_path(s));
+
+  if (page_proto.empty() || page_host.empty() || page_dir.empty()) {
+    printf("BAD PAGE URL? '%s' -> '%s' '%s' '%s'\n",
+        s.c_str(), page_proto.c_str(), page_host.c_str(), page_dir.c_str());
+    return false;
+  }
+
+  return true;
+}
+
 std::list<std::string> curl_data::find_links(std::string page_url, std::string &title)
 {
   std::list<std::string> urls;
+
+  if (buf == NULL) {
+    return urls;
+  }
 
   char tok_buffer_store[1024];
 	struct str tok_buffer;
@@ -214,6 +230,13 @@ std::list<std::string> curl_data::find_links(std::string page_url, std::string &
   auto page_proto = util::get_proto(page_url);
   auto page_host = util::get_host(page_url);
   auto page_dir = util::get_dir(util::get_path(page_url));
+
+  if (page_proto.empty() || page_host.empty() || page_dir.empty()) {
+    printf("BAD PAGE URL '%s' : '%s' -> '%s' '%s' '%s'\n",
+        url.url.c_str(), page_url.c_str(),
+        page_proto.c_str(), page_host.c_str(), page_dir.c_str());
+    return urls;
+  }
 
   do {
     token = tok.next(&tok_buffer);
@@ -313,7 +336,7 @@ void curl_data::process_sitemap() {
       tokenizer::get_tag_name(tag_name, str_c(&tok_buffer));
 
       if (strcmp(tag_name, "url") == 0) {
-        if (loc) {
+        if (loc && util::bare_minimum_valid_url(*loc) && valid_url(*loc)) {
           m_site->process_sitemap_entry(*loc, lastmod);
         }
 
@@ -525,6 +548,7 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
       }
     }
 
+    /*
     if (last_log + 5s < std::chrono::system_clock::now()) {
       last_log = std::chrono::system_clock::now();
       printf("%i with %i connections for %i sites\n",
@@ -536,6 +560,7 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
             s->host.c_str());
       }
     }
+    */
 
     bool adding = true;
     while (active_connections < max_con && adding) {
