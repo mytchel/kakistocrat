@@ -15,6 +15,9 @@ find_package(CURL REQUIRED)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
+configure_file(mine/seed seed COPYONLY)
+configure_file(mine/blacklist blacklist COPYONLY)
+
 add_executable(crawl crawl_main.cc crawler.cc crawl.cc scraper.cc scrape.cc tokenizer.cc
     util.cc
     str.c

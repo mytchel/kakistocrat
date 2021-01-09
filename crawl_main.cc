@@ -25,8 +25,8 @@
 #include "crawler.h"
 
 int main(int argc, char *argv[]) {
-  std::vector<std::string> blacklist = util::load_list("../mine/blacklist");
-  std::vector<std::string> initial_seed = util::load_list("../mine/seed");
+  std::vector<std::string> blacklist = util::load_list("blacklist");
+  std::vector<std::string> initial_seed = util::load_list("seed");
 
   crawl::index index;
 
