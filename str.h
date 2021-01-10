@@ -38,6 +38,8 @@ void str_cat(struct str *s, const char *c);
 
 void str_tolower(struct str *s);
 
+void str_tostem(struct str *s);
+
 char *str_c(struct str *s);
 
 char *str_dup_c(struct str *s);

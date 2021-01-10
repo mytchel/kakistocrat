@@ -93,7 +93,7 @@ std::string get_host(const std::string &url) {
         if (c == '@') {
           s.clear();
         } else {
-          s.push_back(c);
+          s.push_back(tolower(c));
         }
       }
     }

@@ -102,7 +102,7 @@ int main(int argc, char *argv[]) {
 	struct str tok_buffer_pair;
 	str_init(&tok_buffer_pair, pair_buffer, sizeof(pair_buffer));
 
-  char trine_buffer[buf_len * 2 + 1];
+  char trine_buffer[buf_len * 3 + 2];
 	struct str tok_buffer_trine;
 	str_init(&tok_buffer_trine, trine_buffer, sizeof(trine_buffer));
 
@@ -155,10 +155,10 @@ int main(int argc, char *argv[]) {
           } else if (t == "/head") {
             in_head = false;
 
-          } else if (t == "title") {
+          } else if (in_head && t == "title") {
             in_title = true;
 
-          } else if (t == "/title") {
+          } else if (in_head && t == "/title") {
             in_title = false;
           }
 
@@ -172,6 +172,7 @@ int main(int argc, char *argv[]) {
 					dynamic_array_kv_64_back(&docNos)[1]++;
 
           str_tolower(&tok_buffer);
+          str_tostem(&tok_buffer);
 
           hash_table_insert(&dictionary, &tok_buffer, docNos.length);
 

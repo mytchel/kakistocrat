@@ -36,7 +36,6 @@ void tokenizer::consume_until(const char * s, struct str *buffer) {
         }
 
         if (buf != NULL) {
-          buf[b++] = '\0';
           str_resize(buffer, b);
         }
 
@@ -52,7 +51,6 @@ void tokenizer::consume_until(const char * s, struct str *buffer) {
   }
 
   if (buf != NULL) {
-    buf[b++] = '\0';
     str_resize(buffer, b);
   }
 }
@@ -85,12 +83,10 @@ token_type tokenizer::next(struct str *buffer) {
       index += i;
 
       if (b > 0 && buf[b-1] == '/') {
-        buf[b-1] = '\0';
-			  str_resize(buffer, b);
+			  str_resize(buffer, b-1);
 			  return TAGC;
 
       } else {
-        buf[b++] = '\0';
 			  str_resize(buffer, b);
 
         if (util::has_prefix(buf, "script")) {
@@ -118,7 +114,6 @@ token_type tokenizer::next(struct str *buffer) {
 				i++;
 			}
 
-			buf[b++] = '\0';
 			str_resize(buffer, b);
 
 			index += i;
@@ -136,7 +131,6 @@ token_type tokenizer::next(struct str *buffer) {
 				i++;
 			}
 
-      buf[b++] = '\0';
 			str_resize(buffer, b);
 
 			index += i;
@@ -184,7 +178,6 @@ void tokenizer::load_tag_content(struct str *buffer) {
     i++;
   }
 
-  buf[b++] = '\0';
   str_resize(buffer, b);
 
   index += i;

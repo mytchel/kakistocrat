@@ -184,6 +184,7 @@ struct dynamic_array_kv_64 *search(
 		token = tok.next(&tok_buffer);
     if (token == tokenizer::WORD) {
 		  str_tolower(&tok_buffer);
+		  str_tostem(&tok_buffer);
 
       dynamic_array_64_append(&terms, (uint64_t)str_dup_c(&tok_buffer));
 
