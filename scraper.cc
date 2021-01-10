@@ -239,6 +239,8 @@ std::list<std::string> curl_data::find_links(std::string page_url, std::string &
     return urls;
   }
 
+  bool in_head = false;
+  bool got_title = false;
   do {
     token = tok.next(&tok_buffer);
 
@@ -255,14 +257,20 @@ std::list<std::string> curl_data::find_links(std::string page_url, std::string &
           }
         }
 
-        // TODO: only do this in head.
+        // only do this in head.
         // https://whereismyspoon.co/category/main-dish/meat/
         // this page has svg's with titles.
         // also only take first
         // and make sure not in a sub tag?.
-      } else if (strcmp(tag_name, "title") == 0) {
+      } else if (strcmp(tag_name, "head") == 0) {
+        in_head = true;
+      } else if (strcmp(tag_name, "/head") == 0) {
+        in_head = false;
+
+      } else if (in_head && !got_title && strcmp(tag_name, "title") == 0) {
         tok.consume_until("</title>", &tok_buffer);
         title = std::string(str_c(&tok_buffer));
+        got_title = true;
       }
     }
 

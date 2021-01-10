@@ -4,8 +4,6 @@ next:
         unchanged urls in a seperate list and don't update the index
         with them.
 
-    add further groupings, done pairs, now do threes, and fours.
-    cut off 's' and maybe other suffixs.
     quotes
 
 eventually:
@@ -19,4 +17,5 @@ eventually:
     Might help to group by domain rather than host. Possibly with exceptions.
 
     Scores from a domain should count for less.
+    Scores for sitemap pages should be lower
 
