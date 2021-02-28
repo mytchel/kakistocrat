@@ -241,8 +241,12 @@ void site::finish(
   for (auto c: title) {
     if (c == '\t' || c == '\n' || c == '\r' || c == '\v')
       continue;
-
-    url.title += c;
+    if (('a' <= c && c <= 'z') ||
+        ('A' <= c && c <= 'Z') ||
+        ('0' <= c && c <= '9') ||
+        (c == '-' || c == '_' || c == '(' || c == ')')) {
+      url.title += c;
+    }
   }
 
   url.last_scanned = time(NULL);

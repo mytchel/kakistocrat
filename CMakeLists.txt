@@ -18,13 +18,17 @@ find_package(Threads REQUIRED)
 configure_file(mine/seed seed COPYONLY)
 configure_file(mine/blacklist blacklist COPYONLY)
 
-add_executable(crawl crawl_main.cc crawler.cc crawl.cc scraper.cc scrape.cc tokenizer.cc
+add_executable(crawl crawl_main.cc
+    crawler.cc
+    crawl.cc
+    scraper.cc
+    scrape.cc
+    tokenizer.cc
     util.cc
     str.c
 	x_cocomel/memory.c)
 
 target_include_directories(crawl PUBLIC ${CURL_INCLUDE_DIRS})
-target_include_directories(crawl PUBLIC ${LEXBOR_INCLUDES})
 
 target_link_libraries(crawl ${CURL_LIBRARIES})
 
@@ -32,7 +36,11 @@ target_link_libraries(crawl Threads::Threads)
 
 add_executable(scorer score_main.cc scorer.cc crawl.cc util.cc)
 
-add_executable(index index.cc crawl.cc util.cc tokenizer.cc str.c
+add_executable(index index.cc
+    crawl.cc
+    tokenizer.cc
+    util.cc
+    str.c
 	x_cocomel/bst.c
 	x_cocomel/hash_table.c
 	x_cocomel/memory.c
@@ -43,10 +51,15 @@ target_link_libraries(index ${CURL_LIBRARIES})
 target_link_libraries(index Threads::Threads)
 
 target_include_directories(index PUBLIC ${CURL_INCLUDE_DIRS})
-target_include_directories(index PUBLIC ${LEXBOR_INCLUDES})
 
 
-add_executable(search search.cc scorer.cc crawl.cc util.cc tokenizer.cc str.c
+add_executable(search search_cli.cc
+    search.cc
+    scorer.cc
+    crawl.cc
+    tokenizer.cc
+    util.cc
+    str.c
 	x_cocomel/bst.c
 	x_cocomel/hash_table.c
 	x_cocomel/memory.c
@@ -54,9 +67,7 @@ add_executable(search search.cc scorer.cc crawl.cc util.cc tokenizer.cc str.c
 	x_cocomel/vbyte)
 
 target_link_libraries(search ${CURL_LIBRARIES})
-target_link_libraries(search Threads::Threads)
 
 target_include_directories(search PUBLIC ${CURL_INCLUDE_DIRS})
-target_include_directories(search PUBLIC ${LEXBOR_INCLUDES})
 
 

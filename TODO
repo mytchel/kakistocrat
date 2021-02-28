@@ -19,3 +19,6 @@ eventually:
     Scores from a domain should count for less.
     Scores for sitemap pages should be lower
 
+    Concurrent index
+    Concurrent search
+
