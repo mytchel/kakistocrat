@@ -17,5 +17,6 @@ bool bare_minimum_valid_url(const std::string &url);
 
 std::vector<std::string> load_list(std::string path);
 
+std::string url_decode(const std::string &in);
 };
 

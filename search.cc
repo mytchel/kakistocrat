@@ -306,20 +306,16 @@ void searcher::load(std::string path)
 	hash_table_read(&dictionary_trine, &index[dict_trine_offset]);
 }
 
-struct dynamic_array_kv_64 *searcher::search(
-      char *line, scorer::scores &index_scores)
+std::vector<search_entry> searcher::search(char *line, scorer::scores &index_scores)
 {
-  dynamic_array_kv_64 *result_rescored =
-    (struct dynamic_array_kv_64 *) malloc(sizeof(struct dynamic_array_kv_64));
-
-  dynamic_array_kv_64_init(result_rescored);
+  std::vector<search_entry> results;
 
   struct dynamic_array_kv_64 *result_list = search_c(&docNos,
         &dictionary, &dictionary_pair, &dictionary_trine, line);
 
   if (result_list == NULL) {
     printf("No results\n");
-    return result_rescored;
+    return results;
   }
 
   for (size_t i = 0; i < result_list->length; i++) {
@@ -341,14 +337,17 @@ struct dynamic_array_kv_64 *searcher::search(
       score = 0;
     }
 
-    dynamic_array_kv_64_append(result_rescored, page_id, *(uint64_t *) &score);
+    results.emplace_back(score, page_id, page->url, page->title, page->path);
   }
-
-  results_sort(result_rescored);
 
   // TODO: free(result_list);
 
-  return result_rescored;
+  std::sort(results.begin(), results.end(),
+      [](const search_entry &a, const search_entry &b) {
+        return a.score > b.score;
+      });
+
+  return results;
 }
 
 }

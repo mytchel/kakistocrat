@@ -306,4 +306,23 @@ std::vector<std::string> load_list(std::string path) {
   return values;
 }
 
+std::string url_decode(const std::string &in) {
+  std::string out;
+  int i, ii;
+  char ch;
+
+  for (i = 0; i < in.length(); i++) {
+    if (in[i] == '%') {
+      sscanf(in.substr(i+1, 2).c_str(), "%x", &ii);
+      ch = static_cast<char>(ii);
+      out += ch;
+      i = i + 2;
+    } else {
+      out += in[i];
+    }
+  }
+
+  return out;
+}
+
 }

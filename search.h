@@ -1,11 +1,22 @@
 namespace search {
 
+struct search_entry {
+  search_entry(double s, uint64_t id, std::string u, std::string t, std::string p)
+      : score(s), page_id(id), url(u), title(t), path(p) {}
+
+  double score;
+  uint64_t page_id;
+  std::string url;
+  std::string title;
+  std::string path;
+};
+
 class searcher {
   public:
 
   void load(std::string path);
 
-  struct dynamic_array_kv_64 *search(char *str, scorer::scores &index_scores);
+  std::vector<search_entry> search(char *str, scorer::scores &index_scores);
 
   private:
 

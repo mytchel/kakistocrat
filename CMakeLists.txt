@@ -47,12 +47,6 @@ add_executable(index index.cc
 	x_cocomel/posting.c
 	x_cocomel/vbyte)
 
-target_link_libraries(index ${CURL_LIBRARIES})
-target_link_libraries(index Threads::Threads)
-
-target_include_directories(index PUBLIC ${CURL_INCLUDE_DIRS})
-
-
 add_executable(search search_cli.cc
     search.cc
     scorer.cc
@@ -66,8 +60,26 @@ add_executable(search search_cli.cc
 	x_cocomel/posting.c
 	x_cocomel/vbyte)
 
-target_link_libraries(search ${CURL_LIBRARIES})
-
 target_include_directories(search PUBLIC ${CURL_INCLUDE_DIRS})
 
+find_package(Pistache 0.0.2 REQUIRED)
+
+#find_package(nlohmann_josn 3.2.0 REQUIRED)
+add_subdirectory(x_nlohmann)
+
+add_executable(search_server search_server.cc
+    search.cc
+    scorer.cc
+    crawl.cc
+    tokenizer.cc
+    util.cc
+    str.c
+	x_cocomel/bst.c
+	x_cocomel/hash_table.c
+	x_cocomel/memory.c
+	x_cocomel/posting.c
+	x_cocomel/vbyte)
+
+target_link_libraries(search_server pistache_shared)
+target_link_libraries(search_server nlohmann_json::nlohmann_json)
 
