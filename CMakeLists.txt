@@ -31,10 +31,12 @@ add_executable(crawl crawl_main.cc
 target_include_directories(crawl PUBLIC ${CURL_INCLUDE_DIRS})
 
 target_link_libraries(crawl ${CURL_LIBRARIES})
-
 target_link_libraries(crawl Threads::Threads)
+target_link_libraries(crawl nlohmann_json::nlohmann_json)
 
 add_executable(scorer score_main.cc scorer.cc crawl.cc util.cc)
+
+target_link_libraries(scorer nlohmann_json::nlohmann_json)
 
 add_executable(index index.cc
     crawl.cc
@@ -46,6 +48,8 @@ add_executable(index index.cc
 	x_cocomel/memory.c
 	x_cocomel/posting.c
 	x_cocomel/vbyte)
+
+target_link_libraries(index nlohmann_json::nlohmann_json)
 
 add_executable(search search_cli.cc
     search.cc
@@ -61,6 +65,8 @@ add_executable(search search_cli.cc
 	x_cocomel/vbyte)
 
 target_include_directories(search PUBLIC ${CURL_INCLUDE_DIRS})
+
+target_link_libraries(search nlohmann_json::nlohmann_json)
 
 find_package(Pistache 0.0.2 REQUIRED)
 

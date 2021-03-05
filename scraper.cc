@@ -197,20 +197,6 @@ std::optional<std::string> process_link(
   return proto + "://" + host + path;
 }
 
-bool valid_url(std::string s) {
-  auto page_proto = util::get_proto(s);
-  auto page_host = util::get_host(s);
-  auto page_dir = util::get_dir(util::get_path(s));
-
-  if (page_proto.empty() || page_host.empty() || page_dir.empty()) {
-    printf("BAD PAGE URL? '%s' -> '%s' '%s' '%s'\n",
-        s.c_str(), page_proto.c_str(), page_host.c_str(), page_dir.c_str());
-    return false;
-  }
-
-  return true;
-}
-
 std::list<std::string> curl_data::find_links(std::string page_url, std::string &title)
 {
   std::list<std::string> urls;
@@ -350,8 +336,11 @@ void curl_data::process_sitemap() {
       tokenizer::get_tag_name(tag_name, str_c(&tok_buffer));
 
       if (strcmp(tag_name, "url") == 0) {
-        if (loc && util::bare_minimum_valid_url(*loc) && valid_url(*loc)) {
-          m_site->process_sitemap_entry(*loc, lastmod);
+        if (loc) {
+          auto url = process_link("https", m_site->host, "", *loc);
+          if (url.has_value()) {
+            m_site->process_sitemap_entry(*url, lastmod);
+          }
         }
 
         loc = {};
@@ -483,9 +472,6 @@ CURL *make_handle(site* s, index_url u)
   curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10L);
   curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 5L);
 
-  // Needed for multi threading with sig pipe block
-  curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1L);
-
   curl_easy_setopt(curl_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
 
   char url[util::max_url_len];
@@ -507,11 +493,8 @@ CURL *make_handle_other(site* s, request_type r, std::string url)
   curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
   curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
   curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 3L);
-  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 5L);
+  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 15L);
   curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 5L);
-
-  // Needed for multi threading with sig pipe block
-  curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1L);
 
   curl_easy_setopt(curl_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
 

@@ -238,9 +238,32 @@ void site::finish(
   }
 
   url.title.clear();
-  for (auto c: title) {
-    if (c == '\t' || c == '\n' || c == '\r' || c == '\v')
+
+  for (int i = 0; i < title.size(); i++) {
+    char c = title[i];
+
+    if (c == '\t' || c == '\n' || c == '\r' || c == '\v') {
       continue;
+    }
+
+    if (c == '&') {
+      if (title[i+1] == '#') {
+        while (i < title.size()) {
+          if (title[i] == ';') {
+            break;
+          } else {
+            i++;
+          }
+        }
+
+        url.title += ' ';
+      } else {
+        url.title += '&';
+      }
+
+      continue;
+    }
+
     if (('a' <= c && c <= 'z') ||
         ('A' <= c && c <= 'Z') ||
         ('0' <= c && c <= '9') ||

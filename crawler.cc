@@ -266,8 +266,11 @@ void crawl(std::vector<level> levels, index &index,
 
   for (auto &s: index.sites) {
     s.scraped = s.last_scanned + 60 * 60 * 24 > now;
-    printf("load %i : %s\n", s.scraped, s.host.c_str());
+    if (!s.scraped)
+      printf("crawling : %s\n", s.host.c_str());
   }
+
+  return;
 
   auto n_threads = std::thread::hardware_concurrency();
   // TODO: get from file limit

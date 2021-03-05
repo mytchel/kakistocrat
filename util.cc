@@ -295,11 +295,8 @@ std::vector<std::string> load_list(std::string path) {
   while (getline(file, line)) {
     if (line.empty() || line.front() == '#')
       continue;
-    printf("     %s\n", line.c_str());
     values.push_back(line);
   }
-
-  printf("\n");
 
   file.close();
 
