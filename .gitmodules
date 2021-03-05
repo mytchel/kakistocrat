@@ -1,3 +1,9 @@
 [submodule "x_lexbor"]
 	path = x_lexbor
 	url = https://github.com/lexbor/lexbor
+[submodule "x_nlohmann"]
+	path = x_nlohmann
+	url = ./x_nlohmann
+[submodule "x_pistache"]
+	path = x_pistache
+	url = ./x_pistache
