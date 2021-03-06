@@ -15,10 +15,67 @@
 #include <cstdint>
 #include <ctime>
 
+#include <nlohmann/json.hpp>
+
 #include "util.h"
 #include "crawl.h"
 
+using nlohmann::json;
+
 namespace crawl {
+
+void to_json(json &j, const page_id &id) {
+  j = json{{"s", id.site}, {"p", id.page}};
+}
+
+void from_json(const json &j, page_id &id) {
+  j.at("s").get_to(id.site);
+  j.at("p").get_to(id.page);
+}
+
+void to_json(json &j, const page &p) {
+  j = json{
+      {"i", p.id},
+      {"u", p.url},
+      {"p", p.path},
+      {"t", p.title},
+      {"links", p.links},
+      {"l", p.last_scanned},
+      {"v", p.valid},
+      {"s", p.scraped}};
+}
+
+void from_json(const json &j, page &p) {
+  j.at("i").get_to(p.id);
+  j.at("u").get_to(p.url);
+  j.at("p").get_to(p.path);
+  j.at("t").get_to(p.title);
+
+  j.at("links").get_to(p.links);
+
+  j.at("l").get_to(p.last_scanned);
+  j.at("v").get_to(p.valid);
+  j.at("s").get_to(p.scraped);
+}
+
+void to_json(json &j, const site &s) {
+  j = json{
+      {"id", s.id},
+      {"host", s.host},
+      {"level", s.level},
+      {"last_scanned", s.last_scanned},
+      {"next_id", s.next_id},
+      {"pages", s.pages}};
+}
+
+void from_json(const json &j, site &s) {
+  j.at("id").get_to(s.id);
+  j.at("host").get_to(s.host);
+  j.at("level").get_to(s.level);
+  j.at("last_scanned").get_to(s.last_scanned);
+  j.at("next_id").get_to(s.next_id);
+  j.at("pages").get_to(s.pages);
+}
 
 void index::save(std::string path)
 {
@@ -33,42 +90,13 @@ void index::save(std::string path)
     return;
   }
 
-  char t_buffer[32];
+  json j = {
+    {"next_id", next_id},
+    {"sites", sites}};
 
-  for (auto &site: sites) {
-    file << site.id << "\t";
-    file << site.host << "\t";
-    file << site.level << "\t";
+  file << j;
 
-    std::tm * stm = std::gmtime(&site.last_scanned);
-    std::strftime(t_buffer, 32, "%Y-%m-%d %H:%M:%S", stm);
-
-    file << t_buffer;
-
-    file << "\n";
-
-    for (auto &p: site.pages) {
-
-      std::tm * ptm = std::gmtime(&p.last_scanned);
-      std::strftime(t_buffer, 32, "%Y-%m-%d %H:%M:%S", ptm);
-
-      file << "\t";
-      file << p.id << "\t";
-      file << p.url << "\t";
-      file << p.path << "\t";
-      file << t_buffer << "\t";
-      file << p.valid << "\t";
-      file << p.scraped << "\t";
-      file << p.title;
-
-      for (auto &l: p.links) {
-        file << "\t" << l.site << " " << l.page;
-      }
-
-      file << "\n";
-    }
-  }
-
+  printf("saved\n");
   file.close();
 }
 
@@ -85,70 +113,10 @@ void index::load(std::string path)
     return;
   }
 
-  std::string line;
-  while (getline(file, line)) {
-    bool have_site = line[0] != '\t';
+  json j = json::parse(file);
 
-    std::istringstream ss(line);
-
-    if (have_site) {
-      uint32_t id;
-      std::string host;
-      size_t level;
-      std::string scraped_s;
-
-      ss >> id;
-      ss >> host;
-      ss >> level;
-      ss >> scraped_s;
-
-      tm tm;
-      strptime(scraped_s.c_str(), "%Y-%m-%d %H:%M:%S", &tm);
-      time_t time = mktime(&tm);
-
-      sites.emplace_back(id, host, level, time);
-
-      next_id = id + 1;
-
-    } else {
-      std::string tmp;
-      std::string id_s;
-      std::string url;
-      std::string path;
-      std::string time_s;
-      std::string valid_s;
-      std::string scraped_s;
-      std::string title;
-
-      std::getline(ss, tmp, '\t');
-      std::getline(ss, id_s, '\t');
-      std::getline(ss, url, '\t');
-      std::getline(ss, path, '\t');
-      std::getline(ss, time_s, '\t');
-      std::getline(ss, valid_s, '\t');
-      std::getline(ss, scraped_s, '\t');
-      std::getline(ss, title, '\t');
-
-      uint32_t id = std::stoi(id_s);
-
-      tm tm;
-      strptime(time_s.c_str(), "%Y-%m-%d %H:%M:%S", &tm);
-      time_t time = mktime(&tm);
-
-      bool valid = valid_s == "1";
-      bool scraped = scraped_s == "1";
-
-      std::vector<page_id> links;
-
-      uint32_t ls, lp;
-      while (ss >> ls && ss >> lp) {
-        links.emplace_back(ls, lp);
-      }
-
-      auto &site = sites.back();
-      site.pages.emplace_back(id, url, path, title, time, valid, scraped, links);
-    }
-  }
+  j.at("next_id").get_to(next_id);
+  j.at("sites").get_to(sites);
 
   file.close();
 }

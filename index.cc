@@ -18,6 +18,8 @@
 #include <sstream>
 #include <cstdint>
 
+#include <nlohmann/json.hpp>
+
 extern "C" {
 
 #include "str.h"

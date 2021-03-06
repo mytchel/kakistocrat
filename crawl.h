@@ -16,6 +16,8 @@ struct page_id {
     return (((uint64_t ) site) << 32) | ((uint64_t ) page);
   }
 
+  page_id() {}
+
   page_id(uint32_t s, uint32_t p) :
     site(s),
     page(p) { }
@@ -24,6 +26,9 @@ struct page_id {
     site(v >> 32),
     page(v & 0xffffffff) { }
 };
+
+void to_json(nlohmann::json &j, const page_id &s);
+void from_json(const nlohmann::json &j, page_id &s);
 
 struct page {
   std::uint32_t id;
@@ -37,6 +42,8 @@ struct page {
 
   std::vector<page_id> links;
 
+  page() {}
+
   page(uint32_t i, std::string u, std::string p) :
     id(i), url(u), path(p) {}
 
@@ -48,6 +55,9 @@ struct page {
     id(i), url(u), path(p), title(tt), last_scanned(t), valid(v), scraped(s), links(l) {}
 };
 
+void to_json(nlohmann::json &j, const page &s);
+void from_json(const nlohmann::json &j, page &s);
+
 struct site {
   std::uint32_t id;
   std::string host;
@@ -55,15 +65,17 @@ struct site {
 
   time_t last_scanned{0};
 
-  bool scraped{false};
-  bool scraping{false};
-
   std::uint32_t next_id{1};
   std::list<page> pages;
+
+  bool scraped{false};
+  bool scraping{false};
 
   page* find_page(uint32_t id);
   page* find_page(std::string url);
   page* find_page_by_path(std::string path);
+
+  site() {}
 
   site(uint32_t i, std::string h, size_t l) :
     id(i), host(h), level(l) {}
@@ -72,9 +84,14 @@ struct site {
     id(i), host(h), level(l), last_scanned(s) {}
 };
 
+void to_json(nlohmann::json &j, const site &s);
+void from_json(const nlohmann::json &j, site &s);
+
 struct index {
   std::list<site> sites;
   std::uint32_t next_id{1};
+
+  index() {}
 
   site* find_host(std::string host);
 
@@ -84,5 +101,8 @@ struct index {
   void save(std::string path);
   void load(std::string path);
 };
+
+void to_json(nlohmann::json &j, const index &i);
+void from_json(const nlohmann::json &j, index &i);
 
 }

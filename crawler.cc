@@ -24,6 +24,8 @@ using namespace std::chrono_literals;
 
 #include <curl/curl.h>
 
+#include <nlohmann/json.hpp>
+
 #include "channel.h"
 
 #include "util.h"
@@ -269,8 +271,6 @@ void crawl(std::vector<level> levels, index &index,
     if (!s.scraped)
       printf("crawling : %s\n", s.host.c_str());
   }
-
-  return;
 
   auto n_threads = std::thread::hardware_concurrency();
   // TODO: get from file limit

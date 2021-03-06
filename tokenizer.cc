@@ -205,7 +205,7 @@ bool get_tag_attr(char *attr_value, const char *attr_name, char *token) {
   size_t v = 0;
 
   for (i = 0; token[i] != '\0'; i++) {
-    if (in_value) {
+    if (in_value && (in_quote || !isspace(token[i]))) {
       if (token[i] == '\'' || token[i] == '"') {
         in_quote = !in_quote;
 
@@ -215,13 +215,7 @@ bool get_tag_attr(char *attr_value, const char *attr_name, char *token) {
         }
       }
 
-      if (isspace(token[i])) {
-        if (in_quote) {
-          continue;
-        }
-      } else {
-        continue;
-      }
+      continue;
     }
 
     if (isspace(token[i])) {

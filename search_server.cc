@@ -19,6 +19,12 @@
 #include <sstream>
 #include <cstdint>
 
+#include <pistache/http.h>
+#include <pistache/router.h>
+#include <pistache/endpoint.h>
+
+#include <nlohmann/json.hpp>
+
 extern "C" {
 
 #include "str.h"
@@ -36,12 +42,6 @@ extern "C" {
 #include "scorer.h"
 #include "tokenizer.h"
 #include "search.h"
-
-#include <pistache/http.h>
-#include <pistache/router.h>
-#include <pistache/endpoint.h>
-
-#include <nlohmann/json.hpp>
 
 using namespace Pistache;
 using namespace nlohmann;

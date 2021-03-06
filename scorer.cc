@@ -14,11 +14,36 @@
 #include <sstream>
 #include <cstdint>
 
+#include <nlohmann/json.hpp>
+
 #include "util.h"
 #include "crawl.h"
 #include "scorer.h"
 
+using nlohmann::json;
+
 namespace scorer {
+
+void to_json(json &j, const page &p) {
+  j = json{
+      {"i", p.id},
+      {"l", p.level},
+      {"s", p.score},
+      {"u", p.url},
+      {"p", p.path},
+      {"t", p.title},
+      {"links", p.links}};
+}
+
+void from_json(const json &j, page &p) {
+  j.at("i").get_to(p.id);
+  j.at("l").get_to(p.level);
+  j.at("s").get_to(p.score);
+  j.at("u").get_to(p.url);
+  j.at("p").get_to(p.path);
+  j.at("t").get_to(p.title);
+  j.at("links").get_to(p.links);
+}
 
 void scores::iteration()
 {
@@ -74,7 +99,7 @@ void scores::iteration()
 void scores::init(crawl::index &index)
 {
   pages.clear();
-  n_pages = 0;
+  size_t n_pages = 0;
 
   for (auto &s: index.sites) {
     for (auto &p: s.pages) {
@@ -170,22 +195,9 @@ void scores::save(std::string path)
     return;
   }
 
-  for (auto &i: pages) {
-    auto &p = i.second;
+  json j = {{"pages", pages}};
 
-    file << p.id << "\t";
-    file << p.level << "\t";
-    file << p.score << "\t";
-    file << p.url << "\t";
-    file << p.path << "\t";
-    file << p.title;
-
-    for (auto &l: p.links) {
-      file << "\t" << l;
-    }
-
-    file << "\n";
-  }
+  file << j;
 
   file.close();
 }
@@ -205,38 +217,9 @@ void scores::load(std::string path)
 
   pages.clear();
 
-  std::string line;
-  while (getline(file, line)) {
-    std::istringstream ss(line);
+  json j = json::parse(file);
 
-    uint64_t id, level;
-    double score;
-    std::string url;
-    std::string path;
-    std::string title;
-
-    std::string id_s, level_s, score_s;
-    std::getline(ss, id_s, '\t');
-    std::getline(ss, level_s, '\t');
-    std::getline(ss, score_s, '\t');
-    std::getline(ss, url, '\t');
-    std::getline(ss, path, '\t');
-    std::getline(ss, title, '\t');
-
-    id = std::stoull(id_s);
-    level = std::stoul(level_s);
-    score = std::stof(score_s);
-
-    std::vector<uint64_t> links;
-
-    uint64_t l;
-    while (ss >> l) {
-      links.push_back(l);
-    }
-
-    page n(id, level, score, url, path, title, links);
-    pages.emplace(id, n);
-  }
+  j.at("pages").get_to(pages);
 
   file.close();
 }
