@@ -41,8 +41,7 @@ void to_json(json &j, const page &p) {
       {"t", p.title},
       {"links", p.links},
       {"l", p.last_scanned},
-      {"v", p.valid},
-      {"s", p.scraped}};
+      {"v", p.valid}};
 }
 
 void from_json(const json &j, page &p) {
@@ -55,7 +54,6 @@ void from_json(const json &j, page &p) {
 
   j.at("l").get_to(p.last_scanned);
   j.at("v").get_to(p.valid);
-  j.at("s").get_to(p.scraped);
 }
 
 void to_json(json &j, const site &s) {

@@ -82,17 +82,18 @@ size_t insert_site_index(
   for (auto &u: page_list) {
     auto p = isite->find_page(u.url);
     if (p == NULL) {
-      if (isite->find_page_by_path(u.path) == NULL) {
-        isite->pages.emplace_back(isite->next_id++,
-            u.url, u.path, u.title, u.last_scanned, u.ok, true);
+      p = isite->find_page_by_path(u.path);
+      if (p == NULL) {
+        isite->pages.emplace_back(isite->next_id++, u.url, u.path);
+        p = &isite->pages.back();
       }
-
-    } else {
-      p->title = u.title;
-      p->last_scanned = u.last_scanned;
-      p->valid = u.ok;
-      p->scraped = true;
     }
+
+    p->title = u.title;
+    p->links.clear();
+
+    p->last_scanned = u.last_scanned;
+    p->valid = u.ok;
   }
 
   std::list<site> new_sites;
@@ -359,7 +360,6 @@ void crawl(std::vector<level> levels, index &index,
       site->scraping = false;
       site->last_scanned = time(NULL);
 
-      // TODO: changes for unchanged?
       size_t added = insert_site_index(index, site, levels[site->level].max_add_sites,
           s->url_scanned, blacklist);
 

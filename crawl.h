@@ -38,7 +38,6 @@ struct page {
 
   time_t last_scanned{0};
   bool valid{false};
-  bool scraped{false};
 
   std::vector<page_id> links;
 
@@ -47,12 +46,12 @@ struct page {
   page(uint32_t i, std::string u, std::string p) :
     id(i), url(u), path(p) {}
 
-  page(uint32_t i, std::string u, std::string p, std::string tt, time_t t, bool v, bool s) :
-    id(i), url(u), path(p), title(tt), last_scanned(t), valid(v), scraped(s) {}
+  page(uint32_t i, std::string u, std::string p, std::string tt, time_t t, bool v) :
+    id(i), url(u), path(p), title(tt), last_scanned(t), valid(v) {}
 
-  page(uint32_t i, std::string u, std::string p, std::string tt, time_t t, bool v, bool s,
+  page(uint32_t i, std::string u, std::string p, std::string tt, time_t t, bool v,
         std::vector<page_id> l) :
-    id(i), url(u), path(p), title(tt), last_scanned(t), valid(v), scraped(s), links(l) {}
+    id(i), url(u), path(p), title(tt), last_scanned(t), valid(v), links(l) {}
 };
 
 void to_json(nlohmann::json &j, const page &s);

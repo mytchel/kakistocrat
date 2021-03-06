@@ -403,12 +403,14 @@ void curl_data::finish(std::string effective_url) {
     m_site->finish(url, urls, title);
 
   } else if (req_type == ROBOTS) {
+    printf("process robots %s\n", effective_url.c_str());
     process_robots();
 
     m_site->getting_robots = false;
     m_site->got_robots = true;
 
   } else if (req_type == SITEMAP) {
+    printf("process sitemap %s\n", effective_url.c_str());
     process_sitemap();
 
     m_site->sitemap_url_getting.remove(s_url);
@@ -544,20 +546,6 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
         last_accepting = std::chrono::system_clock::now();
       }
     }
-
-    /*
-    if (last_log + 5s < std::chrono::system_clock::now()) {
-      last_log = std::chrono::system_clock::now();
-      printf("%i with %i connections for %i sites\n",
-          tid, active_connections, sites.size());
-
-      for (auto &s: sites) {
-        printf("  %i has site %2i scanning '%s'\n", tid,
-            s->url_scanning.size(),
-            s->host.c_str());
-      }
-    }
-    */
 
     bool adding = true;
     while (active_connections < max_con && adding) {
