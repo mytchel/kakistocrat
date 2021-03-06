@@ -16,6 +16,10 @@ static inline void dynamic_array_kv_32_init(struct dynamic_array_kv_32 *a)
 	a->capacity = 256;
 	a->length = 0;
 	a->store = (uint32_t *) malloc(a->capacity * sizeof(uint32_t) * 2);
+  if (a->store == NULL) {
+	  fprintf(stderr, "ERROR: memory_alloc() Memory exhausted.");
+		exit(1);
+  }
 	}
 
 static inline void dynamic_array_kv_32_append(struct dynamic_array_kv_32 *a, uint32_t key, uint32_t val)
@@ -24,6 +28,10 @@ static inline void dynamic_array_kv_32_append(struct dynamic_array_kv_32 *a, uin
 		{
 		a->capacity *= 2;
 		a->store = (uint32_t *) realloc(a->store, a->capacity * sizeof(uint32_t) * 2);
+    if (a->store == NULL) {
+      fprintf(stderr, "ERROR: memory_alloc() Memory exhausted.");
+      exit(1);
+    }
 		}
 	a->store[a->length*2] = key;
 	a->store[a->length*2+1] = val;
