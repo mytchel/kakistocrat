@@ -19,11 +19,8 @@
 #include <sstream>
 #include <cstdint>
 
-#include <pistache/http.h>
-#include <pistache/router.h>
-#include <pistache/endpoint.h>
-
 #include <nlohmann/json.hpp>
+#include <crow.h>
 
 extern "C" {
 
@@ -43,98 +40,9 @@ extern "C" {
 #include "tokenizer.h"
 #include "search.h"
 
-using namespace Pistache;
 using namespace nlohmann;
 
-class SearchEndpoint {
-  public:
-
-  SearchEndpoint(Address addr, search::searcher searcher_, scorer::scores scores_)
-        : httpEndpoint(std::make_shared<Http::Endpoint>(addr)),
-          searcher(searcher_), scores(scores_) {}
-
-  void init(size_t thr = 2) {
-    auto opts = Http::Endpoint::options()
-        .threads(static_cast<int>(thr));
-    httpEndpoint->init(opts);
-    setupRoutes();
-  }
-
-  void start() {
-    httpEndpoint->setHandler(router.handler());
-    httpEndpoint->serveThreaded();
-  }
-
-  void shutdown() {
-    httpEndpoint->shutdown();
-  }
-
-  private:
-
-  void setupRoutes() {
-    using namespace Rest;
-
-    Routes::Get(router, "/search", Routes::bind(&SearchEndpoint::search, this));
-    Routes::Get(router, "/ready", Routes::bind(&SearchEndpoint::handleReady, this));
-  }
-
-  void handleReady(const Rest::Request&, Http::ResponseWriter response) {
-    response.send(Http::Code::Ok, "{}");
-  }
-
-  void search(const Rest::Request& request, Http::ResponseWriter response) {
-    auto query_args = request.query();
-
-    auto query_encoded = query_args.get("q");
-    if (query_encoded.isEmpty()) {
-      response.send(Http::Code::Ok, "{}");
-      return;
-    }
-
-    auto query = util::url_decode(query_encoded.get());
-
-    char query_c[1024];
-    strncpy(query_c, query.c_str(), sizeof(query_c));
-
-    auto results = searcher.search(query_c, scores);
-
-    json j;
-
-    for (auto &result: results) {
-      json jj;
-      jj["page_id"] = result.page_id;
-      jj["score"] = result.score;
-      jj["url"] = result.url;
-      jj["title"] = result.title;
-      jj["path"] = result.path;
-
-      j.push_back(jj);
-    }
-
-    json jj;
-    jj["query"] = query;
-    jj["results"] = j;
-
-    response.send(Http::Code::Ok, jj.dump());
-  }
-
-  std::shared_ptr<Http::Endpoint> httpEndpoint;
-  Rest::Router router;
-  search::searcher searcher;
-  scorer::scores scores;
-};
-
 int main(int argc, char *argv[]) {
-  sigset_t signals;
-  if (sigemptyset(&signals) != 0
-      || sigaddset(&signals, SIGTERM) != 0
-      || sigaddset(&signals, SIGINT) != 0
-      || sigaddset(&signals, SIGHUP) != 0
-      || pthread_sigmask(SIG_BLOCK, &signals, nullptr) != 0) {
-    printf("install signal handler failed\n");
-    return 1;
-  }
-
   scorer::scores index_scores;
 
   index_scores.load("index.scores");
@@ -143,21 +51,82 @@ int main(int argc, char *argv[]) {
 
   searcher.load("index.dat");
 
-  Address addr(Ipv4::any(), Port(9081));
-  int thr = 2;
+  crow::SimpleApp app;
 
-  SearchEndpoint server(addr, searcher, index_scores);
-  server.init(thr);
-  server.start();
+  CROW_ROUTE(app, "/json")([&index_scores, &searcher](const crow::request &req){
+    auto query = req.url_params.get("q");
+    if (query == nullptr) {
+      crow::json::wvalue response;
+      response["error"] = "nothing given";
+      return response;
+    }
 
-  int signal = 0;
-  sigwait(&signals, &signal);
+    CROW_LOG_INFO << "query " << query;
 
-  printf("got signal\n");
+    char query_c[1024];
+    strncpy(query_c, query, sizeof(query_c));
 
-  server.shutdown();
+    auto results = searcher.search(query_c, index_scores);
 
-  printf("shutdown\n");
+    crow::json::wvalue j;
+
+    std::vector<crow::json::wvalue> json_results;
+    for (auto &result: results) {
+      crow::json::wvalue jj;
+
+      jj["page_id"] = result.page_id;
+      jj["score"] = result.score;
+      jj["url"] = result.url;
+      jj["title"] = result.title;
+      jj["path"] = result.path;
+
+      json_results.push_back(std::move(jj));
+    }
+
+    crow::json::wvalue response;
+    response["query"] = query;
+    response["results"] = std::move(json_results);
+
+    return response;
+  });
+
+  auto search_page = crow::mustache::load("search.html");
+
+  CROW_ROUTE(app, "/")([&search_page, &index_scores, &searcher](const crow::request &req){
+    crow::mustache::context ctx;
+
+    auto query = req.url_params.get("q");
+    if (query == nullptr) {
+      return search_page.render(ctx);
+    }
+
+    CROW_LOG_INFO << "query " << query;
+
+    char query_c[1024];
+    strncpy(query_c, query, sizeof(query_c));
+
+    auto results = searcher.search(query_c, index_scores);
+
+    std::vector<crow::json::wvalue> results_r;
+    for (auto &result: results) {
+      crow::json::wvalue jj;
+
+      jj["page_id"] = result.page_id;
+      jj["score"] = result.score;
+      jj["url"] = result.url;
+      jj["title"] = result.title;
+      jj["path"] = result.path;
+
+      results_r.push_back(std::move(jj));
+    }
+
+    ctx["query"] = query;
+    ctx["results"] = std::move(results_r);
+
+    return search_page.render(ctx);
+  });
+
+  app.port(18080).multithreaded().run();
 
   return 0;
 }

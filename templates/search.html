@@ -1,0 +1,21 @@
+<html>
+    <head>
+        <title>{{query}} | Search</title>
+    </head>
+    <body>
+        <div id="search">
+            <form method="GET" action="/">
+                <label for="q">Search</label>
+                <input type="text" id="q" name="q" value="{{query}}"></input>
+                <input type="submit" value="Search"></input>
+            </form>
+        </div>
+        <div id="results">
+            <ul>
+            {{#results}}
+            <li><a href={{url}}">{{title}}</a></li>
+            {{/results}}
+            </ul>
+        </div>
+    </body>
+</html>

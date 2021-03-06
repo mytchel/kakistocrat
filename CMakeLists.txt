@@ -15,6 +15,11 @@ find_package(CURL REQUIRED)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
+find_package(ZLIB)
+find_package(OpenSSL)
+
+find_package(Boost 1.70 COMPONENTS system thread regex REQUIRED)
+
 configure_file(mine/seed seed COPYONLY)
 configure_file(mine/blacklist blacklist COPYONLY)
 
@@ -68,9 +73,6 @@ target_include_directories(search PUBLIC ${CURL_INCLUDE_DIRS})
 
 target_link_libraries(search nlohmann_json::nlohmann_json)
 
-find_package(Pistache 0.0.2 REQUIRED)
-
-#find_package(nlohmann_josn 3.2.0 REQUIRED)
 add_subdirectory(x_nlohmann)
 
 add_executable(search_server search_server.cc
@@ -86,6 +88,13 @@ add_executable(search_server search_server.cc
 	x_cocomel/posting.c
 	x_cocomel/vbyte)
 
-target_link_libraries(search_server pistache_shared)
+target_include_directories(search_server PUBLIC ${Boost_INCLUDE_DIR})
+target_include_directories(search_server PUBLIC ${OPENSSL_INCLUDE_DIR})
+target_include_directories(search_server PUBLIC x_crow/include)
+
 target_link_libraries(search_server nlohmann_json::nlohmann_json)
+target_link_libraries(search_server ${Boost_LIBRARIES})
+target_link_libraries(search_server z)
+
+configure_file(templates/search.html templates/search.html COPYONLY)
 
