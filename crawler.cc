@@ -254,7 +254,7 @@ site* get_next_site(index &index)
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<double, std::milli> elapsed = end - start;
   if (elapsed.count() > 100) {
-    printf("get next site took %ims\n", elapsed.count());
+    printf("get next site took %fms\n", elapsed.count());
   }
 
   return s;
@@ -309,7 +309,7 @@ void crawl(std::vector<level> levels, index &index,
 
   while (!scrapping_sites.empty() || have_next_site(index)) {
     if (last_save + 10s < std::chrono::system_clock::now()) {
-      printf("main crawled %i / %i sites\n",
+      printf("main crawled %zu / %zu sites\n",
           scrapped_sites, index.sites.size());
 
       // Save the current index so exiting early doesn't loose
@@ -363,7 +363,7 @@ void crawl(std::vector<level> levels, index &index,
       size_t added = insert_site_index(index, site, levels[site->level].max_add_sites,
           s->url_scanned, blacklist);
 
-      printf("site finished for level %i with %3i (+ %3i unchanged) pages, %2i external: %s\n",
+      printf("site finished for level %zu with %3zu (+ %3zu unchanged) pages, %2zu external: %s\n",
           site->level, s->url_scanned.size(), s->url_unchanged.size(), added,
           site->host.c_str());
 

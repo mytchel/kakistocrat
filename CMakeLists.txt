@@ -18,10 +18,10 @@ find_package(Threads REQUIRED)
 find_package(ZLIB)
 find_package(OpenSSL)
 
-find_package(Boost 1.70 COMPONENTS system thread regex REQUIRED)
+find_package(Boost 1.67 COMPONENTS system thread regex REQUIRED)
 
-configure_file(mine/seed seed COPYONLY)
-configure_file(mine/blacklist blacklist COPYONLY)
+configure_file(x_seed/seed seed COPYONLY)
+configure_file(x_seed/blacklist blacklist COPYONLY)
 
 add_executable(crawl crawl_main.cc
     crawler.cc

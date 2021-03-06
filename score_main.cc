@@ -18,8 +18,6 @@
 #include <sstream>
 #include <cstdint>
 
-#include <curl/curl.h>
-
 #include <nlohmann/json.hpp>
 
 #include "util.h"

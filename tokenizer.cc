@@ -151,7 +151,7 @@ void tokenizer::skip_tag(char *tag_name_main, struct str *tok_buffer) {
 
   char tag_name_end[tag_name_max_len];
   tag_name_end[0] = '/';
-  strncpy(tag_name_end + 1, tag_name_main, tag_name_max_len);
+  strncpy(tag_name_end + 1, tag_name_main, tag_name_max_len - 1);
 
   do {
     token = next(tok_buffer);

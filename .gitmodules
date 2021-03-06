@@ -10,3 +10,6 @@
 [submodule "x_crow"]
 	path = x_crow
 	url = https://github.com/CrowCpp/crow.git
+[submodule "x_seed"]
+	path = x_seed
+	url = revisionist.lackname.space:git/scraper-seed.git
