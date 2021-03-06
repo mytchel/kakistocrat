@@ -303,7 +303,7 @@ void curl_data::process_robots() {
       }
 
     } else if (key == "Sitemap") {
-      m_site->sitemap_url_pending.push_back(value);
+      m_site->sitemap_url_pending.insert(value);
     }
   }
 }
@@ -322,8 +322,8 @@ void curl_data::process_sitemap() {
 
   tok.init(buf, size);
 
-  std::optional<std::string> loc = {};
-  std::optional<time_t> lastmod = {};
+  std::optional<std::string> url_loc = {};
+  std::optional<time_t> url_lastmod = {};
 
   bool in_url = false;
   bool in_sitemap = false;
@@ -336,15 +336,15 @@ void curl_data::process_sitemap() {
       tokenizer::get_tag_name(tag_name, str_c(&tok_buffer));
 
       if (strcmp(tag_name, "url") == 0) {
-        if (loc) {
-          auto url = process_link("https", m_site->host, "", *loc);
+        if (url_loc) {
+          auto url = process_link("https", m_site->host, "", *url_loc);
           if (url.has_value()) {
-            m_site->process_sitemap_entry(*url, lastmod);
+            m_site->process_sitemap_entry(*url, url_lastmod);
           }
         }
 
-        loc = {};
-        lastmod = {};
+        url_loc = {};
+        url_lastmod = {};
 
         in_url = true;
         in_sitemap = false;
@@ -358,14 +358,14 @@ void curl_data::process_sitemap() {
         if (strcmp(tag_name, "loc") == 0) {
           tok.load_tag_content(&tok_buffer);
 
-          loc = std::string(str_c(&tok_buffer));
+          url_loc = std::string(str_c(&tok_buffer));
 
         } else if (strcmp(tag_name, "lastmod") == 0) {
           tok.load_tag_content(&tok_buffer);
 
           tm tm;
           strptime(str_c(&tok_buffer), "%Y-%m-%d", &tm);
-          lastmod = mktime(&tm);
+          url_lastmod = mktime(&tm);
         }
 
       } else if (in_sitemap) {
@@ -374,20 +374,17 @@ void curl_data::process_sitemap() {
 
           auto s = std::string(str_c(&tok_buffer));
 
-          bool found = false;
-          for (auto &ss: m_site->sitemap_url_pending) {
-            if (found) break;
-            if (ss == s) found = true;
-          }
+	  bool found = false;
+	  
+	  found |= m_site->sitemap_url_getting.find(s) 
+		  != m_site->sitemap_url_getting.end();
 
-          for (auto &ss: m_site->sitemap_url_getting) {
-            if (found) break;
-            if (ss == s) found = true;
-          }
+	  found |= m_site->sitemap_url_got.find(s) 
+		  != m_site->sitemap_url_got.end();
 
           if (!found && m_site->sitemap_count < 5) {
             m_site->sitemap_count++;
-            m_site->sitemap_url_pending.push_back(s);
+            m_site->sitemap_url_pending.insert(s);
           }
         }
       }
@@ -413,7 +410,8 @@ void curl_data::finish(std::string effective_url) {
     printf("process sitemap %s\n", effective_url.c_str());
     process_sitemap();
 
-    m_site->sitemap_url_getting.remove(s_url);
+    m_site->sitemap_url_got.insert(s_url);
+    m_site->sitemap_url_getting.erase(s_url);
   }
 }
 
@@ -428,7 +426,8 @@ void curl_data::finish_bad_http(int code) {
     m_site->got_robots = true;
 
   } else if (req_type == SITEMAP) {
-    m_site->sitemap_url_getting.remove(s_url);
+    m_site->sitemap_url_got.insert(s_url);
+    m_site->sitemap_url_getting.erase(s_url);
   }
 }
 
@@ -453,7 +452,8 @@ void curl_data::finish_bad_net(CURLcode res) {
     m_site->got_robots = true;
 
   } else if (req_type == SITEMAP) {
-    m_site->sitemap_url_getting.remove(s_url);
+    m_site->sitemap_url_got.insert(s_url);
+    m_site->sitemap_url_getting.erase(s_url);
   }
 }
 
@@ -565,9 +565,9 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
           adding = true;
 
         } else if (!(*s)->sitemap_url_pending.empty()) {
-          std::string url = (*s)->sitemap_url_pending.front();
-          (*s)->sitemap_url_pending.pop_front();
-          (*s)->sitemap_url_getting.push_back(url);
+          std::string url = *(*s)->sitemap_url_pending.begin();
+          (*s)->sitemap_url_pending.erase(url);
+          (*s)->sitemap_url_getting.insert(url);
 
           curl_multi_add_handle(multi_handle, make_handle_other(*s, SITEMAP, url));
           active_connections++;

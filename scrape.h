@@ -20,10 +20,6 @@ struct index_url {
     url(u), path(p), last_scanned(t), ok(v) {}
 };
 
-struct sitemap_url {
-  std::string url;
-};
-
 struct site {
   std::string host;
 
@@ -38,8 +34,9 @@ struct site {
   bool getting_robots{false};
   bool got_robots{false};
 
-  std::list<std::string> sitemap_url_pending;
-  std::list<std::string> sitemap_url_getting;
+  std::set<std::string> sitemap_url_pending;
+  std::set<std::string> sitemap_url_getting;
+  std::set<std::string> sitemap_url_got;
   size_t sitemap_count{0};
 
   size_t max_pages;
