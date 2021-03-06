@@ -373,15 +373,19 @@ void crawl(std::vector<level> levels, index &index,
       bool have_something = false;
       for (auto &s: index.sites) {
         size_t min = (4 * (1 + s.level)) * 60 * 60;
-        if (s.scraped && s.last_scanned + min > now) {
-          int r = rand() % (24 * (1 + s.level) * 60 * 60);
-          s.scraped = s.last_scanned + min + r > now;
+        if (s.scraped && s.last_scanned + min < now) {
+          int r = rand() % ((24 * (1 + s.level) - 4) * 60 * 60);
+          s.scraped = s.last_scanned + min + r < now;
+          if (!s.scraped) {
+            printf("transition %s from scraped to ready as %i + %i + %i < %i\n",
+                s.host.c_str(), s.last_scanned, min, r, now);
+          }
         }
-        
+
         have_something |= !s.scraped;
       }
 
-      if (!have_something) { 
+      if (!have_something) {
         delay = std::chrono::minutes(1);
         printf("have nothing\n");
       }
@@ -389,7 +393,7 @@ void crawl(std::vector<level> levels, index &index,
     } else if (all_blocked) {
       delay = std::chrono::milliseconds(100);
     }
-      
+
     std::this_thread::sleep_for(delay);
   }
 }

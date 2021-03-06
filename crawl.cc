@@ -73,6 +73,8 @@ void from_json(const json &j, site &s) {
   j.at("last_scanned").get_to(s.last_scanned);
   j.at("next_id").get_to(s.next_id);
   j.at("pages").get_to(s.pages);
+
+  s.scraped = s.last_scanned > 0;
 }
 
 void index::save(std::string path)

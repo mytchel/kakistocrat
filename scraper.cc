@@ -374,13 +374,13 @@ void curl_data::process_sitemap() {
 
           auto s = std::string(str_c(&tok_buffer));
 
-	  bool found = false;
-	  
-	  found |= m_site->sitemap_url_getting.find(s) 
-		  != m_site->sitemap_url_getting.end();
+          bool found = false;
 
-	  found |= m_site->sitemap_url_got.find(s) 
-		  != m_site->sitemap_url_got.end();
+          found |= m_site->sitemap_url_getting.find(s)
+            != m_site->sitemap_url_getting.end();
+
+          found |= m_site->sitemap_url_got.find(s)
+            != m_site->sitemap_url_got.end();
 
           if (!found && m_site->sitemap_count < 5) {
             m_site->sitemap_count++;
@@ -401,6 +401,8 @@ void curl_data::process_sitemap() {
 
 void curl_data::finish(std::string effective_url) {
   if (req_type == URL) {
+    printf("process page %s\n", effective_url.c_str());
+
     std::string title = "";
     auto urls = find_links(effective_url, title);
     save();
@@ -499,9 +501,7 @@ CURL *make_handle_other(site* s, request_type r, std::string url)
   curl_easy_setopt(curl_handle, CURLOPT_PRIVATE, d);
   curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_cb_buffer_write);
   curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, d);
-  curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-  curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
-  curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 3L);
+  curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "crawlycralwer");
   curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 15L);
   curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 5L);
 
@@ -601,6 +601,7 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
         break;
       }
 
+      printf("start scraping site %s\n", s->host.c_str());
       sites.push_back(s);
     }
 
