@@ -3,7 +3,7 @@
 	url = https://github.com/lexbor/lexbor
 [submodule "x_nlohmann"]
 	path = x_nlohmann
-	url = ./x_nlohmann
+	url = https://github.com/nlohmann/json.git
 [submodule "x_pistache"]
 	path = x_pistache
-	url = ./x_pistache
+	url = https://github.com/pistacheio/pistache.git
