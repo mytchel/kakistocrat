@@ -7,3 +7,6 @@
 [submodule "x_pistache"]
 	path = x_pistache
 	url = https://github.com/pistacheio/pistache.git
+[submodule "x_crow"]
+	path = x_crow
+	url = https://github.com/ipkn/crow.git
