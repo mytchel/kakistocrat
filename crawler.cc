@@ -265,14 +265,6 @@ void crawl(std::vector<level> levels, index &index,
 {
   size_t scrapped_sites = 0;
 
-  time_t now = time(NULL);
-
-  for (auto &s: index.sites) {
-    s.scraped = s.last_scanned + 60 * 60 * 24 > now;
-    if (!s.scraped)
-      printf("crawling : %s\n", s.host.c_str());
-  }
-
   auto n_threads = std::thread::hardware_concurrency();
   // TODO: get from file limit
   size_t max_con_per_thread = 1000 / (2 * n_threads);
@@ -307,7 +299,7 @@ void crawl(std::vector<level> levels, index &index,
   index.save("index.scrape");
   auto last_save = std::chrono::system_clock::now();
 
-  while (!scrapping_sites.empty() || have_next_site(index)) {
+  while (true) {
     if (last_save + 10s < std::chrono::system_clock::now()) {
       printf("main crawled %zu / %zu sites\n",
           scrapped_sites, index.sites.size());
@@ -318,7 +310,6 @@ void crawl(std::vector<level> levels, index &index,
       last_save = std::chrono::system_clock::now();
     }
 
-    bool delay = false;
     bool all_blocked = true;
 
     for (size_t i = 0; i < n_threads; i++) {
@@ -374,26 +365,33 @@ void crawl(std::vector<level> levels, index &index,
       scrapped_sites++;
     }
 
-    if (all_blocked || !have_next_site(index)) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    } else {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    auto delay = std::chrono::milliseconds(1);
+
+    if (scrapping_sites.empty() && !have_next_site(index)) {
+      time_t now = time(NULL);
+
+      bool have_something = false;
+      for (auto &s: index.sites) {
+        size_t min = (4 * (1 + s.level)) * 60 * 60;
+        if (s.scraped && s.last_scanned + min > now) {
+          int r = rand() % (24 * (1 + s.level) * 60 * 60);
+          s.scraped = s.last_scanned + min + r > now;
+        }
+        
+        have_something |= !s.scraped;
+      }
+
+      if (!have_something) { 
+        delay = std::chrono::minutes(1);
+        printf("have nothing\n");
+      }
+
+    } else if (all_blocked) {
+      delay = std::chrono::milliseconds(100);
     }
+      
+    std::this_thread::sleep_for(delay);
   }
-
-  printf("main finished\n");
-
-  index.save("index.scrape");
-
-  printf("main cleanup threads\n");
-  // Wait for all threads to finish
-  for (size_t i = 0; i < n_threads; i++) {
-    scrape::site *s = NULL;
-    s >> in_channels[i];
-    threads.at(i).join();
-  }
-
-  printf("main end\n");
 }
 
 }
