@@ -215,22 +215,17 @@ bool get_tag_attr(char *attr_value, const char *attr_name, char *token) {
         }
       }
 
-      continue;
-    }
-
-    if (isspace(token[i])) {
+    } else if (isspace(token[i])) {
       if (name_match) {
         attr_value[v++] = '\0';
         return true;
+
+      } else {
+        in_name = false;
+        in_value = false;
       }
 
-      in_name = false;
-      in_value = false;
-
-      continue;
-    }
-
-    if (token[i] == '=') {
+    } else if (token[i] == '=') {
       in_name = false;
       in_value = true;
 
@@ -244,7 +239,6 @@ bool get_tag_attr(char *attr_value, const char *attr_name, char *token) {
 
       if (name_matching && !name_match && attr_name[name_i] == token[i]) {
         name_i++;
-        name_matching = true;
         if (attr_name[name_i] == '\0') {
           name_match = true;
         }
