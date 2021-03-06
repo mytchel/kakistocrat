@@ -390,6 +390,13 @@ void curl_data::process_sitemap() {
       }
     }
   } while (token != tokenizer::END);
+
+  if (url_loc) {
+    auto url = process_link("https", m_site->host, "", *url_loc);
+    if (url.has_value()) {
+      m_site->process_sitemap_entry(*url, url_lastmod);
+    }
+  }
 }
 
 void curl_data::finish(std::string effective_url) {

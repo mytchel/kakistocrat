@@ -129,7 +129,19 @@ std::vector<std::string> split_path(std::string s) {
     }
   }
 
-  if (!cur.empty()) {
+  if (cur == ".") {
+    cur = "";
+
+  } else if (cur == "..") {
+    if (!path.empty()) {
+      cur = path.back();
+      path.pop_back();
+
+    } else {
+      cur = "";
+    }
+
+  } else if (!cur.empty()) {
     path.push_back(cur);
   }
 
