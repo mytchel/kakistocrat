@@ -32,6 +32,7 @@ void from_json(const nlohmann::json &j, page_id &s);
 
 struct page {
   std::uint32_t id;
+  size_t level;
   std::string url;
   std::string path;
   std::string title{"unknown"};
@@ -43,15 +44,20 @@ struct page {
 
   page() {}
 
-  page(uint32_t i, std::string u, std::string p) :
-    id(i), url(u), path(p) {}
+  page(uint32_t i, size_t l, std::string u, std::string p)
+    : id(i), level(l), url(u), path(p) {}
 
-  page(uint32_t i, std::string u, std::string p, std::string tt, time_t t, bool v) :
-    id(i), url(u), path(p), title(tt), last_scanned(t), valid(v) {}
+  page(uint32_t i, size_t l, std::string u, std::string p,
+      std::string tt, time_t t, bool v)
+    : id(i), level(l), url(u), path(p),
+      title(tt), last_scanned(t), valid(v) {}
 
-  page(uint32_t i, std::string u, std::string p, std::string tt, time_t t, bool v,
-        std::vector<page_id> l) :
-    id(i), url(u), path(p), title(tt), last_scanned(t), valid(v), links(l) {}
+  page(uint32_t i, size_t l, std::string u, std::string p,
+      std::string tt, time_t t, bool v,
+      std::vector<page_id> li)
+    : id(i), level(l), url(u), path(p),
+      title(tt), last_scanned(t), valid(v),
+      links(li) {}
 };
 
 void to_json(nlohmann::json &j, const page &s);
@@ -61,14 +67,15 @@ struct site {
   bool loaded{false};
   bool scraped{false};
   bool scraping{false};
+  bool enabled{false};
 
   std::uint32_t id;
   std::string host;
-  size_t level;
 
   time_t last_scanned{0};
   std::uint32_t next_id{1};
-  std::list<page> pages;
+  std::vector<page> pages;
+  size_t level;
 
   void load();
   void unload();
@@ -77,14 +84,14 @@ struct site {
   // For loading from json
 
   site() {}
-  site(uint32_t i, std::string h, size_t l, time_t ls) :
-    id(i), host(h), level(l), last_scanned(ls) {
+  site(uint32_t i, size_t l, std::string h, time_t ls, bool e) :
+    id(i), level(l), host(h), last_scanned(ls), enabled(e) {
       scraped = last_scanned > 0;
   }
 
   // For creating new sites
-  site(uint32_t i, std::string h, size_t l) :
-    id(i), host(h), level(l), loaded(true) {}
+  site(uint32_t i, size_t l, std::string h) :
+    id(i), level(l), host(h), loaded(true) {}
 
   page* find_page(uint32_t id);
   page* find_page(std::string url);

@@ -36,23 +36,25 @@ void from_json(const json &j, page_id &id) {
 void to_json(json &j, const page &p) {
   j = json{
       {"i", p.id},
+      {"l", p.level},
       {"u", p.url},
       {"p", p.path},
       {"t", p.title},
       {"links", p.links},
-      {"l", p.last_scanned},
+      {"s", p.last_scanned},
       {"v", p.valid}};
 }
 
 void from_json(const json &j, page &p) {
   j.at("i").get_to(p.id);
+  j.at("l").get_to(p.level);
   j.at("u").get_to(p.url);
   j.at("p").get_to(p.path);
   j.at("t").get_to(p.title);
 
   j.at("links").get_to(p.links);
 
-  j.at("l").get_to(p.last_scanned);
+  j.at("s").get_to(p.last_scanned);
   j.at("v").get_to(p.valid);
 }
 
@@ -61,8 +63,6 @@ void site::load() {
 
   std::string path = host + ".index.json";
   std::ifstream file;
-
-  printf("load %s\n", path.c_str());
 
   file.open(path, std::ios::in);
 
@@ -81,6 +81,7 @@ void site::load() {
   j.at("id").get_to(id);
   j.at("host").get_to(host);
   j.at("level").get_to(level);
+  j.at("enabled").get_to(enabled);
   j.at("last_scanned").get_to(last_scanned);
   j.at("next_id").get_to(next_id);
   j.at("pages").get_to(pages);
@@ -98,13 +99,12 @@ void site::save() {
 
   json j = {
       {"id", id},
-      {"host", host},
       {"level", level},
+      {"host", host},
+      {"enabled", enabled},
       {"last_scanned", last_scanned},
       {"next_id", next_id},
       {"pages", pages}};
-
-  printf("save %s\n", path.c_str());
 
   file.open(path, std::ios::out | std::ios::trunc);
 
@@ -141,6 +141,7 @@ void index::save()
       {"id", s.id},
       {"host", s.host},
       {"level", s.level},
+      {"enabled", s.enabled},
       {"last_scanned", s.last_scanned}
     };
 
@@ -151,8 +152,6 @@ void index::save()
     {"next_id", next_id},
     {"sites", j_sites}
   };
-
-  printf("save index %s\n", path.c_str());
 
   file.open(path, std::ios::out | std::ios::trunc);
 
@@ -170,8 +169,6 @@ void index::load()
 {
   std::string path = "full_index.json";
   std::ifstream file;
-
-  printf("load %s\n", path.c_str());
 
   file.open(path, std::ios::in);
 
@@ -191,9 +188,10 @@ void index::load()
   for (auto &s_j: j.at("sites")) {
     sites.emplace_back(
           s_j.at("id").get<std::uint32_t>(),
-          s_j.at("host").get<std::string>(),
           s_j.at("level").get<size_t>(),
-          s_j.at("last_scanned").get<time_t>());
+          s_j.at("host").get<std::string>(),
+          s_j.at("last_scanned").get<time_t>(),
+          s_j.at("enabled").get<bool>());
   }
 }
 

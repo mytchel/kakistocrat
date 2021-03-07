@@ -102,6 +102,8 @@ void scores::init(crawl::index &index)
   size_t n_pages = 0;
 
   for (auto &s: index.sites) {
+    if (!s.enabled) continue;
+
     s.load();
 
     for (auto &p: s.pages) {
@@ -151,7 +153,7 @@ void scores::init(crawl::index &index)
         links.push_back(l.to_value());
       }
 
-      page n(id.to_value(), s.level, score, p.url, p.path, p.title, links);
+      page n(id.to_value(), p.level, score, p.url, p.path, p.title, links);
 
       pages.emplace(id.to_value(), n);
     }

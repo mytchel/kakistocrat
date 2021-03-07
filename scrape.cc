@@ -168,10 +168,6 @@ void site::process_sitemap_entry(
     return;
   }
 
-  if (url_pending.size() > 4 * max_pages) {
-    return;
-  }
-
   url_pending.emplace_back(url, p);
 }
 

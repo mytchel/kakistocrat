@@ -114,6 +114,8 @@ int main(int argc, char *argv[]) {
   int i = 0;
 
   for (auto &site: index.sites) {
+    if (!site.enabled) continue;
+
     printf("site %lu %s\n", site.id, site.host.c_str());
 
     site.load();
