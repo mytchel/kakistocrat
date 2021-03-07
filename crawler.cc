@@ -117,9 +117,7 @@ size_t insert_site_index(
           continue;
         }
 
-        site *o_site = NULL;
-
-        o_site = index.find_site(host);
+        site *o_site = index.find_site(host);
 
         if (o_site == NULL) {
           site n_site(index.next_id++, p->level + 1, host);
@@ -138,7 +136,9 @@ size_t insert_site_index(
           p->links.emplace_back(o_site->id, o_p->id);
 
           auto it = new_sites_link_count.find(host);
-          if (it != new_sites_link_count.end()) {
+          if (it == new_sites_link_count.end()) {
+            new_sites_link_count.emplace(host, 1);
+          } else {
             it->second++;
           }
         }
@@ -167,7 +167,10 @@ size_t insert_site_index(
 
     add_sites++;
     auto site = index.find_site(host);
-    site->enabled = true;
+    if (!site->enabled) {
+      printf("site %s is enabling %s\n", isite->host.c_str(), site->host.c_str());
+      site->enabled = true;
+    }
   }
 
   return add_sites;
