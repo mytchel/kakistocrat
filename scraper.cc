@@ -136,13 +136,15 @@ size_t curl_cb_header_write(char *buffer, size_t size, size_t nitems, void *ctx)
   } else if (strstr(buffer, "Last-Modified: ")) {
     char *s = buffer + strlen("Last-Modified: ");
 
-    tm tm;
-    strptime(s, "%a, %d %b %Y %H:%M:%S", &tm);
-    time_t time = mktime(&tm);
+    if (strlen(s) > 25) {
+      tm tm;
+      strptime(s, "%a, %d %b %Y %H:%M:%S", &tm);
+      time_t time = mktime(&tm);
 
-    if (d->url.last_scanned > time) {
-      d->unchanged = true;
-      return 0;
+      if (d->url.last_scanned > time) {
+        d->unchanged = true;
+        return 0;
+      }
     }
   }
 
@@ -384,9 +386,12 @@ void curl_data::process_sitemap() {
         } else if (strcmp(tag_name, "lastmod") == 0) {
           tok.load_tag_content(&tok_buffer);
 
-          tm tm;
-          strptime(str_c(&tok_buffer), "%Y-%m-%d", &tm);
-          url_lastmod = mktime(&tm);
+          const char *s = str_c(&tok_buffer);
+          if (strlen(s) > 10) {
+            tm tm;
+            strptime(s, "%Y-%m-%d", &tm);
+            url_lastmod = mktime(&tm);
+          }
         }
 
       } else if (in_sitemap) {
