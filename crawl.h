@@ -58,29 +58,37 @@ void to_json(nlohmann::json &j, const page &s);
 void from_json(const nlohmann::json &j, page &s);
 
 struct site {
+  bool loaded{false};
+  bool scraped{false};
+  bool scraping{false};
+
   std::uint32_t id;
   std::string host;
   size_t level;
 
   time_t last_scanned{0};
-
   std::uint32_t next_id{1};
   std::list<page> pages;
 
-  bool scraped{false};
-  bool scraping{false};
+  void load();
+  void unload();
+  void save();
+
+  // For loading from json
+
+  site() {}
+  site(uint32_t i, std::string h, size_t l, time_t ls) :
+    id(i), host(h), level(l), last_scanned(ls) {
+      scraped = last_scanned > 0;
+  }
+
+  // For creating new sites
+  site(uint32_t i, std::string h, size_t l) :
+    id(i), host(h), level(l), loaded(true) {}
 
   page* find_page(uint32_t id);
   page* find_page(std::string url);
   page* find_page_by_path(std::string path);
-
-  void load();
-  void save();
-
-  site() {}
-
-  site(uint32_t i, std::string h, size_t l) :
-    id(i), host(h), level(l) {}
 };
 
 void to_json(nlohmann::json &j, const site &s);
@@ -89,16 +97,26 @@ void from_json(const nlohmann::json &j, site &s);
 struct index {
   std::list<site> sites;
   std::uint32_t next_id{1};
+  std::vector<std::string> blacklist;
 
   index() {}
 
-  site* find_host(std::string host);
+  site* find_site(std::string host);
+  site* find_site(uint32_t id);
 
   page* find_page(uint64_t id);
   page* find_page(page_id id);
 
-  void save(std::string path);
-  void load(std::string path);
+  void load_seed(std::vector<std::string> seed);
+
+  void load_blacklist(std::vector<std::string> &b) {
+    blacklist = b;
+  }
+
+  bool check_blacklist(std::string host);
+
+  void save();
+  void load();
 };
 
 void to_json(nlohmann::json &j, const index &i);

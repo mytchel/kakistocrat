@@ -23,6 +23,7 @@
 extern "C" {
 
 #include "str.h"
+#include "x_cocomel/memory.h"
 #include "x_cocomel/dynamic_array_kv_64.h"
 #include "x_cocomel/dynamic_array_kv_32.h"
 #include "x_cocomel/dynamic_array_64.h"
@@ -39,6 +40,14 @@ extern "C" {
 #include "search.h"
 
 namespace search {
+
+static char *str_dup_c(struct str *s) {
+	uint32_t len = str_length(s);
+	char *dest = (char*) memory_alloc(len + 1);
+	memcpy(dest, s->store, len);
+    dest[len] = '\0';
+	return dest;
+}
 
 static struct dynamic_array_kv_64 *intersect_postings(struct dynamic_array_64 *postings) {
 	struct dynamic_array_kv_64 *result =

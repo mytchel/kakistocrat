@@ -28,7 +28,7 @@ int main(int argc, char *argv[]) {
   crawl::index index;
   scorer::scores scores;
 
-  index.load("index.scrape");
+  index.load();
 
   printf("score initial from index\n");
 

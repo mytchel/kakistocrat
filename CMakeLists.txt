@@ -28,10 +28,9 @@ add_executable(crawl crawl_main.cc
     crawl.cc
     scraper.cc
     scrape.cc
-    tokenizer.cc
     util.cc
-    str.c
-	x_cocomel/memory.c)
+    tokenizer.cc
+    str.c)
 
 target_include_directories(crawl PUBLIC ${CURL_INCLUDE_DIRS})
 

@@ -18,7 +18,6 @@
 #include <stdint.h>
 #include <string.h>
 #include <ctype.h>
-#include "memory.h"
 
 struct str {
   size_t max;
@@ -41,8 +40,6 @@ void str_tolower(struct str *s);
 void str_tostem(struct str *s);
 
 char *str_c(struct str *s);
-
-char *str_dup_c(struct str *s);
 
 #endif
 

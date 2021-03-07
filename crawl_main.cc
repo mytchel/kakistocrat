@@ -32,9 +32,10 @@ int main(int argc, char *argv[]) {
 
   crawl::index index;
 
-  index.load("index.scrape");
+  index.load();
 
-  crawl::insert_site_index_seed(index, initial_seed, blacklist);
+  index.load_blacklist(blacklist);
+  index.load_seed(initial_seed);
 
   curl_global_init(CURL_GLOBAL_ALL);
 
@@ -42,9 +43,7 @@ int main(int argc, char *argv[]) {
   //std::vector<crawl::level> levels = {{10, 0}};
   //std::vector<crawl::level> levels = {{50, 0}};
 
-  index.save("index.scrape");
-
-  crawl::crawl(levels, index, blacklist);
+  crawl::crawl(levels, index);
 
   curl_global_cleanup();
 

@@ -102,6 +102,8 @@ void scores::init(crawl::index &index)
   size_t n_pages = 0;
 
   for (auto &s: index.sites) {
+    s.load();
+
     for (auto &p: s.pages) {
       if (p.valid) {
         n_pages++;

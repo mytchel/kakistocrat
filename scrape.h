@@ -20,6 +20,10 @@ struct index_url {
     url(u), path(p), last_scanned(t), ok(v) {}
 };
 
+struct sitemap_url {
+  std::string url;
+};
+
 struct site {
   std::string host;
 

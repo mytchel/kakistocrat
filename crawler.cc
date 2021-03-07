@@ -36,8 +36,7 @@ using namespace std::chrono_literals;
 
 namespace crawl {
 
-bool check_blacklist(
-      std::vector<std::string> &blacklist,
+bool index::check_blacklist(
       std::string host)
 {
   for (auto &b: blacklist) {
@@ -72,8 +71,7 @@ size_t insert_site_index(
     index &index,
     site *isite,
     size_t max_add_sites,
-    std::list<scrape::index_url> &page_list,
-    std::vector<std::string> &blacklist)
+    std::list<scrape::index_url> &page_list)
 {
   for (auto &u: page_list) {
     auto p = isite->find_page(u.url);
@@ -109,7 +107,7 @@ size_t insert_site_index(
         p->links.emplace_back(isite->id, n_p->id);
 
       } else {
-        if (check_blacklist(blacklist, host)) {
+        if (index.check_blacklist(host)) {
           continue;
         }
 
@@ -125,7 +123,7 @@ size_t insert_site_index(
         }
 
         if (o_site == NULL) {
-          o_site = index.find_host(host);
+          o_site = index.find_site(host);
         }
 
         if (o_site == NULL) {
@@ -172,25 +170,22 @@ size_t insert_site_index(
   return add_sites;
 }
 
-void insert_site_index_seed(
-    index &index,
-    std::vector<std::string> url,
-    std::vector<std::string> &blacklist)
+void index::load_seed(std::vector<std::string> url)
 {
   for (auto &o: url) {
     auto host = util::get_host(o);
 
-    if (check_blacklist(blacklist, host)) {
+    if (check_blacklist(host)) {
       continue;
     }
 
-    auto o_site = index.find_host(host);
+    auto o_site = find_site(host);
     if (o_site == NULL) {
-      site n_site(index.next_id++, host, 0);
+      site n_site(next_id++, host, 0);
 
       site_find_add_page(&n_site, o);
 
-      index.sites.push_back(n_site);
+      sites.push_back(n_site);
 
     } else {
       site_find_add_page(o_site, o);
@@ -231,17 +226,18 @@ site* get_next_site(index &index)
     printf("get next site took %fms\n", elapsed.count());
   }
 
+  if (s != NULL) {
+    s->load();
+  }
+
   return s;
 }
 
-void crawl(std::vector<level> levels, index &index,
-    std::vector<std::string> &blacklist)
+void crawl(std::vector<level> levels, index &index)
 {
-  size_t scrapped_sites = 0;
-
-  auto n_threads = std::thread::hardware_concurrency();
+  auto n_threads = 1;//std::thread::hardware_concurrency();
   // TODO: get from file limit
-  size_t max_con_per_thread = 1000 / (2 * n_threads);
+  size_t max_con_per_thread = 100;//1000 / (2 * n_threads);
 
   printf("starting %i threads\n", n_threads);
 
@@ -270,17 +266,15 @@ void crawl(std::vector<level> levels, index &index,
 
   std::list<scrape::site> scrapping_sites;
 
-  index.save("index.scrape");
+  index.save();
   auto last_save = std::chrono::system_clock::now();
+  bool have_changes = false;
 
   while (true) {
-    if (last_save + 10s < std::chrono::system_clock::now()) {
-      printf("main crawled %zu / %zu sites\n",
-          scrapped_sites, index.sites.size());
-
+    if (have_changes && last_save + 10s < std::chrono::system_clock::now()) {
       // Save the current index so exiting early doesn't loose
       // all the work that has been done
-      index.save("index.scrape");
+      index.save();
       last_save = std::chrono::system_clock::now();
     }
 
@@ -310,33 +304,35 @@ void crawl(std::vector<level> levels, index &index,
         }
       }
 
-      if (out_channels[i].empty()) continue;
+      if (!out_channels[i].empty()) {
+        scrape::site *s;
+        s << out_channels[i];
 
-      scrape::site *s;
-      s << out_channels[i];
+        auto site = index.find_site(s->host);
+        if (site == NULL) {
+          printf("site '%s' not found in index.\n", s->host.c_str());
+          exit(1);
+        }
 
-      auto site = index.find_host(s->host);
-      if (site == NULL) {
-        printf("site '%s' not found in index.\n", s->host.c_str());
-        exit(1);
+        site->scraped = true;
+        site->scraping = false;
+        site->last_scanned = time(NULL);
+
+        size_t added = insert_site_index(index, site,
+            levels[site->level].max_add_sites,
+            s->url_scanned);
+
+        printf("site finished for level %zu with %3zu (+ %3zu unchanged) pages, %2zu external: %s\n",
+            site->level, s->url_scanned.size(), s->url_unchanged.size(), added,
+            site->host.c_str());
+
+        scrapping_sites.remove_if([s](const scrape::site &ss) {
+            return &ss == s;
+            });
+
+        site->unload();
+        have_changes = true;
       }
-
-      site->scraped = true;
-      site->scraping = false;
-      site->last_scanned = time(NULL);
-
-      size_t added = insert_site_index(index, site, levels[site->level].max_add_sites,
-          s->url_scanned, blacklist);
-
-      printf("site finished for level %zu with %3zu (+ %3zu unchanged) pages, %2zu external: %s\n",
-          site->level, s->url_scanned.size(), s->url_unchanged.size(), added,
-          site->host.c_str());
-
-      scrapping_sites.remove_if([s](const scrape::site &ss) {
-          return &ss == s;
-          });
-
-      scrapped_sites++;
     }
 
     auto delay = std::chrono::milliseconds(1);
@@ -347,21 +343,25 @@ void crawl(std::vector<level> levels, index &index,
       bool have_something = false;
       for (auto &s: index.sites) {
         size_t min = (4 * (1 + s.level)) * 60 * 60;
-        if (s.scraped && s.last_scanned + min < now) {
+        if (s.last_scanned + min < now) {
           int r = rand() % ((24 * (1 + s.level) - 4) * 60 * 60);
           s.scraped = s.last_scanned + min + r < now;
           if (!s.scraped) {
             printf("transition %s from scraped to ready as %i + %i + %i < %i\n",
                 s.host.c_str(), s.last_scanned, min, r, now);
-          }
-        }
 
-        have_something |= !s.scraped;
+            s.load();
+            have_something = true;
+          }
+        } else {
+          s.unload();
+        }
       }
 
       if (!have_something) {
         delay = std::chrono::minutes(1);
         printf("have nothing\n");
+        index.save();
       }
 
     } else if (all_blocked) {

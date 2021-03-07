@@ -77,7 +77,7 @@ void index_write(char const *filename, char *buffer,
 
 int main(int argc, char *argv[]) {
   crawl::index index;
-  index.load("index.scrape");
+  index.load();
 
 	struct dynamic_array_kv_64 docNos;
 	dynamic_array_kv_64_init(&docNos);
@@ -115,6 +115,11 @@ int main(int argc, char *argv[]) {
 
   for (auto &site: index.sites) {
     printf("site %lu %s\n", site.id, site.host.c_str());
+
+    site.load();
+
+    printf("process %s\n", site.host.c_str());
+
     for (auto &page: site.pages) {
       if (!page.valid) continue;
 
@@ -203,6 +208,8 @@ int main(int argc, char *argv[]) {
 
       pfile.close();
     }
+
+    site.unload();
   }
 
   printf("saving index\n");

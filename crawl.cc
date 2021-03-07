@@ -56,32 +56,55 @@ void from_json(const json &j, page &p) {
   j.at("v").get_to(p.valid);
 }
 
-void to_json(json &j, const site &s) {
-  j = json{
-      {"id", s.id},
-      {"host", s.host},
-      {"level", s.level},
-      {"last_scanned", s.last_scanned},
-      {"next_id", s.next_id},
-      {"pages", s.pages}};
+void site::load() {
+  if (loaded) return;
+
+  std::string path = host + ".index.json";
+  std::ifstream file;
+
+  printf("load %s\n", path.c_str());
+
+  file.open(path, std::ios::in);
+
+  if (!file.is_open()) {
+    fprintf(stderr, "error opening file %s\n", path.c_str());
+
+    // So the file gets created
+    loaded = true;
+    return;
+  }
+
+  json j = json::parse(file);
+
+  file.close();
+
+  j.at("id").get_to(id);
+  j.at("host").get_to(host);
+  j.at("level").get_to(level);
+  j.at("last_scanned").get_to(last_scanned);
+  j.at("next_id").get_to(next_id);
+  j.at("pages").get_to(pages);
+
+  scraped = last_scanned > 0;
+  loaded = true;
+  scraping = false;
 }
 
-void from_json(const json &j, site &s) {
-  j.at("id").get_to(s.id);
-  j.at("host").get_to(s.host);
-  j.at("level").get_to(s.level);
-  j.at("last_scanned").get_to(s.last_scanned);
-  j.at("next_id").get_to(s.next_id);
-  j.at("pages").get_to(s.pages);
+void site::save() {
+  if (!loaded) return;
 
-  s.scraped = s.last_scanned > 0;
-}
-
-void index::save(std::string path)
-{
+  std::string path = host + ".index.json";
   std::ofstream file;
 
-  printf("save index %lu -> %s\n", sites.size(), path.c_str());
+  json j = {
+      {"id", id},
+      {"host", host},
+      {"level", level},
+      {"last_scanned", last_scanned},
+      {"next_id", next_id},
+      {"pages", pages}};
+
+  printf("save %s\n", path.c_str());
 
   file.open(path, std::ios::out | std::ios::trunc);
 
@@ -90,18 +113,62 @@ void index::save(std::string path)
     return;
   }
 
-  json j = {
-    {"next_id", next_id},
-    {"sites", sites}};
-
   file << j;
 
-  printf("saved\n");
   file.close();
 }
 
-void index::load(std::string path)
+void site::unload() {
+  if (!loaded || scraping) return;
+
+  save();
+
+  loaded = false;
+  pages.clear();
+}
+
+void index::save()
 {
+  std::string path = "full_index.json";
+  std::ofstream file;
+
+  std::vector<json> j_sites;
+
+  for (auto &s: sites) {
+    s.save();
+
+    json j = {
+      {"id", s.id},
+      {"host", s.host},
+      {"level", s.level},
+      {"last_scanned", s.last_scanned}
+    };
+
+    j_sites.push_back(j);
+  }
+
+  json j = {
+    {"next_id", next_id},
+    {"sites", j_sites}
+  };
+
+  printf("save index %s\n", path.c_str());
+
+  file.open(path, std::ios::out | std::ios::trunc);
+
+  if (!file.is_open()) {
+    fprintf(stderr, "error opening file %s\n", path.c_str());
+    return;
+  }
+
+  file << j;
+
+  file.close();
+}
+
+void index::load()
+{
+  std::string path = "full_index.json";
   std::ifstream file;
 
   printf("load %s\n", path.c_str());
@@ -115,13 +182,22 @@ void index::load(std::string path)
 
   json j = json::parse(file);
 
-  j.at("next_id").get_to(next_id);
-  j.at("sites").get_to(sites);
-
   file.close();
+
+  j.at("next_id").get_to(next_id);
+
+  sites.clear();
+
+  for (auto &s_j: j.at("sites")) {
+    sites.emplace_back(
+          s_j.at("id").get<std::uint32_t>(),
+          s_j.at("host").get<std::string>(),
+          s_j.at("level").get<size_t>(),
+          s_j.at("last_scanned").get<time_t>());
+  }
 }
 
-site * index::find_host(std::string host)
+site * index::find_site(std::string host)
 {
   for (auto &i: sites) {
     if (i.host == host) {
@@ -132,14 +208,24 @@ site * index::find_host(std::string host)
   return NULL;
 }
 
-page* index::find_page(page_id id)
+site * index::find_site(uint32_t id)
 {
-  for (auto &s: sites) {
-    if (s.id != id.site) continue;
-    return s.find_page(id.page);
+  for (auto &i: sites) {
+    if (i.id == id) {
+      return &i;
+    }
   }
 
   return NULL;
+}
+
+page* index::find_page(page_id id)
+{
+  auto s = find_site(id.site);
+  if (s != NULL)
+    return s->find_page(id.page);
+  else
+    return NULL;
 }
 
 page* index::find_page(uint64_t id)

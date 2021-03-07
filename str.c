@@ -69,11 +69,3 @@ void str_cat(struct str *s, const char *c) {
   }
 }
 
-char *str_dup_c(struct str *s) {
-	uint32_t len = str_length(s);
-	char *dest = (char*) memory_alloc(len + 1);
-	memcpy(dest, s->store, len);
-    dest[len] = '\0';
-	return dest;
-}
-

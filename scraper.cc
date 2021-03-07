@@ -41,31 +41,51 @@ namespace scrape {
 
 enum request_type { URL, ROBOTS, SITEMAP };
 
+static int active_malloc = 0;
+
+const size_t max_data = 1024 * 1024 * 10;
+
 struct curl_data {
+  bool in_use{false};
+
   char *buf{NULL};
-  size_t size{0};
-  size_t max;
 
   site *m_site;
-
   request_type req_type;
-
   index_url url;
   std::string s_url;
 
-  bool unchanged{false};
+  size_t size;
+  bool unchanged;
 
-  curl_data(site *s, request_type r, size_t m) :
-      m_site(s), req_type(r), url(), max(m) {}
+  void init_page(site *s, index_url u) {
+    in_use = true;
 
-  curl_data(site *s, request_type r, std::string ss, size_t m) :
-      m_site(s), req_type(r), url(), s_url(ss), max(m) {}
+    m_site = s;
+    req_type = URL;
+    url = u;
 
-  curl_data(site *s, index_url u, size_t m) :
-      m_site(s), req_type(URL), url(u), max(m) {}
+    unchanged = false;
+    size = 0;
+  }
+
+  void init_other(site *s, request_type t, std::string ss) {
+    in_use = true;
+
+    m_site = s;
+    req_type = t;
+    s_url = ss;
+
+    size = 0;
+  }
+
+  curl_data() {};
 
   ~curl_data() {
-    if (buf) free(buf);
+    if (buf) {
+      printf("MALLOC %i\n", --active_malloc);
+      free(buf);
+    }
   }
 
   void finish(std::string effective_url);
@@ -84,12 +104,13 @@ size_t curl_cb_buffer_write(void *contents, size_t sz, size_t nmemb, void *ctx)
   curl_data *d = (curl_data *) ctx;
   size_t realsize = sz * nmemb;
 
-  if (d->max < d->size + realsize) {
+  if (max_data < d->size + realsize) {
     return 0;
   }
 
   if (d->buf == NULL) {
-    d->buf = (char *) malloc(d->max);
+    printf("MALLOC %i\n", ++active_malloc);
+    d->buf = (char *) malloc(max_data);
     if (d->buf == NULL) {
       return 0;
     }
@@ -422,6 +443,8 @@ void curl_data::finish(std::string effective_url) {
     m_site->sitemap_url_got.insert(s_url);
     m_site->sitemap_url_getting.erase(s_url);
   }
+
+  in_use = false;
 }
 
 // TODO: try http after https for robots?
@@ -438,6 +461,8 @@ void curl_data::finish_bad_http(int code) {
     m_site->sitemap_url_got.insert(s_url);
     m_site->sitemap_url_getting.erase(s_url);
   }
+
+  in_use = false;
 }
 
 void curl_data::finish_bad_net(CURLcode res) {
@@ -464,11 +489,30 @@ void curl_data::finish_bad_net(CURLcode res) {
     m_site->sitemap_url_got.insert(s_url);
     m_site->sitemap_url_getting.erase(s_url);
   }
+
+  in_use = false;
 }
 
-CURL *make_handle(site* s, index_url u)
+curl_data *get_curl_data(std::list<curl_data> &store)
 {
-  curl_data *d = new curl_data(s, u, 1024 * 1024 * 10);
+  for (auto &d: store) {
+    if (!d.in_use) {
+      printf("reuse curl data\n");
+      return &d;
+    }
+  }
+
+  printf("make new curl data\n");
+  store.emplace_back();
+  auto &d = store.back();
+  return &d;
+}
+
+CURL *make_handle(std::list<curl_data> &store, site* s, index_url u)
+{
+  curl_data *d = get_curl_data(store);
+
+  d->init_page(s, u);
 
   CURL *curl_handle = curl_easy_init();
 
@@ -492,9 +536,11 @@ CURL *make_handle(site* s, index_url u)
   return curl_handle;
 }
 
-CURL *make_handle_other(site* s, request_type r, std::string url)
+CURL *make_handle_other(std::list<curl_data> &store, site* s, request_type r, std::string url)
 {
-  curl_data *d = new curl_data(s, r, url, 1024 * 1024 * 10);
+  curl_data *d = get_curl_data(store);
+
+  d->init_other(s, r, url);
 
   CURL *curl_handle = curl_easy_init();
 
@@ -535,6 +581,8 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
   curl_multi_setopt(multi_handle, CURLMOPT_PIPELINING, CURLPIPE_MULTIPLEX);
 #endif
 
+  std::list<curl_data> curl_data_store;
+
   std::list<site*> sites;
 
   size_t active_connections = 0;
@@ -543,6 +591,8 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
 
   auto last_accepting = std::chrono::system_clock::now() - 100s;
   bool accepting = false;
+
+  size_t empty_time = 0;
 
   while (true) {
     bool n_accepting = max_con - active_connections > max_host * 3;
@@ -567,7 +617,7 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
         } else if (!(*s) ->getting_robots && !(*s)->got_robots) {
           (*s)->getting_robots = true;
           std::string url = "https://" + (*s)->host + "/robots.txt";
-          curl_multi_add_handle(multi_handle, make_handle_other(*s, ROBOTS, url));
+          curl_multi_add_handle(multi_handle, make_handle_other(curl_data_store, *s, ROBOTS, url));
           active_connections++;
           adding = true;
 
@@ -576,14 +626,14 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
           (*s)->sitemap_url_pending.erase(url);
           (*s)->sitemap_url_getting.insert(url);
 
-          curl_multi_add_handle(multi_handle, make_handle_other(*s, SITEMAP, url));
+          curl_multi_add_handle(multi_handle, make_handle_other(curl_data_store, *s, SITEMAP, url));
           active_connections++;
           adding = true;
 
         } else if ((*s)->got_robots && (*s)->sitemap_url_getting.empty()) {
           auto u = (*s)->get_next();
           if (u) {
-            curl_multi_add_handle(multi_handle, make_handle(*s, *u));
+            curl_multi_add_handle(multi_handle, make_handle(curl_data_store, *s, *u));
             active_connections++;
             adding = true;
           }
@@ -606,8 +656,18 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
     }
 
     if (sites.empty()) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      if (++empty_time > 100) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        curl_data_store.clear();
+        empty_time = 100;
+      } else {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+
       continue;
+
+    } else {
+      empty_time = 0;
     }
 
     curl_multi_wait(multi_handle, NULL, 0, 1000, NULL);
@@ -638,8 +698,6 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
         } else {
           d->finish_bad_net(res);
         }
-
-        delete d;
 
         curl_multi_remove_handle(multi_handle, handle);
         curl_easy_cleanup(handle);

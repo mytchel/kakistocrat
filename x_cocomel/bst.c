@@ -4,6 +4,21 @@
 
 #include "bst.h"
 
+static char *str_dup_c(struct str *s) {
+	uint32_t len = str_length(s);
+	char *dest = (char*) memory_alloc(len + 1);
+	memcpy(dest, s->store, len);
+    dest[len] = '\0';
+	return dest;
+}
+
+void bst_init(struct bst *b, struct str *key, uint32_t val) {
+	b->left = b->right = NULL;
+	b->key = str_dup_c(key);
+	posting_init(&b->store);
+	posting_append(&b->store, val);
+}
+
 void bst_insert(struct bst *b, struct str *key, uint32_t val, uint32_t *length)
 	{
 	for (;;)
