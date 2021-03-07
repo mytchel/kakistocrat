@@ -58,10 +58,6 @@ page* site_find_add_page(site *site, std::string url)
 
   auto path = util::make_path(url);
 
-  if (site->find_page_by_path(path) != NULL) {
-    return NULL;
-  }
-
   p = site->find_page_by_path(path);
   if (p != NULL) {
     return p;
@@ -97,13 +93,7 @@ size_t insert_site_index(
   }
 
   std::list<site> new_sites;
-
-  struct site_link_data {
-    std::string host;
-    size_t count;
-  };
-
-  std::list<site_link_data> linked_sites;
+  std::map<std::string, size_t> new_sites_link_count;
 
   for (auto &u: page_list) {
     auto p = isite->find_page(u.url);
@@ -124,10 +114,12 @@ size_t insert_site_index(
         }
 
         site *o_site = NULL;
+        bool is_new_site = false;
 
         for (auto &s: new_sites) {
           if (s.host == host) {
             o_site = &s;
+            is_new_site = true;
             break;
           }
         }
@@ -140,59 +132,41 @@ size_t insert_site_index(
           site n_site(index.next_id++, host, isite->level + 1);
 
           auto n_p = site_find_add_page(&n_site, l);
-          if (n_p != NULL) {
 
-            p->links.emplace_back(n_site.id, n_p->id);
+          p->links.emplace_back(n_site.id, n_p->id);
 
-            new_sites.push_back(n_site);
-
-            site_link_data data = {host, 1};
-            linked_sites.push_back(data);
-          }
+          new_sites.push_back(n_site);
+          new_sites_link_count.emplace(host, 1);
 
         } else {
           auto o_p = site_find_add_page(o_site, l);
-          if (o_p != NULL) {
 
-            p->links.emplace_back(o_site->id, o_p->id);
+          p->links.emplace_back(o_site->id, o_p->id);
 
-            bool found = false;
-            for (auto &l: linked_sites) {
-              if (l.host == host) {
-                l.count++;
-                found = true;
-                break;
-              }
-            }
-
-            if (!found) {
-              site_link_data data = {host, 1};
-              linked_sites.push_back(data);
-            }
+          if (is_new_site) {
+            auto it = new_sites_link_count.find(host);
+            it->second++;
           }
         }
       }
     }
   }
 
-  linked_sites.sort([](site_link_data &a, site_link_data &b) {
-        return a.count > b.count;
+  new_sites.sort(
+      [&new_sites_link_count](site &a, site &b) {
+        auto aa = new_sites_link_count.find(a.host);
+        auto bb = new_sites_link_count.find(b.host);
+        return aa->second > bb->second;
       });
 
   size_t add_sites = 0;
-  for (auto &l: linked_sites) {
+  for (auto &s: new_sites) {
     if (add_sites >= max_add_sites) {
       break;
     }
 
     add_sites++;
-
-    for (auto &s: new_sites) {
-      if (s.host == l.host) {
-        index.sites.push_back(s);
-        break;
-      }
-    }
+    index.sites.push_back(s);
   }
 
   return add_sites;
@@ -212,7 +186,7 @@ void insert_site_index_seed(
 
     auto o_site = index.find_host(host);
     if (o_site == NULL) {
-      site n_site(index.next_id++, host, 0, false);
+      site n_site(index.next_id++, host, 0);
 
       site_find_add_page(&n_site, o);
 

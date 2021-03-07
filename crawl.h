@@ -74,13 +74,13 @@ struct site {
   page* find_page(std::string url);
   page* find_page_by_path(std::string path);
 
+  void load();
+  void save();
+
   site() {}
 
   site(uint32_t i, std::string h, size_t l) :
     id(i), host(h), level(l) {}
-
-  site(uint32_t i, std::string h, size_t l, time_t s) :
-    id(i), host(h), level(l), last_scanned(s) {}
 };
 
 void to_json(nlohmann::json &j, const site &s);
