@@ -235,9 +235,9 @@ site* get_next_site(index &index)
 
 void crawl(std::vector<level> levels, index &index)
 {
-  auto n_threads = 1;//std::thread::hardware_concurrency();
+  auto n_threads = std::thread::hardware_concurrency();
   // TODO: get from file limit
-  size_t max_con_per_thread = 100;//1000 / (2 * n_threads);
+  size_t max_con_per_thread = 1000 / (2 * n_threads);
 
   printf("starting %i threads\n", n_threads);
 

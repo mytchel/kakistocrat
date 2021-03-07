@@ -83,7 +83,6 @@ struct curl_data {
 
   ~curl_data() {
     if (buf) {
-      printf("MALLOC %i\n", --active_malloc);
       free(buf);
     }
   }
@@ -109,7 +108,6 @@ size_t curl_cb_buffer_write(void *contents, size_t sz, size_t nmemb, void *ctx)
   }
 
   if (d->buf == NULL) {
-    printf("MALLOC %i\n", ++active_malloc);
     d->buf = (char *) malloc(max_data);
     if (d->buf == NULL) {
       return 0;
@@ -502,12 +500,10 @@ curl_data *get_curl_data(std::list<curl_data> &store)
 {
   for (auto &d: store) {
     if (!d.in_use) {
-      printf("reuse curl data\n");
       return &d;
     }
   }
 
-  printf("make new curl data\n");
   store.emplace_back();
   auto &d = store.back();
   return &d;
