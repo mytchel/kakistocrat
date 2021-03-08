@@ -11,6 +11,8 @@ struct bst {
   }
 
   void insert(std::string &key, uint32_t val);
-  char *write(char *start, char *ptr_buffer, char *val_buffer);
+
+  char* save(char *start, char *ptr_buffer, char *val_buffer);
+  char* load(char *start, char *ptr_buffer, char *val_buffer);
 };
 

@@ -17,7 +17,6 @@ struct hash_table {
     }
   }
 
-
   void insert(std::string key, uint32_t val);
 
   posting *find(char *key);

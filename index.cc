@@ -136,7 +136,6 @@ void index_site(crawl::site &s) {
   tokenizer::tokenizer tok;
 
   hash_table dict;
-
   //std::map<std::string, std::vector<std::uint64_t>> dict_pair;
   //std::map<std::string, std::vector<std::uint64_t>> dict_trine;
 

@@ -15,7 +15,7 @@ void bst::insert(std::string &k, uint32_t val)
 {
   bst *b = this;
 	for (;;) {
-		int cmp = k == key;
+		int cmp = key.compare(k);
 
 		if (cmp < 0) {
       if (b->left) {
@@ -40,7 +40,7 @@ void bst::insert(std::string &k, uint32_t val)
 	}
 }
 
-char *bst::write(char *start, char *ptr_buffer, char *val_buffer)
+char *bst::save(char *start, char *ptr_buffer, char *val_buffer)
 {
   bst *b = this;
 	while (b) {
@@ -52,7 +52,7 @@ char *bst::write(char *start, char *ptr_buffer, char *val_buffer)
 
 			((uint32_t *)ptr_buffer)[0] = val_buffer - start;
 			ptr_buffer += sizeof(uint32_t);
-			val_buffer += b->store.write(val_buffer);
+			val_buffer += b->store.save(val_buffer);
 
 			b = b->right;
 
@@ -67,3 +67,7 @@ char *bst::write(char *start, char *ptr_buffer, char *val_buffer)
 	return val_buffer;
 }
 
+char *bst::load(char *start, char *ptr_buffer, char *val_buffer)
+{
+  return NULL;
+}

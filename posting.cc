@@ -12,8 +12,8 @@
 posting::posting()
 {
 	id = 0;
-	id_capacity = 256;
 	id_length = 0;
+	id_capacity = 256;
 	id_store = (uint8_t *) malloc(id_capacity);
 }
 
@@ -32,7 +32,6 @@ void posting::append(uint32_t i)
   } else {
     // Max bytes vbyte can use for 32bit int
 		if (id_capacity - id_length < 5) {
-      printf("hit limit %i\n", id_capacity);
 			id_capacity *= 2;
 			id_store = (uint8_t *) realloc(id_store, id_capacity);
 		}
@@ -45,7 +44,7 @@ void posting::append(uint32_t i)
 	}
 }
 
-size_t posting::write(char *buffer)
+size_t posting::save(char *buffer)
 {
 	size_t offset = 2 * sizeof(uint32_t);
 
@@ -61,6 +60,11 @@ size_t posting::write(char *buffer)
 	((uint32_t *)buffer)[1] = counts.size();
 
 	return offset;
+}
+
+size_t posting::load(char *buffer)
+{
+  return 0;
 }
 
 std::vector<std::pair<uint64_t, uint64_t>> posting::decompress()

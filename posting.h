@@ -15,6 +15,7 @@ struct posting {
 
   std::vector<std::pair<uint64_t, uint64_t>> decompress();
 
-  size_t write(char *buffer);
+  size_t save(char *buffer);
+  size_t load(char *buffer);
 };
 
