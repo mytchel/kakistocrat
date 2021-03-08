@@ -23,15 +23,23 @@
 extern "C" {
 
 #include "str.h"
+/*
 #include "x_cocomel/dynamic_array_kv_64.h"
-#include "x_cocomel/posting.h"
 #include "x_cocomel/hash_table.h"
+*/
 }
 
 #include "util.h"
 #include "crawl.h"
 #include "tokenizer.h"
 
+#include "posting.h"
+#include "bst.h"
+#include "hash_table.h"
+
+using nlohmann::json;
+
+/*
 void index_write(char const *filename, char *buffer,
     struct dynamic_array_kv_64 *docNos,
     struct hash_table *dictionary,
@@ -74,25 +82,40 @@ void index_write(char const *filename, char *buffer,
 
 	fclose(fh);
 }
+*/
 
-int main(int argc, char *argv[]) {
-  crawl::index index;
-  index.load();
+void index_write(crawl::site &s,
+  std::map<std::string, std::list<std::uint64_t>> dict)
+  //std::map<std::string, std::vector<std::uint64_t>> dict_pair,
+  //std::map<std::string, std::vector<std::uint64_t>> dict_trine)
+{
+  std::string path = s.host + ".dat.json";
+  printf("write %s\n", path.c_str());
 
-	struct dynamic_array_kv_64 docNos;
-	dynamic_array_kv_64_init(&docNos);
+  json j = {
+    {"words", dict}};
+    //{"pairs", dict_pair},
+    //{"trines", dict_trine}};
 
-  struct hash_table dictionary;
-	hash_table_init(&dictionary);
+  std::ofstream file;
 
-  struct hash_table dictionary_pair;
-	hash_table_init(&dictionary_pair);
+  file.open(path, std::ios::out | std::ios::trunc);
 
-  struct hash_table dictionary_trine;
-	hash_table_init(&dictionary_trine);
+  if (!file.is_open()) {
+    fprintf(stderr, "error opening file %s\n", path.c_str());
+    return;
+  }
+
+  file << j;
+
+  file.close();
+}
+
+void index_site(crawl::site &s) {
+  printf("index site %s\n", s.host.c_str());
 
   size_t max_size = 1024 * 1024 * 10;
-  char *buf = (char *) malloc(max_size);
+  char *file_buf = (char *) malloc(max_size);
 
   const size_t buf_len = 512;
 
@@ -100,6 +123,7 @@ int main(int argc, char *argv[]) {
 	struct str tok_buffer;
 	str_init(&tok_buffer, tok_buffer_store, sizeof(tok_buffer_store));
 
+  /*
   char pair_buffer[buf_len * 2 + 1];
 	struct str tok_buffer_pair;
 	str_init(&tok_buffer_pair, pair_buffer, sizeof(pair_buffer));
@@ -107,118 +131,140 @@ int main(int argc, char *argv[]) {
   char trine_buffer[buf_len * 3 + 2];
 	struct str tok_buffer_trine;
 	str_init(&tok_buffer_trine, trine_buffer, sizeof(trine_buffer));
-
+*/
 	tokenizer::token_type token;
   tokenizer::tokenizer tok;
 
-  int i = 0;
+  hash_table dict;
 
-  for (auto &site: index.sites) {
-    if (!site.enabled) continue;
+  //std::map<std::string, std::vector<std::uint64_t>> dict_pair;
+  //std::map<std::string, std::vector<std::uint64_t>> dict_trine;
 
-    printf("site %lu %s\n", site.id, site.host.c_str());
+  for (auto &page: s.pages) {
+    if (!page.valid) continue;
 
-    site.load();
+    uint64_t id = crawl::page_id(s.id, page.id).to_value();
 
-    printf("process %s\n", site.host.c_str());
+    std::ifstream pfile;
 
-    for (auto &page: site.pages) {
-      if (!page.valid) continue;
+    pfile.open(page.path, std::ios::in | std::ios::binary);
 
-      uint64_t id = crawl::page_id(site.id, page.id).to_value();
-
-      std::ifstream pfile;
-
-      pfile.open(page.path, std::ios::in | std::ios::binary);
-
-      if (!pfile.is_open() || pfile.fail() || !pfile.good() || pfile.bad()) {
-        fprintf(stderr, "error opening file %s\n", page.path.c_str());
-        continue;
-      }
-
-      pfile.read(buf, max_size);
-
-      size_t len = pfile.gcount();
-
-			tok.init(buf, len);
-
-		  dynamic_array_kv_64_append(&docNos, id, 0);
-
-      bool in_head = false, in_title = false;
-
-      str_resize(&tok_buffer_pair, 0);
-      str_resize(&tok_buffer_trine, 0);
-
-      do {
-				token = tok.next(&tok_buffer);
-
-        if (token == tokenizer::TAG) {
-          char tag_name[tokenizer::tag_name_max_len];
-          tokenizer::get_tag_name(tag_name, str_c(&tok_buffer));
-
-          auto t = std::string(tag_name);
-
-          if (t == "head") {
-            in_head = true;
-
-          } else if (t == "/head") {
-            in_head = false;
-
-          } else if (in_head && t == "title") {
-            in_title = true;
-
-          } else if (in_head && t == "/title") {
-            in_title = false;
-          }
-
-          // TODO: others
-          if (t != "a" && t != "strong") {
-            str_resize(&tok_buffer_pair, 0);
-            str_resize(&tok_buffer_trine, 0);
-          }
-
-        } else if ((in_title || !in_head) && token == tokenizer::WORD) {
-					dynamic_array_kv_64_back(&docNos)[1]++;
-
-          str_tolower(&tok_buffer);
-          str_tostem(&tok_buffer);
-
-          hash_table_insert(&dictionary, &tok_buffer, docNos.length);
-
-          if (str_length(&tok_buffer_trine) > 0) {
-            str_cat(&tok_buffer_trine, " ");
-            str_cat(&tok_buffer_trine, str_c(&tok_buffer));
-
-            hash_table_insert(&dictionary_trine, &tok_buffer_trine, docNos.length);
-
-            str_resize(&tok_buffer_trine, 0);
-          }
-
-          if (str_length(&tok_buffer_pair) > 0) {
-            str_cat(&tok_buffer_pair, " ");
-            str_cat(&tok_buffer_pair, str_c(&tok_buffer));
-
-            hash_table_insert(&dictionary_pair, &tok_buffer_pair, docNos.length);
-
-            str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
-          }
-
-          str_resize(&tok_buffer_pair, 0);
-          str_cat(&tok_buffer_pair, str_c(&tok_buffer));
-				}
-			} while (token != tokenizer::END);
-
-      pfile.close();
+    if (!pfile.is_open() || pfile.fail() || !pfile.good() || pfile.bad()) {
+      fprintf(stderr, "error opening file %s\n", page.path.c_str());
+      continue;
     }
 
-    site.unload();
+    pfile.read(file_buf, max_size);
+
+    size_t len = pfile.gcount();
+
+    tok.init(file_buf, len);
+
+    bool in_head = false, in_title = false;
+
+    //str_resize(&tok_buffer_pair, 0);
+    //str_resize(&tok_buffer_trine, 0);
+
+    do {
+      token = tok.next(&tok_buffer);
+
+      if (token == tokenizer::TAG) {
+        char tag_name[tokenizer::tag_name_max_len];
+        tokenizer::get_tag_name(tag_name, str_c(&tok_buffer));
+
+        auto t = std::string(tag_name);
+
+        if (t == "head") {
+          in_head = true;
+
+        } else if (t == "/head") {
+          in_head = false;
+
+        } else if (in_head && t == "title") {
+          in_title = true;
+
+        } else if (in_head && t == "/title") {
+          in_title = false;
+        }
+
+        // TODO: others
+        if (t != "a" && t != "strong") {
+        //  str_resize(&tok_buffer_pair, 0);
+        //  str_resize(&tok_buffer_trine, 0);
+        }
+
+      } else if ((in_title || !in_head) && token == tokenizer::WORD) {
+        str_tolower(&tok_buffer);
+        str_tostem(&tok_buffer);
+
+        std::string s(str_c(&tok_buffer));
+
+        dict.insert(s, id);
+
+        /*
+        if (str_length(&tok_buffer_trine) > 0) {
+          str_cat(&tok_buffer_trine, " ");
+          str_cat(&tok_buffer_trine, str_c(&tok_buffer));
+
+          std::string s(str_c(&tok_buffer_trine));
+
+          auto it = dict_trine.try_emplace(s, id);
+          if (!it.second) it.first->second.push_back(id);
+
+          str_resize(&tok_buffer_trine, 0);
+        }
+
+        if (str_length(&tok_buffer_pair) > 0) {
+          str_cat(&tok_buffer_pair, " ");
+          str_cat(&tok_buffer_pair, str_c(&tok_buffer));
+
+          std::string s(str_c(&tok_buffer_pair));
+
+          auto it = dict_pair.try_emplace(s, id);
+          if (!it.second) it.first->second.push_back(id);
+
+          str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
+        }
+
+        str_resize(&tok_buffer_pair, 0);
+        str_cat(&tok_buffer_pair, str_c(&tok_buffer));
+
+        */
+      }
+    } while (token != tokenizer::END);
+
+    pfile.close();
   }
 
+  free(file_buf);
+
+  printf("finished indexing site %s\n", s.host.c_str());
+  //index_write(s, dict);//, dict_pair, dict_trine);
+}
+
+int main(int argc, char *argv[]) {
+  crawl::index index;
+  index.load();
+
+  int i = 0;
+
+  for (auto &s: index.sites) {
+    if (!s.enabled) continue;
+
+    printf("site %lu %s\n", s.id, s.host.c_str());
+
+    s.load();
+
+    index_site(s);
+
+    s.unload();
+  }
+/*
   printf("saving index\n");
 
   char *out_buffer = (char *)malloc(1024*1024*1024);
   index_write("index.dat", out_buffer, &docNos, &dictionary, &dictionary_pair, &dictionary_trine);
-
+*/
   return 0;
 }
 

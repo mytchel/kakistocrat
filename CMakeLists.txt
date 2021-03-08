@@ -47,11 +47,10 @@ add_executable(index index.cc
     tokenizer.cc
     util.cc
     str.c
-	x_cocomel/bst.c
-	x_cocomel/hash_table.c
-	x_cocomel/memory.c
-	x_cocomel/posting.c
-	x_cocomel/vbyte)
+	bst.cc
+	hash_table.cc
+	posting.cc
+	vbyte.cc)
 
 target_link_libraries(index nlohmann_json::nlohmann_json)
 
