@@ -50,7 +50,8 @@ add_executable(index index.cc
 	bst.cc
 	hash_table.cc
 	posting.cc
-	vbyte.cc)
+	vbyte.cc
+    index_posting.cc)
 
 target_link_libraries(index nlohmann_json::nlohmann_json)
 

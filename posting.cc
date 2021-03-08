@@ -4,55 +4,45 @@
 #include <cstdio>
 
 #include <vector>
+#include <algorithm>
 
 #include "vbyte.h"
 
 #include "posting.h"
 
-posting::posting()
+void posting::append(uint64_t id)
 {
-	id = 0;
-	id_length = 0;
-	id_capacity = 256;
-	id_store = (uint8_t *) malloc(id_capacity);
-}
-
-posting::~posting()
-{
-  free(id_store);
-}
-
-void posting::append(uint32_t i)
-{
-	if (i == id) {
-    auto &count = counts.back();
-    if (count < 255)
-      count++;
+  auto &b = counts.back();
+	if (counts.size() > 0 && b.first == id) {
+    if (b.second < 255)
+      b.second++;
 
   } else {
-    // Max bytes vbyte can use for 32bit int
-		if (id_capacity - id_length < 5) {
-			id_capacity *= 2;
-			id_store = (uint8_t *) realloc(id_store, id_capacity);
-		}
-
-    id_length += vbyte_store(&id_store[id_length], i - id);
-
-    counts.push_back(1);
-
-		id = i;
+    counts.emplace_back(id, 1);
 	}
 }
 
-size_t posting::save(char *buffer)
+size_t posting::save(uint8_t *buffer)
 {
+  std::sort(counts.begin(), counts.end(),
+      [](auto &a, auto &b) {
+        return a.first < a.first;
+      }
+  );
+
 	size_t offset = 2 * sizeof(uint32_t);
 
-	memcpy(&buffer[offset], id_store, id_length);
-	offset += id_length;
+  uint8_t *id_store = (uint8_t *) buffer + offset;
+  size_t id_length = 0;
+
+  uint64_t o = 0;
+  for (auto &c: counts) {
+    offset += vbyte_store((uint8_t *) buffer + offset, c.first - o);
+    o = c.first;
+  }
 
   for (auto &c: counts) {
-    buffer[offset] = c;
+    buffer[offset] = c.second;
     offset += sizeof(uint8_t);
   }
 
@@ -62,18 +52,11 @@ size_t posting::save(char *buffer)
 	return offset;
 }
 
-size_t posting::load(char *buffer)
+size_t posting::load(uint8_t *buffer)
 {
-  return 0;
-}
-
-std::vector<std::pair<uint64_t, uint64_t>> posting::decompress()
-{
-  std::vector<std::pair<uint64_t, uint64_t>> out;
-/*
-	size_t id_length = ((uint32_t *)p)[0];
-	size_t count_length = ((uint32_t *)p)[1];
-	uint8_t *id_store = (uint8_t *)p + 2 * sizeof(uint32_t);
+	size_t id_length = ((uint32_t *) buffer)[0];
+	size_t count_length = ((uint32_t *) buffer)[1];
+	uint8_t *id_store = (uint8_t *) buffer + 2 * sizeof(uint32_t);
 	uint8_t *count_store = id_store + id_length;
 
 	size_t prevI = 0;
@@ -81,15 +64,28 @@ std::vector<std::pair<uint64_t, uint64_t>> posting::decompress()
 	size_t di = 0;
 	size_t ci = 0;
 
+  counts.clear();
+
 	while (ci < count_length && di < id_length) {
 		di += vbyte_read(&id_store[di], &docI);
 		docI += prevI;
 		prevI = docI;
 		size_t count = count_store[ci];
-    out.emplace_back(docI, count);
+    counts.emplace_back(docI, count);
 		ci++;
 	}
-*/
+
+  return sizeof(uint32_t) * 2 + id_length + count_length;
+}
+
+std::vector<std::pair<uint64_t, uint64_t>> posting::decompress()
+{
+  std::vector<std::pair<uint64_t, uint64_t>> out;
+
+  for (auto &c: counts) {
+    out.emplace_back(c.first, c.second);
+  }
+
 	return out;
 }
 

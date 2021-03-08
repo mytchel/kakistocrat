@@ -23,9 +23,9 @@ class searcher {
   char *index;
   struct dynamic_array_kv_32 docNos;
 
-  struct hash_table dictionary;
-  struct hash_table dictionary_pair;
-  struct hash_table dictionary_trine;
+  hash_table dictionary;
+  //hash_table dictionary_pair;
+  //hash_table dictionary_trine;
 };
 
 }

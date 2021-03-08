@@ -2,20 +2,15 @@
 #include <stdint.h>
 
 struct posting {
-	uint32_t id;
-	uint32_t id_capacity;
-	uint32_t id_length;
-	uint8_t *id_store;
-  std::vector<uint8_t> counts;
+  std::vector<std::pair<uint64_t, uint8_t>> counts;
 
-  posting();
-  ~posting();
+  posting() {}
 
-  void append(uint32_t id);
+  void append(uint64_t id);
+
+  size_t save(uint8_t *buffer);
+  size_t load(uint8_t *buffer);
 
   std::vector<std::pair<uint64_t, uint64_t>> decompress();
-
-  size_t save(char *buffer);
-  size_t load(char *buffer);
 };
 

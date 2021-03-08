@@ -3,16 +3,15 @@ struct bst {
   bst *left, *right;
 	posting store;
 
-  bst(std::string &key, uint32_t val);
-
   ~bst() {
     if (left) delete left;
     if (right) delete right;
   }
 
-  void insert(std::string &key, uint32_t val);
+  bst(std::string &key, uint64_t val);
 
-  char* save(char *start, char *ptr_buffer, char *val_buffer);
-  char* load(char *start, char *ptr_buffer, char *val_buffer);
+  void insert(std::string &key, uint64_t val);
+
+  void get_postings(std::map<std::string, posting> &postings);
 };
 

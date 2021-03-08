@@ -45,7 +45,7 @@ int main(int argc, char *argv[]) {
 
   search::searcher searcher;
 
-  searcher.load("index.dat");
+  searcher.load("slatestarcodex.com.dat");
 
 	// Accept input
 	char line[1024];

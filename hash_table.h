@@ -17,11 +17,10 @@ struct hash_table {
     }
   }
 
-  void insert(std::string key, uint32_t val);
+  void insert(std::string key, uint64_t val);
 
-  posting *find(char *key);
-
-  size_t save(char *buffer);
-  size_t load(char *buffer);
+  std::map<std::string, posting> get_postings();
 };
+
+uint32_t hash(std::string key);
 

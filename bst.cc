@@ -1,21 +1,22 @@
 #include <string>
 #include <cstring>
+#include <map>
 
 #include "posting.h"
 #include "bst.h"
 
-bst::bst(std::string &k, uint32_t val) {
+bst::bst(std::string &k, uint64_t val) {
 	left = right = {};
 	key = k;
 
 	store.append(val);
 }
 
-void bst::insert(std::string &k, uint32_t val)
+void bst::insert(std::string &k, uint64_t val)
 {
   bst *b = this;
 	for (;;) {
-		int cmp = key.compare(k);
+		int cmp = b->key.compare(k);
 
 		if (cmp < 0) {
       if (b->left) {
@@ -40,34 +41,10 @@ void bst::insert(std::string &k, uint32_t val)
 	}
 }
 
-char *bst::save(char *start, char *ptr_buffer, char *val_buffer)
+void bst::get_postings(std::map<std::string, posting> &postings)
 {
-  bst *b = this;
-	while (b) {
-		if (b->left == NULL) {
-			((uint32_t *)ptr_buffer)[0] = val_buffer - start;
-			ptr_buffer += sizeof(uint32_t);
-      strcpy(val_buffer, b->key.c_str());
-			val_buffer += b->key.size() + 1;
-
-			((uint32_t *)ptr_buffer)[0] = val_buffer - start;
-			ptr_buffer += sizeof(uint32_t);
-			val_buffer += b->store.save(val_buffer);
-
-			b = b->right;
-
-		} else {
-			bst *temp = b->left;
-			b->left = temp->right;
-			temp->right = b;
-			b = temp;
-		}
-	}
-
-	return val_buffer;
+  postings.emplace(key, store);
+  if (left) left->get_postings(postings);
+  if (right) right->get_postings(postings);
 }
 
-char *bst::load(char *start, char *ptr_buffer, char *val_buffer)
-{
-  return NULL;
-}

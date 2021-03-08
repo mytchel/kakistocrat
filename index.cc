@@ -36,6 +36,7 @@ extern "C" {
 #include "posting.h"
 #include "bst.h"
 #include "hash_table.h"
+#include "index_posting.h"
 
 using nlohmann::json;
 
@@ -84,29 +85,27 @@ void index_write(char const *filename, char *buffer,
 }
 */
 
-void index_write(crawl::site &s,
-  std::map<std::string, std::list<std::uint64_t>> dict)
+void index_write(crawl::site &s, hash_table &dict)
   //std::map<std::string, std::vector<std::uint64_t>> dict_pair,
   //std::map<std::string, std::vector<std::uint64_t>> dict_trine)
 {
-  std::string path = s.host + ".dat.json";
+  std::string path = s.host + ".dat";
   printf("write %s\n", path.c_str());
 
-  json j = {
-    {"words", dict}};
-    //{"pairs", dict_pair},
-    //{"trines", dict_trine}};
+  uint8_t *buffer = (uint8_t *) malloc(1024 * 1024 * 512);
+  size_t len = index_save(dict, buffer);
 
   std::ofstream file;
 
-  file.open(path, std::ios::out | std::ios::trunc);
+  file.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
 
   if (!file.is_open()) {
     fprintf(stderr, "error opening file %s\n", path.c_str());
     return;
   }
 
-  file << j;
+  printf("writing %i bytes\n", len);
+  file.write((const char *) buffer, len);
 
   file.close();
 }
@@ -238,7 +237,7 @@ void index_site(crawl::site &s) {
   free(file_buf);
 
   printf("finished indexing site %s\n", s.host.c_str());
-  //index_write(s, dict);//, dict_pair, dict_trine);
+  index_write(s, dict);
 }
 
 int main(int argc, char *argv[]) {
@@ -258,6 +257,7 @@ int main(int argc, char *argv[]) {
 
     s.unload();
   }
+
 /*
   printf("saving index\n");
 
