@@ -1,3 +1,9 @@
+#ifndef SEARCH_H
+#define SEARCH_H
+
+#include "index.h"
+#include "scorer.h"
+
 namespace search {
 
 struct search_entry {
@@ -11,22 +17,22 @@ struct search_entry {
   std::string path;
 };
 
-class searcher {
-  public:
+struct searcher {
+  scorer::scores scores;
+  search::index dict;
 
-  void load(std::string path);
+  searcher() {}
 
-  std::vector<search_entry> search(char *str, scorer::scores &index_scores);
+  void load(std::string s, std::string d);
 
-  private:
+  std::vector<search_entry> search(char *str);
 
-  char *index;
-  struct dynamic_array_kv_32 docNos;
-
-  hash_table dictionary;
+  //struct dynamic_array_kv_32 docNos;
   //hash_table dictionary_pair;
   //hash_table dictionary_trine;
 };
 
 }
+
+#endif
 

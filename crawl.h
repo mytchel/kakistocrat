@@ -1,3 +1,8 @@
+#ifndef CRAWL_H
+#define CRAWL_H
+
+#include "scrape.h"
+
 namespace crawl {
 
 struct page_id {
@@ -101,12 +106,17 @@ struct site {
 void to_json(nlohmann::json &j, const site &s);
 void from_json(const nlohmann::json &j, site &s);
 
-struct index {
+struct level {
+  size_t max_pages;
+  size_t max_add_sites;
+};
+
+struct crawler {
   std::list<site> sites;
   std::uint32_t next_id{1};
   std::vector<std::string> blacklist;
 
-  index() {}
+  crawler() {}
 
   site* find_site(std::string host);
   site* find_site(uint32_t id);
@@ -122,11 +132,20 @@ struct index {
 
   bool check_blacklist(std::string host);
 
+  bool have_next_site();
+  site* get_next_site();
+
+  size_t insert_site(
+    site *isite,
+    size_t max_add_sites,
+    std::list<scrape::index_url> &page_list);
+
+  void crawl(std::vector<level> levels);
+
   void save();
   void load();
 };
 
-void to_json(nlohmann::json &j, const index &i);
-void from_json(const nlohmann::json &j, index &i);
-
 }
+#endif
+

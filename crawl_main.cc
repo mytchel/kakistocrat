@@ -24,18 +24,17 @@
 
 #include "util.h"
 #include "crawl.h"
-#include "crawler.h"
 
 int main(int argc, char *argv[]) {
   std::vector<std::string> blacklist = util::load_list("blacklist");
   std::vector<std::string> initial_seed = util::load_list("seed");
 
-  crawl::index index;
+  crawl::crawler crawler;
 
-  index.load();
+  crawler.load();
 
-  index.load_blacklist(blacklist);
-  index.load_seed(initial_seed);
+  crawler.load_blacklist(blacklist);
+  crawler.load_seed(initial_seed);
 
   curl_global_init(CURL_GLOBAL_ALL);
 
@@ -43,7 +42,7 @@ int main(int argc, char *argv[]) {
   std::vector<crawl::level> levels = {{50, 5}, {10, 1}, {1, 0}};
   //std::vector<crawl::level> levels = {{10, 0}};
 
-  crawl::crawl(levels, index);
+  crawler.crawl(levels);
 
   curl_global_cleanup();
 

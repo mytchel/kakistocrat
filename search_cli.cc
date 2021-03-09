@@ -20,32 +20,15 @@
 
 #include <nlohmann/json.hpp>
 
-extern "C" {
-
-#include "str.h"
-#include "x_cocomel/dynamic_array_kv_64.h"
-#include "x_cocomel/dynamic_array_kv_32.h"
-#include "x_cocomel/dynamic_array_64.h"
-#include "x_cocomel/vbyte.h"
-#include "x_cocomel/posting.h"
-#include "x_cocomel/hash_table.h"
-
-}
-
 #include "util.h"
 #include "crawl.h"
 #include "scorer.h"
-#include "tokenizer.h"
 #include "search.h"
 
 int main(int argc, char *argv[]) {
-  scorer::scores index_scores;
-
-  index_scores.load("index.scores");
-
   search::searcher searcher;
 
-  searcher.load("slatestarcodex.com.dat");
+  searcher.load("scores.json", "slatestarcodex.com.dat");
 
 	// Accept input
 	char line[1024];
@@ -54,7 +37,7 @@ int main(int argc, char *argv[]) {
 
     if (fgets(line, sizeof(line), stdin) == NULL) break;
 
-		auto results = searcher.search(line, index_scores);
+		auto results = searcher.search(line);
 
 		for (auto &result: results) {
 		  printf("%f %llu %s\n", result.score, result.page_id, result.path.c_str());

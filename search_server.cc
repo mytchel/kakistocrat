@@ -25,16 +25,11 @@
 extern "C" {
 
 #include "str.h"
-#include "x_cocomel/dynamic_array_kv_64.h"
-#include "x_cocomel/dynamic_array_kv_32.h"
-#include "x_cocomel/dynamic_array_64.h"
-#include "x_cocomel/vbyte.h"
-#include "x_cocomel/posting.h"
-#include "x_cocomel/hash_table.h"
 
 }
 
 #include "util.h"
+#include "scrape.h"
 #include "crawl.h"
 #include "scorer.h"
 #include "tokenizer.h"

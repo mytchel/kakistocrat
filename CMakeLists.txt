@@ -20,6 +20,8 @@ find_package(OpenSSL)
 
 find_package(Boost 1.67 COMPONENTS system thread regex REQUIRED)
 
+add_subdirectory(x_nlohmann)
+
 configure_file(x_seed/seed seed COPYONLY)
 configure_file(x_seed/blacklist blacklist COPYONLY)
 
@@ -42,7 +44,7 @@ add_executable(scorer score_main.cc scorer.cc crawl.cc util.cc)
 
 target_link_libraries(scorer nlohmann_json::nlohmann_json)
 
-add_executable(index index.cc
+add_executable(indexer indexer.cc
     crawl.cc
     tokenizer.cc
     util.cc
@@ -51,41 +53,40 @@ add_executable(index index.cc
 	hash_table.cc
 	posting.cc
 	vbyte.cc
-    index_posting.cc)
+    index.cc)
 
-target_link_libraries(index nlohmann_json::nlohmann_json)
+target_link_libraries(indexer nlohmann_json::nlohmann_json)
 
-add_executable(search search_cli.cc
+add_executable(search_cli search_cli.cc
     search.cc
-    scorer.cc
     crawl.cc
+    scorer.cc
     tokenizer.cc
     util.cc
     str.c
-	x_cocomel/bst.c
-	x_cocomel/hash_table.c
-	x_cocomel/memory.c
-	x_cocomel/posting.c
-	x_cocomel/vbyte)
+	bst.cc
+	hash_table.cc
+	posting.cc
+    index.cc
+	vbyte.cc)
 
-target_include_directories(search PUBLIC ${CURL_INCLUDE_DIRS})
+target_include_directories(search_cli PUBLIC ${CURL_INCLUDE_DIRS})
 
-target_link_libraries(search nlohmann_json::nlohmann_json)
+target_link_libraries(search_cli nlohmann_json::nlohmann_json)
 
-add_subdirectory(x_nlohmann)
-
+if (FALSE)
 add_executable(search_server search_server.cc
     search.cc
-    scorer.cc
     crawl.cc
+    scorer.cc
     tokenizer.cc
     util.cc
     str.c
-	x_cocomel/bst.c
-	x_cocomel/hash_table.c
-	x_cocomel/memory.c
-	x_cocomel/posting.c
-	x_cocomel/vbyte)
+	bst.cc
+	hash_table.cc
+	posting.cc
+    index.cc
+	vbyte.cc)
 
 target_include_directories(search_server PUBLIC ${Boost_INCLUDE_DIR})
 target_include_directories(search_server PUBLIC ${OPENSSL_INCLUDE_DIR})
@@ -97,3 +98,4 @@ target_link_libraries(search_server z)
 
 configure_file(templates/search.html templates/search.html COPYONLY)
 
+endif()

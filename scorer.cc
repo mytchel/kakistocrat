@@ -7,6 +7,7 @@
 #include <vector>
 #include <list>
 #include <map>
+#include <set>
 #include <string>
 #include <algorithm>
 #include <iostream>
@@ -16,7 +17,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include "channel.h"
 #include "util.h"
+#include "scrape.h"
 #include "crawl.h"
 #include "scorer.h"
 
@@ -96,12 +99,12 @@ void scores::iteration()
   }
 }
 
-void scores::init(crawl::index &index)
+scores::scores(crawl::crawler &crawler)
 {
   pages.clear();
   size_t n_pages = 0;
 
-  for (auto &s: index.sites) {
+  for (auto &s: crawler.sites) {
     if (!s.enabled) continue;
 
     s.load();
@@ -141,7 +144,7 @@ void scores::init(crawl::index &index)
 
   double score = 1.0 / (double) n_pages;
 
-  for (auto &s: index.sites) {
+  for (auto &s: crawler.sites) {
     for (auto &p: s.pages) {
       if (!p.valid) continue;
 

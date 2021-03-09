@@ -1,3 +1,13 @@
+#ifndef INDEX_H
+#define INDEX_H
+
+namespace search {
+
+#include <stdint.h>
+
+#include "posting.h"
+#include "hash_table.h"
+
 const size_t ITCAP = (1 << 16);
 
 struct index {
@@ -24,5 +34,6 @@ struct index {
 
 size_t index_save(hash_table &t, uint8_t *buffer);
 
-
+}
+#endif
 

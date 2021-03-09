@@ -1,3 +1,8 @@
+#ifndef BST_H
+#define BST_H
+
+#include "posting.h"
+
 struct bst {
   std::string key;
   bst *left, *right;
@@ -14,4 +19,6 @@ struct bst {
 
   void get_postings(std::map<std::string, posting> &postings);
 };
+
+#endif
 

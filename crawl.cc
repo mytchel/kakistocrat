@@ -61,7 +61,7 @@ void from_json(const json &j, page &p) {
 void site::load() {
   if (loaded) return;
 
-  std::string path = host + ".index.json";
+  std::string path = host + ".map.json";
   std::ifstream file;
 
   file.open(path, std::ios::in);
@@ -94,7 +94,7 @@ void site::load() {
 void site::save() {
   if (!loaded) return;
 
-  std::string path = host + ".index.json";
+  std::string path = host + ".map.json";
   std::ofstream file;
 
   json j = {
@@ -127,9 +127,9 @@ void site::unload() {
   pages.clear();
 }
 
-void index::save()
+void crawler::save()
 {
-  std::string path = "full_index.json";
+  std::string path = "map.json";
   std::ofstream file;
 
   std::vector<json> j_sites;
@@ -165,9 +165,9 @@ void index::save()
   file.close();
 }
 
-void index::load()
+void crawler::load()
 {
-  std::string path = "full_index.json";
+  std::string path = "map.json";
   std::ifstream file;
 
   file.open(path, std::ios::in);
@@ -195,7 +195,7 @@ void index::load()
   }
 }
 
-site * index::find_site(std::string host)
+site * crawler::find_site(std::string host)
 {
   for (auto &i: sites) {
     if (i.host == host) {
@@ -206,7 +206,7 @@ site * index::find_site(std::string host)
   return NULL;
 }
 
-site * index::find_site(uint32_t id)
+site * crawler::find_site(uint32_t id)
 {
   for (auto &i: sites) {
     if (i.id == id) {
@@ -217,7 +217,7 @@ site * index::find_site(uint32_t id)
   return NULL;
 }
 
-page* index::find_page(page_id id)
+page* crawler::find_page(page_id id)
 {
   auto s = find_site(id.site);
   if (s != NULL)
@@ -226,7 +226,7 @@ page* index::find_page(page_id id)
     return NULL;
 }
 
-page* index::find_page(uint64_t id)
+page* crawler::find_page(uint64_t id)
 {
   return find_page(page_id(id));
 }

@@ -1,3 +1,7 @@
+#ifndef SCRAPE_H
+#define SCRAPE_H
+
+#include "channel.h"
 
 namespace scrape {
 
@@ -74,5 +78,10 @@ bool bad_suffix(std::string path);
 
 bool bad_prefix(std::string path);
 
+void
+scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat,
+    int i, size_t max_con);
+
 }
 
+#endif

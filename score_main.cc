@@ -25,21 +25,18 @@
 #include "scorer.h"
 
 int main(int argc, char *argv[]) {
-  crawl::index index;
-  scorer::scores scores;
-
-  index.load();
+  crawl::crawler crawler;
+  crawler.load();
 
   printf("score initial from index\n");
-
-  scores.init(index);
+  scorer::scores scores(crawler);
 
   for (int i = 0; i < 10; i++) {
     printf("score iteration %i\n", i);
     scores.iteration();
   }
 
-  scores.save("index.scores");
+  scores.save("scores.json");
 
   return 0;
 }

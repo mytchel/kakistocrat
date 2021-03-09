@@ -1,3 +1,7 @@
+extern "C" {
+#include "str.h"
+}
+
 namespace tokenizer {
 
 enum token_type {TAG, TAGC, WORD, END};

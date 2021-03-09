@@ -1,8 +1,8 @@
 #include <string>
 #include <cstring>
+#include <vector>
 #include <map>
 
-#include "posting.h"
 #include "bst.h"
 
 bst::bst(std::string &k, uint64_t val) {
@@ -47,4 +47,3 @@ void bst::get_postings(std::map<std::string, posting> &postings)
   if (left) left->get_postings(postings);
   if (right) right->get_postings(postings);
 }
-

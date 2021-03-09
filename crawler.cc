@@ -26,17 +26,12 @@ using namespace std::chrono_literals;
 
 #include <nlohmann/json.hpp>
 
-#include "channel.h"
-
 #include "util.h"
-#include "scrape.h"
-#include "scraper.h"
 #include "crawl.h"
-#include "crawler.h"
 
 namespace crawl {
 
-bool index::check_blacklist(
+bool crawler::check_blacklist(
       std::string host)
 {
   for (auto &b: blacklist) {
@@ -74,8 +69,7 @@ page* site_find_add_page(site *site, std::string url, size_t level,
   return &site->pages.emplace_back(id, level, url, path);
 }
 
-size_t insert_site_index(
-    index &index,
+size_t crawler::insert_site(
     site *isite,
     size_t max_add_sites,
     std::list<scrape::index_url> &page_list)
@@ -113,20 +107,20 @@ size_t insert_site_index(
         }
 
       } else {
-        if (index.check_blacklist(host)) {
+        if (check_blacklist(host)) {
           continue;
         }
 
-        site *o_site = index.find_site(host);
+        site *o_site = find_site(host);
 
         if (o_site == NULL) {
-          site n_site(index.next_id++, p->level + 1, host);
+          site n_site(next_id++, p->level + 1, host);
 
           auto n_p = site_find_add_page(&n_site, l, p->level + 1);
 
           p->links.emplace_back(n_site.id, n_p->id);
 
-          index.sites.push_back(n_site);
+          sites.push_back(n_site);
 
           new_sites_link_count.emplace(host, 1);
 
@@ -166,7 +160,7 @@ size_t insert_site_index(
     }
 
     add_sites++;
-    auto site = index.find_site(host);
+    auto site = find_site(host);
     if (!site->enabled) {
       printf("site %s is enabling %s\n", isite->host.c_str(), site->host.c_str());
       site->enabled = true;
@@ -176,7 +170,7 @@ size_t insert_site_index(
   return add_sites;
 }
 
-void index::load_seed(std::vector<std::string> url)
+void crawler::load_seed(std::vector<std::string> url)
 {
   for (auto &o: url) {
     auto host = util::get_host(o);
@@ -201,9 +195,9 @@ void index::load_seed(std::vector<std::string> url)
   }
 }
 
-bool have_next_site(index &index)
+bool crawler::have_next_site()
 {
-  for (auto &site: index.sites) {
+  for (auto &site: sites) {
     if (site.scraping) continue;
     if (site.scraped) continue;
     if (!site.enabled) continue;
@@ -214,13 +208,13 @@ bool have_next_site(index &index)
   return false;
 }
 
-site* get_next_site(index &index)
+site* crawler::get_next_site()
 {
   site *s = NULL;
 
   auto start = std::chrono::steady_clock::now();
 
-  for (auto &site: index.sites) {
+  for (auto &site: sites) {
     if (site.scraping) continue;
     if (site.scraped) continue;
     if (!site.enabled) continue;
@@ -243,7 +237,7 @@ site* get_next_site(index &index)
   return s;
 }
 
-void crawl(std::vector<level> levels, index &index)
+void crawler::crawl(std::vector<level> levels)
 {
   auto n_threads = std::thread::hardware_concurrency();
   // TODO: get from file limit
@@ -276,7 +270,7 @@ void crawl(std::vector<level> levels, index &index)
 
   std::list<scrape::site> scrapping_sites;
 
-  index.save();
+  save();
   auto last_save = std::chrono::system_clock::now();
   bool have_changes = false;
 
@@ -284,7 +278,7 @@ void crawl(std::vector<level> levels, index &index)
     if (have_changes && last_save + 10s < std::chrono::system_clock::now()) {
       // Save the current index so exiting early doesn't loose
       // all the work that has been done
-      index.save();
+      save();
       last_save = std::chrono::system_clock::now();
     }
 
@@ -297,7 +291,7 @@ void crawl(std::vector<level> levels, index &index)
       }
 
       if (thread_stats[i]) {
-        auto site = get_next_site(index);
+        auto site = get_next_site();
         if (site != NULL) {
           site->scraping = true;
 
@@ -320,9 +314,9 @@ void crawl(std::vector<level> levels, index &index)
 
         printf("site finished %s\n", s->host.c_str());
 
-        auto site = index.find_site(s->host);
+        auto site = find_site(s->host);
         if (site == NULL) {
-          printf("site '%s' not found in index.\n", s->host.c_str());
+          printf("site '%s' not found in map.\n", s->host.c_str());
           exit(1);
         }
 
@@ -330,7 +324,7 @@ void crawl(std::vector<level> levels, index &index)
         site->scraping = false;
         site->last_scanned = time(NULL);
 
-        size_t added = insert_site_index(index, site,
+        size_t added = insert_site(site,
             levels[site->level].max_add_sites,
             s->url_scanned);
 
@@ -349,11 +343,11 @@ void crawl(std::vector<level> levels, index &index)
 
     auto delay = std::chrono::milliseconds(1);
 
-    if (scrapping_sites.empty() && !have_next_site(index)) {
+    if (scrapping_sites.empty() && !have_next_site()) {
       time_t now = time(NULL);
 
       bool have_something = false;
-      for (auto &s: index.sites) {
+      for (auto &s: sites) {
         size_t min = (4 * (1 + s.level)) * 60 * 60;
         if (s.last_scanned + min < now) {
           int r = rand() % ((24 * (1 + s.level) - 4) * 60 * 60);
@@ -373,7 +367,7 @@ void crawl(std::vector<level> levels, index &index)
       if (!have_something) {
         delay = std::chrono::minutes(1);
         printf("have nothing\n");
-        index.save();
+        save();
       }
 
     } else if (all_blocked) {

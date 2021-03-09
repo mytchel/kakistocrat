@@ -1,3 +1,8 @@
+#ifndef HASH_TABLE_H
+#define HASH_TABLE_H
+
+#include "bst.h"
+
 const size_t HTCAP = (1 << 16);
 
 struct hash_table {
@@ -24,3 +29,4 @@ struct hash_table {
 
 uint32_t hash(std::string key);
 
+#endif

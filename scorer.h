@@ -1,3 +1,8 @@
+#ifndef SCORER_H
+#define SCORER_H
+
+#include "crawl.h"
+
 namespace scorer {
 
 struct page {
@@ -25,7 +30,8 @@ struct scores {
 
   page* find_page(uint64_t id);
 
-  void init(crawl::index &index);
+  scores(crawl::crawler &crawler);
+  scores() {}
   void iteration();
 
   void save(std::string path);
@@ -33,3 +39,6 @@ struct scores {
 };
 
 }
+
+#endif
+

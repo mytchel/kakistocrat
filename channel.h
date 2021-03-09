@@ -1,6 +1,9 @@
 // Copyright (C) 2020 Andrei Avram
 // https://github.com/andreiavrammsd/cpp-channel
 
+#ifndef CHANNEL_H
+#define CHANNEL_H
+
 #include <atomic>
 #include <condition_variable>
 #include <cstdlib>
@@ -101,4 +104,6 @@ class Channel {
 };
 
 #include "channel.cc"
+
+#endif
 
