@@ -97,6 +97,7 @@ void index_site(crawl::site &s) {
 
     pfile.read(file_buf, max_size);
 
+    printf("process page %lu : %s\n", id, page.url.c_str());
     size_t len = pfile.gcount();
 
     tok.init(file_buf, len);
@@ -188,6 +189,7 @@ int main(int argc, char *argv[]) {
 
   for (auto &s: crawler.sites) {
     if (!s.enabled) continue;
+    if (s.host != "slatestarcodex.com") continue;
 
     printf("site %lu %s\n", s.id, s.host.c_str());
 

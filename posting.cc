@@ -26,19 +26,19 @@ size_t posting::save(uint8_t *buffer)
 {
   std::sort(counts.begin(), counts.end(),
       [](auto &a, auto &b) {
-        return a.first < a.first;
+        return a.first < b.first;
       }
   );
 
 	size_t offset = 2 * sizeof(uint32_t);
 
-  uint8_t *id_store = (uint8_t *) buffer + offset;
+  uint8_t *id_store = buffer + offset;
   size_t id_length = 0;
 
   uint64_t o = 0;
   for (auto &c: counts) {
     //offset += vbyte_store(buffer + offset, c.first - o);
-    memcpy(buffer + offset + id_length, &c.first, sizeof(uint64_t));
+    memcpy(id_store + id_length, &c.first, sizeof(uint64_t));
     id_length += sizeof(uint64_t);
     o = c.first;
   }
@@ -61,15 +61,16 @@ size_t posting::load(uint8_t *buffer)
   size_t id_length = ((uint32_t *) buffer)[0];
 	size_t count_length = ((uint32_t *) buffer)[1];
 
-	uint8_t *id_store = (uint8_t *) buffer + 2 * sizeof(uint32_t);
-	uint8_t *count_store = id_store + id_length;
+	uint64_t *id_store = (uint64_t *) (buffer + 2 * sizeof(uint32_t));
+	uint8_t *count_store = (uint8_t *) id_store + id_length;
 
   counts.clear();
+  counts.reserve(count_length);
 
   size_t i;
   for (i = 0; i < count_length; i++) {
     uint64_t id;
-    memcpy(&id, id_store + sizeof(uint64_t) * i, sizeof(uint64_t));
+    memcpy(&id, id_store + i, sizeof(uint64_t));
     uint8_t c = count_store[i];
 
     counts.emplace_back(id, c);

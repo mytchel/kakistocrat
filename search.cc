@@ -93,6 +93,8 @@ static void rank(std::vector<std::pair<uint64_t, uint64_t>> &postings)
   */
 }
 
+// This only returns documents that match all the terms.
+// Which may not be the best?
 static std::vector<std::pair<uint64_t, double>> intersect_postings(
     std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
 {
@@ -106,7 +108,7 @@ static std::vector<std::pair<uint64_t, double>> intersect_postings(
 
 	while (indexes[0] < postings[0].size()) {
 		size_t id = postings[0][indexes[0]].first;
-		int canAdd = 1;
+		bool canAdd = true;
 		for (size_t i = 1; i < postings.size(); i++) {
 			while (indexes[i] < postings[i].size() && postings[i][indexes[i]].first < id)
 				indexes[i]++;
@@ -115,7 +117,7 @@ static std::vector<std::pair<uint64_t, double>> intersect_postings(
 				return result;
 
 			if (postings[i][indexes[i]].first != id)
-				canAdd = 0;
+				canAdd = false;
 		}
 
     if (canAdd) {
@@ -134,20 +136,18 @@ static std::vector<std::pair<uint64_t, double>> intersect_postings(
 	return result;
 }
 
-void searcher::load(std::string scores_path, std::string dat_path)
+void load_dat(std::string path, search::index &dict)
 {
-  scores.load(scores_path);
-
   char *index = (char *) malloc(1024*1024*1024);
 
   std::ifstream file;
 
-  printf("load %s\n", dat_path.c_str());
+  printf("load %s\n", path.c_str());
 
-  file.open(dat_path.c_str(), std::ios::in | std::ios::binary);
+  file.open(path.c_str(), std::ios::in | std::ios::binary);
 
   if (!file.is_open() || file.fail() || !file.good() || file.bad()) {
-    fprintf(stderr, "error opening file %s\n",  dat_path.c_str());
+    fprintf(stderr, "error opening file %s\n",  path.c_str());
     return;
   }
 
@@ -156,9 +156,25 @@ void searcher::load(std::string scores_path, std::string dat_path)
   printf("load dict\n");
   dict.load((uint8_t *) index);
   printf("loaded dict\n");
+
+  // Don't free index, should give it to dict.
 }
 
-std::vector<std::string> split_terms(char *line)
+void searcher::load(std::string scores_path, std::string a, std::string b, std::string c)
+{
+  scores.load(scores_path);
+  load_dat(a, dict_words);
+  load_dat(b, dict_pairs);
+  load_dat(c, dict_trines);
+}
+
+struct terms {
+  std::vector<std::string> words;
+  std::vector<std::string> pairs;
+  std::vector<std::string> trines;
+};
+
+terms split_terms(char *line)
 {
   const size_t buf_len = 512;
 
@@ -166,12 +182,20 @@ std::vector<std::string> split_terms(char *line)
 	struct str tok_buffer;
 	str_init(&tok_buffer, tok_buffer_store, sizeof(tok_buffer_store));
 
+  char pair_buffer[buf_len * 2 + 1];
+	struct str tok_buffer_pair;
+	str_init(&tok_buffer_pair, pair_buffer, sizeof(pair_buffer));
+
+  char trine_buffer[buf_len * 3 + 2];
+	struct str tok_buffer_trine;
+	str_init(&tok_buffer_trine, trine_buffer, sizeof(trine_buffer));
+
   tokenizer::token_type token;
   tokenizer::tokenizer tok;
 
   tok.init(line, strlen(line));
 
-  std::vector<std::string> terms;
+  terms t;
 
 	do {
 		token = tok.next(&tok_buffer);
@@ -179,12 +203,58 @@ std::vector<std::string> split_terms(char *line)
 		  str_tolower(&tok_buffer);
 		  str_tostem(&tok_buffer);
 
-      terms.push_back(std::string(str_c(&tok_buffer)));
+      std::string s(str_c(&tok_buffer));
+
+      t.words.push_back(s);
+
+      if (str_length(&tok_buffer_trine) > 0) {
+        str_cat(&tok_buffer_trine, " ");
+        str_cat(&tok_buffer_trine, str_c(&tok_buffer));
+
+        std::string s(str_c(&tok_buffer_trine));
+
+        t.trines.push_back(s);
+
+        str_resize(&tok_buffer_trine, 0);
+      }
+
+      if (str_length(&tok_buffer_pair) > 0) {
+        str_cat(&tok_buffer_pair, " ");
+        str_cat(&tok_buffer_pair, str_c(&tok_buffer));
+
+        std::string s(str_c(&tok_buffer_pair));
+
+        t.pairs.push_back(s);
+
+        str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
+      }
+
+      str_resize(&tok_buffer_pair, 0);
+      str_cat(&tok_buffer_pair, str_c(&tok_buffer));
     }
 	} while (token != tokenizer::END);
 
+  return t;
+}
 
-  return terms;
+void find_matches(std::vector<std::string> &terms,
+    search::index &dict,
+    std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
+{
+	for (auto &term: terms) {
+		posting *post = dict.find(term);
+    if (post != NULL) {
+      std::vector<std::pair<uint64_t, double>> pairs;
+
+      pairs.reserve(post->counts.size());
+      for (auto &p: post->counts) {
+        // TODO: Rank
+        pairs.emplace_back(p.first, p.second);
+      }
+
+      postings.push_back(pairs);
+		}
+	}
 }
 
 std::vector<search_entry> searcher::search(char *line)
@@ -195,31 +265,11 @@ std::vector<search_entry> searcher::search(char *line)
 
   auto terms = split_terms(line);
 
-  if (terms.empty()) {
-    return results;
-  }
-
   std::vector<std::vector<std::pair<uint64_t, double>>> postings;
 
-	// Find results for strings
-	for (auto &term: terms) {
-    printf("get posting for term '%s'\n", term.c_str());
-
-		posting *post = dict.find(term);
-    if (post != NULL) {
-      printf("found posting\n");
-      std::vector<std::pair<uint64_t, double>> pairs;
-
-      pairs.reserve(post->counts.size());
-      for (auto &p: post->counts) {
-        printf("%s   %lu  %u\n", term.c_str(), p.first, p.second);
-        // TODO: Rank
-        pairs.emplace_back(p.first, p.second / 100);
-      }
-
-      postings.push_back(pairs);
-		}
-	}
+  find_matches(terms.words, dict_words, postings);
+  find_matches(terms.pairs, dict_pairs, postings);
+  find_matches(terms.trines, dict_trines, postings);
 
   printf("intersect\n");
   auto results_raw = intersect_postings(postings);

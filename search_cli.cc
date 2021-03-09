@@ -28,7 +28,10 @@
 int main(int argc, char *argv[]) {
   search::searcher searcher;
 
-  searcher.load("scores.json", "slatestarcodex.com.dat");
+  searcher.load("scores.json",
+      "slatestarcodex.com.index.words.dat",
+      "slatestarcodex.com.index.pairs.dat",
+      "slatestarcodex.com.index.trines.dat");
 
 	// Accept input
 	char line[1024];

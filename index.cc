@@ -18,6 +18,7 @@ size_t index_save(hash_table &t, uint8_t *buffer)
   size_t offset = sizeof(uint32_t);
 
 	for (auto &p: postings) {
+    printf("save %s\n", p.first.c_str());
     memcpy(buffer + offset, p.first.c_str(), p.first.size());
     offset += p.first.size();
     buffer[offset++] = 0;
@@ -34,23 +35,22 @@ size_t index::load(uint8_t *buffer)
 
   size_t offset = sizeof(uint32_t);
 
-  printf("load, have count %i\n", count);
-
   for (size_t i = 0; i < count; i++) {
 		uint8_t *c_key = buffer + offset;
 		std::string key((char *) c_key);
 
-    printf("key %s\n", key.c_str());
-
     offset += key.size() + 1;
+
+    printf("key %s\n", key.c_str());
 
     unsigned int index = hash(key);
     for (size_t j = 0; j < ITCAP; j++) {
       if (store[index + j] == NULL) {
         store[index + j] = new std::pair<std::string, posting>(key, posting());
         offset += store[index + j]->second.load(buffer + offset);
-        printf("posting loaded at %i, used %i bytes\n", index + j, offset);
         break;
+      } else if (j == 1000) {
+        printf("spot not free %i / %s\n", index, key.c_str());
       }
     }
   }

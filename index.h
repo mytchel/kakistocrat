@@ -10,10 +10,16 @@ namespace search {
 
 const size_t ITCAP = (1 << 16);
 
+enum index_type{words, pairs, trines};
+
+// TODO: need the bst.
+
 struct index {
   std::pair<std::string, posting> *store[ITCAP];
+  index_type type;
 
-  index()
+
+  index(index_type t) : type(t)
   {
     for (size_t i = 0; i < ITCAP; i++) {
       store[i] = {};

@@ -19,17 +19,18 @@ struct search_entry {
 
 struct searcher {
   scorer::scores scores;
-  search::index dict;
+  search::index dict_words;
+  search::index dict_pairs;
+  search::index dict_trines;
 
-  searcher() {}
+  searcher() :
+    dict_words(search::words),
+    dict_pairs(search::pairs),
+    dict_trines(search::trines)  {}
 
-  void load(std::string s, std::string d);
+  void load(std::string s, std::string a, std::string b, std::string c);
 
   std::vector<search_entry> search(char *str);
-
-  //struct dynamic_array_kv_32 docNos;
-  //hash_table dictionary_pair;
-  //hash_table dictionary_trine;
 };
 
 }
