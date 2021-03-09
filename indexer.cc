@@ -31,9 +31,9 @@
 
 using nlohmann::json;
 
-void index_write(crawl::site &s, hash_table &dict)
+void index_write(crawl::site &s, std::string part, hash_table &dict)
 {
-  std::string path = s.host + ".dat";
+  std::string path = s.host + ".index." + part + ".dat";
   printf("write %s\n", path.c_str());
 
   uint8_t *buffer = (uint8_t *) malloc(1024 * 1024 * 512);
@@ -52,6 +52,8 @@ void index_write(crawl::site &s, hash_table &dict)
   file.write((const char *) buffer, len);
 
   file.close();
+
+  free(buffer);
 }
 
 void index_site(crawl::site &s) {
@@ -66,7 +68,6 @@ void index_site(crawl::site &s) {
 	struct str tok_buffer;
 	str_init(&tok_buffer, tok_buffer_store, sizeof(tok_buffer_store));
 
-  /*
   char pair_buffer[buf_len * 2 + 1];
 	struct str tok_buffer_pair;
 	str_init(&tok_buffer_pair, pair_buffer, sizeof(pair_buffer));
@@ -74,13 +75,11 @@ void index_site(crawl::site &s) {
   char trine_buffer[buf_len * 3 + 2];
 	struct str tok_buffer_trine;
 	str_init(&tok_buffer_trine, trine_buffer, sizeof(trine_buffer));
-*/
+
 	tokenizer::token_type token;
   tokenizer::tokenizer tok;
 
-  hash_table dict;
-  //std::map<std::string, std::vector<std::uint64_t>> dict_pair;
-  //std::map<std::string, std::vector<std::uint64_t>> dict_trine;
+  hash_table words, pairs, trines;
 
   for (auto &page: s.pages) {
     if (!page.valid) continue;
@@ -104,8 +103,8 @@ void index_site(crawl::site &s) {
 
     bool in_head = false, in_title = false;
 
-    //str_resize(&tok_buffer_pair, 0);
-    //str_resize(&tok_buffer_trine, 0);
+    str_resize(&tok_buffer_pair, 0);
+    str_resize(&tok_buffer_trine, 0);
 
     do {
       token = tok.next(&tok_buffer);
@@ -131,8 +130,8 @@ void index_site(crawl::site &s) {
 
         // TODO: others
         if (t != "a" && t != "strong") {
-        //  str_resize(&tok_buffer_pair, 0);
-        //  str_resize(&tok_buffer_trine, 0);
+          str_resize(&tok_buffer_pair, 0);
+          str_resize(&tok_buffer_trine, 0);
         }
 
       } else if ((in_title || !in_head) && token == tokenizer::WORD) {
@@ -141,17 +140,15 @@ void index_site(crawl::site &s) {
 
         std::string s(str_c(&tok_buffer));
 
-        dict.insert(s, id);
+        words.insert(s, id);
 
-        /*
         if (str_length(&tok_buffer_trine) > 0) {
           str_cat(&tok_buffer_trine, " ");
           str_cat(&tok_buffer_trine, str_c(&tok_buffer));
 
           std::string s(str_c(&tok_buffer_trine));
 
-          auto it = dict_trine.try_emplace(s, id);
-          if (!it.second) it.first->second.push_back(id);
+          trines.insert(s, id);
 
           str_resize(&tok_buffer_trine, 0);
         }
@@ -162,16 +159,13 @@ void index_site(crawl::site &s) {
 
           std::string s(str_c(&tok_buffer_pair));
 
-          auto it = dict_pair.try_emplace(s, id);
-          if (!it.second) it.first->second.push_back(id);
+          pairs.insert(s, id);
 
           str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
         }
 
         str_resize(&tok_buffer_pair, 0);
         str_cat(&tok_buffer_pair, str_c(&tok_buffer));
-
-        */
       }
     } while (token != tokenizer::END);
 
@@ -181,7 +175,9 @@ void index_site(crawl::site &s) {
   free(file_buf);
 
   printf("finished indexing site %s\n", s.host.c_str());
-  index_write(s, dict);
+  index_write(s, "words", words);
+  index_write(s, "pairs", pairs);
+  index_write(s, "trines", trines);
 }
 
 int main(int argc, char *argv[]) {
