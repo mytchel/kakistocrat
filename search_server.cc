@@ -22,14 +22,7 @@
 #include <nlohmann/json.hpp>
 #include <crow.h>
 
-extern "C" {
-
-#include "str.h"
-
-}
-
 #include "util.h"
-#include "scrape.h"
 #include "crawl.h"
 #include "scorer.h"
 #include "tokenizer.h"

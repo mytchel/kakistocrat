@@ -26,12 +26,9 @@
 #include "search.h"
 
 int main(int argc, char *argv[]) {
-  search::searcher searcher;
+  search::searcher searcher("scores.json", "slatestarcodex.com.index.meta.json");
 
-  searcher.load("scores.json",
-      "slatestarcodex.com.index.words.dat",
-      "slatestarcodex.com.index.pairs.dat",
-      "slatestarcodex.com.index.trines.dat");
+  searcher.load();
 
 	// Accept input
 	char line[1024];

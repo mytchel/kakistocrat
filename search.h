@@ -19,16 +19,15 @@ struct search_entry {
 
 struct searcher {
   scorer::scores scores;
-  search::index dict_words;
-  search::index dict_pairs;
-  search::index dict_trines;
+  search::index index;
 
-  searcher() :
-    dict_words(search::words),
-    dict_pairs(search::pairs),
-    dict_trines(search::trines)  {}
+  std::string score_path;
 
-  void load(std::string s, std::string a, std::string b, std::string c);
+  searcher(std::string s, std::string i) :
+    index(i),
+    score_path(s) {}
+
+  void load();
 
   std::vector<search_entry> search(char *str);
 };

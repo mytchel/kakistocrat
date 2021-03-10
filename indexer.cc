@@ -31,31 +31,6 @@
 
 using nlohmann::json;
 
-void index_write(crawl::site &s, std::string part, hash_table &dict)
-{
-  std::string path = s.host + ".index." + part + ".dat";
-  printf("write %s\n", path.c_str());
-
-  uint8_t *buffer = (uint8_t *) malloc(1024 * 1024 * 512);
-  size_t len = search::index_save(dict, buffer);
-
-  std::ofstream file;
-
-  file.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
-
-  if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
-    return;
-  }
-
-  printf("writing %i bytes\n", len);
-  file.write((const char *) buffer, len);
-
-  file.close();
-
-  free(buffer);
-}
-
 void index_site(crawl::site &s) {
   printf("index site %s\n", s.host.c_str());
 
@@ -79,7 +54,7 @@ void index_site(crawl::site &s) {
 	tokenizer::token_type token;
   tokenizer::tokenizer tok;
 
-  hash_table words, pairs, trines;
+  search::indexer indexer;
 
   for (auto &page: s.pages) {
     if (!page.valid) continue;
@@ -106,6 +81,8 @@ void index_site(crawl::site &s) {
 
     str_resize(&tok_buffer_pair, 0);
     str_resize(&tok_buffer_trine, 0);
+
+    size_t page_length = 0;
 
     do {
       token = tok.next(&tok_buffer);
@@ -139,9 +116,11 @@ void index_site(crawl::site &s) {
         str_tolower(&tok_buffer);
         str_tostem(&tok_buffer);
 
+        page_length++;
+
         std::string s(str_c(&tok_buffer));
 
-        words.insert(s, id);
+        indexer.words.insert(s, id);
 
         if (str_length(&tok_buffer_trine) > 0) {
           str_cat(&tok_buffer_trine, " ");
@@ -149,7 +128,7 @@ void index_site(crawl::site &s) {
 
           std::string s(str_c(&tok_buffer_trine));
 
-          trines.insert(s, id);
+          indexer.trines.insert(s, id);
 
           str_resize(&tok_buffer_trine, 0);
         }
@@ -160,7 +139,7 @@ void index_site(crawl::site &s) {
 
           std::string s(str_c(&tok_buffer_pair));
 
-          pairs.insert(s, id);
+          indexer.pairs.insert(s, id);
 
           str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
         }
@@ -171,14 +150,15 @@ void index_site(crawl::site &s) {
     } while (token != tokenizer::END);
 
     pfile.close();
+
+    indexer.page_lengths.emplace(id, page_length);
   }
 
   free(file_buf);
 
   printf("finished indexing site %s\n", s.host.c_str());
-  index_write(s, "words", words);
-  index_write(s, "pairs", pairs);
-  index_write(s, "trines", trines);
+  indexer.save(s.host + ".index");
+  printf("indexer done\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -197,15 +177,11 @@ int main(int argc, char *argv[]) {
 
     index_site(s);
 
+    printf("unload\n");
     s.unload();
   }
+  printf("finished\n");
 
-/*
-  printf("saving index\n");
-
-  char *out_buffer = (char *)malloc(1024*1024*1024);
-  index_write("index.dat", out_buffer, &docNos, &dictionary, &dictionary_pair, &dictionary_trine);
-*/
   return 0;
 }
 

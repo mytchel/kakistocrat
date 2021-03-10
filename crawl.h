@@ -1,6 +1,8 @@
 #ifndef CRAWL_H
 #define CRAWL_H
 
+#include <nlohmann/json.hpp>
+
 #include "scrape.h"
 
 namespace crawl {

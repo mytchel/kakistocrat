@@ -18,14 +18,6 @@
 #include <sstream>
 #include <cstdint>
 
-#include <nlohmann/json.hpp>
-
-extern "C" {
-
-#include "str.h"
-
-}
-
 #include "util.h"
 #include "scorer.h"
 #include "tokenizer.h"
@@ -33,6 +25,8 @@ extern "C" {
 
 namespace search {
 
+/* TODO: The rank uses the doc length to bias. Should it use seperate
+ * doc lengths for words, pairs, and trines? */
 
 /*
  * Atire BM25
@@ -136,125 +130,10 @@ static std::vector<std::pair<uint64_t, double>> intersect_postings(
 	return result;
 }
 
-void load_dat(std::string path, search::index &dict)
+void searcher::load()
 {
-  char *index = (char *) malloc(1024*1024*1024);
-
-  std::ifstream file;
-
-  printf("load %s\n", path.c_str());
-
-  file.open(path.c_str(), std::ios::in | std::ios::binary);
-
-  if (!file.is_open() || file.fail() || !file.good() || file.bad()) {
-    fprintf(stderr, "error opening file %s\n",  path.c_str());
-    return;
-  }
-
-  file.read(index, 1024*1024*1024);
-
-  printf("load dict\n");
-  dict.load((uint8_t *) index);
-  printf("loaded dict\n");
-
-  // Don't free index, should give it to dict.
-}
-
-void searcher::load(std::string scores_path, std::string a, std::string b, std::string c)
-{
-  scores.load(scores_path);
-  load_dat(a, dict_words);
-  load_dat(b, dict_pairs);
-  load_dat(c, dict_trines);
-}
-
-struct terms {
-  std::vector<std::string> words;
-  std::vector<std::string> pairs;
-  std::vector<std::string> trines;
-};
-
-terms split_terms(char *line)
-{
-  const size_t buf_len = 512;
-
-  char tok_buffer_store[buf_len]; // Provide underlying storage for tok_buffer
-	struct str tok_buffer;
-	str_init(&tok_buffer, tok_buffer_store, sizeof(tok_buffer_store));
-
-  char pair_buffer[buf_len * 2 + 1];
-	struct str tok_buffer_pair;
-	str_init(&tok_buffer_pair, pair_buffer, sizeof(pair_buffer));
-
-  char trine_buffer[buf_len * 3 + 2];
-	struct str tok_buffer_trine;
-	str_init(&tok_buffer_trine, trine_buffer, sizeof(trine_buffer));
-
-  tokenizer::token_type token;
-  tokenizer::tokenizer tok;
-
-  tok.init(line, strlen(line));
-
-  terms t;
-
-	do {
-		token = tok.next(&tok_buffer);
-    if (token == tokenizer::WORD) {
-		  str_tolower(&tok_buffer);
-		  str_tostem(&tok_buffer);
-
-      std::string s(str_c(&tok_buffer));
-
-      t.words.push_back(s);
-
-      if (str_length(&tok_buffer_trine) > 0) {
-        str_cat(&tok_buffer_trine, " ");
-        str_cat(&tok_buffer_trine, str_c(&tok_buffer));
-
-        std::string s(str_c(&tok_buffer_trine));
-
-        t.trines.push_back(s);
-
-        str_resize(&tok_buffer_trine, 0);
-      }
-
-      if (str_length(&tok_buffer_pair) > 0) {
-        str_cat(&tok_buffer_pair, " ");
-        str_cat(&tok_buffer_pair, str_c(&tok_buffer));
-
-        std::string s(str_c(&tok_buffer_pair));
-
-        t.pairs.push_back(s);
-
-        str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
-      }
-
-      str_resize(&tok_buffer_pair, 0);
-      str_cat(&tok_buffer_pair, str_c(&tok_buffer));
-    }
-	} while (token != tokenizer::END);
-
-  return t;
-}
-
-void find_matches(std::vector<std::string> &terms,
-    search::index &dict,
-    std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
-{
-	for (auto &term: terms) {
-		posting *post = dict.find(term);
-    if (post != NULL) {
-      std::vector<std::pair<uint64_t, double>> pairs;
-
-      pairs.reserve(post->counts.size());
-      for (auto &p: post->counts) {
-        // TODO: Rank
-        pairs.emplace_back(p.first, p.second);
-      }
-
-      postings.push_back(pairs);
-		}
-	}
+  scores.load(score_path);
+  index.load();
 }
 
 std::vector<search_entry> searcher::search(char *line)
@@ -263,20 +142,13 @@ std::vector<search_entry> searcher::search(char *line)
 
   printf("search for %s\n", line);
 
-  auto terms = split_terms(line);
+  auto postings = index.find_matches(line);
+  printf("got postings %i\n", postings.size());
 
-  std::vector<std::vector<std::pair<uint64_t, double>>> postings;
-
-  find_matches(terms.words, dict_words, postings);
-  find_matches(terms.pairs, dict_pairs, postings);
-  find_matches(terms.trines, dict_trines, postings);
-
-  printf("intersect\n");
   auto results_raw = intersect_postings(postings);
+  printf("got results %i\n", results_raw.size());
 
-  printf("to results\n");
   for (auto &result: results_raw) {
-    printf("to result for %lu %f\n", result.first, result.second);
     uint64_t page_id = result.first;
 
     auto page = scores.find_page(page_id);

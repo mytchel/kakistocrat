@@ -15,8 +15,6 @@
 #include <cstdint>
 #include <ctime>
 
-#include <nlohmann/json.hpp>
-
 #include "util.h"
 #include "crawl.h"
 
