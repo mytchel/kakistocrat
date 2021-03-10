@@ -104,6 +104,8 @@ void to_json(nlohmann::json &j, const index_info &i);
 void from_json(const nlohmann::json &j, index_info &i);
 
 struct index {
+  size_t average_page_length;
+
   std::map<uint64_t, size_t> page_lengths;
 
   std::vector<index_part> word_parts;
@@ -115,6 +117,10 @@ struct index {
   index(std::string p) : path(p) {}
 
   void load();
+
+  void find_part_matches(index_part &p,
+    std::vector<std::string> &terms,
+    std::vector<std::vector<std::pair<uint64_t, double>>> &postings);
 
   std::vector<std::vector<std::pair<uint64_t, double>>>
     find_matches(char *line);

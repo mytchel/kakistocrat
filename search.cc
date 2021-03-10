@@ -25,66 +25,10 @@
 
 namespace search {
 
-/* TODO: The rank uses the doc length to bias. Should it use seperate
- * doc lengths for words, pairs, and trines? */
-
-/*
- * Atire BM25
- * Trotman, A., X. Jia, M. Crane, Towards an Efficient and Effective Search Engine,
- * SIGIR 2012 Workshop on Open Source Information Retrieval, p. 40-47
- */
-  /*
-static void rank(struct dynamic_array_kv_64 *posting, struct dynamic_array_kv_32 *docNos, double avgdl) {
-	// IDF = ln(N/df_t)
-	double wt = log(docNos->length / posting->length);
-	for (size_t i = 0; i < posting->length; i++) {
-		size_t docId = dynamic_array_kv_64_at(posting, i)[0] - 1;
-		size_t tf = dynamic_array_kv_64_at(posting, i)[1];                   // term frequency / tf_td
-		double docLength = (size_t)dynamic_array_kv_32_at(docNos, docId)[1]; // L_d
-		//                   (k_1 + 1) * tf_td
-		// IDF * ----------------------------------------- (over)
-		//       k_1 * (1 - b + b * (L_d / L_avg)) + tf_td
-		double k1 = 0.9;
-		double b = 0.4;
-		double dividend = (k1 + 1.0) * tf;
-		double divisor = k1 * (1 - b + b * (docLength / avgdl) + tf);
-		double rsv = wt * dividend / divisor;                                // retrieval status value
-		dynamic_array_kv_64_at(posting, i)[1] = *(uint64_t *)&rsv;
-	}
-}
-*/
-
-/*
- * Atire BM25
- * Trotman, A., X. Jia, M. Crane, Towards an Efficient and Effective Search Engine,
- * SIGIR 2012 Workshop on Open Source Information Retrieval, p. 40-47
- */
-static void rank(std::vector<std::pair<uint64_t, uint64_t>> &postings)
-  //  struct dynamic_array_kv_32 *docNos, double avgdl)
+void searcher::load()
 {
-  //  TODO: get doc lengths
-  return;
-/*
-	// IDF = ln(N/df_t)
-	double wt = log(docNos->length / posting.size());
-	for (auto &p: postings) {
-		uint64_t &page_id = p.first;
-		uint64_t &tf = p.second;
-		size_t tf = dynamic_array_kv_64_at(posting, i)[1];                   // term frequency / tf_td
-		double docLength = 100;//(size_t)dynamic_array_kv_32_at(docNos, docId)[1]; // L_d
-		//                   (k_1 + 1) * tf_td
-		// IDF * ----------------------------------------- (over)
-		//       k_1 * (1 - b + b * (L_d / L_avg)) + tf_td
-		double k1 = 0.9;
-		double b = 0.4;
-		double dividend = (k1 + 1.0) * tf;
-		double divisor = k1 * (1 - b + b * (docLength / avgdl) + tf);
-		double rsv = wt * dividend / divisor;                                // retrieval status value
-
-    // int of double, somehow
-    tf = *(uint64_t *)&rsv;
-	}
-  */
+  scores.load(score_path);
+  index.load();
 }
 
 // This only returns documents that match all the terms.
@@ -128,12 +72,6 @@ static std::vector<std::pair<uint64_t, double>> intersect_postings(
 	}
 
 	return result;
-}
-
-void searcher::load()
-{
-  scores.load(score_path);
-  index.load();
 }
 
 std::vector<search_entry> searcher::search(char *line)

@@ -267,6 +267,14 @@ void index::load()
 
   page_lengths = info.page_lengths;
 
+  average_page_length = 0;
+
+  for (auto &p: page_lengths) {
+    average_page_length += p.second;
+  }
+
+  average_page_length /= page_lengths.size();
+
   for (auto &p: info.word_parts) {
     word_parts.push_back(load_part(words, p));
   }
@@ -349,22 +357,61 @@ static terms split_terms(char *line)
   return t;
 }
 
-void find_part_matches(std::vector<std::string> &terms,
+/* TODO: The rank uses the doc length to bias. Should it use seperate
+ * doc lengths for words, pairs, and trines? */
+
+/*
+ * Atire BM25
+ * Trotman, A., X. Jia, M. Crane, Towards an Efficient and Effective Search Engine,
+ * SIGIR 2012 Workshop on Open Source Information Retrieval, p. 40-47
+ */
+static void rank(std::vector<std::pair<uint64_t, double>> &postings,
+    std::map<uint64_t, size_t> &page_lengths, double avgdl)
+{
+	// IDF = ln(N/df_t)
+	double wt = log(page_lengths.size() / postings.size());
+	for (auto &p: postings) {
+		uint64_t page_id = p.first;
+		double tf = p.second;
+
+    auto it = page_lengths.find(page_id);
+    if (it == page_lengths.end()) {
+      tf = 0;
+      continue;
+    }
+
+		double docLength = it->second;
+
+		//                   (k_1 + 1) * tf_td
+		// IDF * ----------------------------------------- (over)
+		//       k_1 * (1 - b + b * (L_d / L_avg)) + tf_td
+		double k1 = 0.9;
+		double b = 0.4;
+		double dividend = (k1 + 1.0) * tf;
+		double divisor = k1 * (1 - b + b * (docLength / avgdl) + tf);
+		double rsv = wt * dividend / divisor;
+
+		p.second = rsv;
+	}
+}
+
+void index::find_part_matches(
     search::index_part &part,
+    std::vector<std::string> &terms,
     std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
 {
 	for (auto &term: terms) {
     printf("find term %s\n", term.c_str());
 		posting *post = part.find(term);
     if (post != NULL) {
-    printf("found %s\n", term.c_str());
       std::vector<std::pair<uint64_t, double>> pairs;
 
       pairs.reserve(post->counts.size());
       for (auto &p: post->counts) {
-        // TODO: Rank
         pairs.emplace_back(p.first, p.second);
       }
+
+      rank(pairs, page_lengths, average_page_length);
 
       postings.push_back(pairs);
 		}
@@ -382,17 +429,17 @@ std::vector<std::vector<std::pair<uint64_t, double>>> index::find_matches(char *
   printf("get postings\n");
   for (auto &p: word_parts) {
   printf("find matches from %s\n", p.path.c_str());
-    find_part_matches(terms.words, p, postings);
+    find_part_matches(p, terms.words, postings);
   }
 
   for (auto &p: pair_parts) {
   printf("find matches from %s\n", p.path.c_str());
-    find_part_matches(terms.pairs, p, postings);
+    find_part_matches(p, terms.pairs, postings);
   }
 
   for (auto &p: trine_parts) {
   printf("find matches from %s\n", p.path.c_str());
-    find_part_matches(terms.trines, p, postings);
+    find_part_matches(p, terms.trines, postings);
   }
 
   return postings;
