@@ -159,6 +159,8 @@ static size_t part_to_buf(
 
       offset += sizeof(uint32_t);
 
+      printf("part depth %i\n", postings->size());
+
       for (auto &p: *postings) {
         memcpy(buffer + offset, p.first.c_str(), p.first.size());
         offset += p.first.size();
