@@ -35,6 +35,8 @@ struct index_part {
       std::string s, std::string e)
     : type(t), path(p), start(s), end(e)
   {
+    backing = NULL;
+
     for (size_t i = 0; i < HTCAP; i++) {
       store[i] = NULL;
     }
@@ -48,6 +50,7 @@ struct index_part {
 
     for (size_t i = 0; i < HTCAP; i++) {
       store[i] = p.store[i];
+      p.store[i] = NULL;
     }
 
     p.backing = NULL;
@@ -55,9 +58,9 @@ struct index_part {
 
   ~index_part()
   {
-    if (!backing) return;
-
-    free(backing);
+    if (backing) {
+      free(backing);
+    }
 
     for (size_t i = 0; i < HTCAP; i++) {
       if (store[i]) delete store[i];

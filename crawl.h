@@ -91,6 +91,7 @@ struct site {
   // For loading from json
 
   site() {}
+  site(std::string h) : host(h) {}
   site(uint32_t i, size_t l, std::string h, time_t ls, bool e) :
     id(i), level(l), host(h), last_scanned(ls), enabled(e) {
       scraped = last_scanned > 0;

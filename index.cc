@@ -326,13 +326,9 @@ void index::load()
   average_page_length = 0;
 
   if (page_lengths.size() > 0) {
-    printf("sum page lengts\n");
     for (auto &p: page_lengths) {
       average_page_length += p.second;
     }
-
-    printf("sum page lengths %i / %i\n",
-        average_page_length, page_lengths.size());
 
     average_page_length /= page_lengths.size();
   }
@@ -585,21 +581,10 @@ void index_part::merge(index_part &other)
 
 void index::merge(index &other)
 {
-  average_page_length = 0;
-
   printf("merge\n");
 
-  for (auto &p: page_lengths) {
-    average_page_length += p.second;
-  }
-
-  for (auto &p: other.page_lengths) {
-    average_page_length += p.second;
-    page_lengths.insert(p);
-  }
-
-  average_page_length /= page_lengths.size();
-  printf("new average page length %i\n", average_page_length);
+  // Average the page lengths here?
+  // or keep a sum for quick averaging
 
   if (word_parts.empty()) {
     word_parts.emplace_back(words, base_path + ".index.words.dat",

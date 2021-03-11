@@ -160,31 +160,126 @@ void index_site(crawl::site &s) {
   indexer.save(s.host);
 }
 
+
+void
+indexer_run(Channel<std::string*> &in, Channel<std::string*> &out, int tid)
+{
+  printf("thread %i started\n", tid);
+
+  std::string *b = NULL;
+  b >> out;
+
+  while (true) {
+    std::string *name;
+
+    name << in;
+
+    if (name == NULL) {
+      break;
+    }
+
+    printf("%i start on %s\n", tid, name->c_str());
+
+    crawl::site site(*name);
+    site.load();
+
+    index_site(site);
+
+    name >> out;
+  }
+}
+
 int main(int argc, char *argv[]) {
   crawl::crawler crawler;
   crawler.load();
 
   search::index full_index("full");
 
-  for (auto &s: crawler.sites) {
-    if (!s.enabled) continue;
+  auto n_threads = std::thread::hardware_concurrency();
 
-    printf("site %lu %s\n", s.id, s.host.c_str());
+  printf("starting %i threads\n", n_threads);
 
-    s.load();
+  Channel<std::string*> in_channels[n_threads];
+  Channel<std::string*> out_channels[n_threads];
 
-    index_site(s);
+  std::vector<std::thread> threads;
+  for (size_t i = 0; i < n_threads; i++) {
+    auto th = std::thread(
+        [](Channel<std::string*> &in,
+           Channel<std::string*> &out, int i) {
+          indexer_run(in, out, i);
+        },
+        std::ref(in_channels[i]),
+        std::ref(out_channels[i]), i);
 
-    s.unload();
-
-    printf("load the created index\n");
-    search::index site_index(s.host);
-    site_index.load();
-    printf("merge %s index\n", s.host.c_str());
-    full_index.merge(site_index);
+    threads.emplace_back(std::move(th));
   }
 
+  auto site = crawler.sites.begin();
+
+  std::vector<std::string> pending_merge;
+
+  size_t busy_busy = 0;
+  size_t finished = 0;
+
+  while (site != crawler.sites.end() || !pending_merge.empty()) {
+    while (site != crawler.sites.end() && !site->enabled)
+      site++;
+
+    bool found = false;
+    for (size_t i = 0; !found && i < n_threads; i++) {
+      if (!out_channels[i].empty()) {
+        found = true;
+
+        if (site != crawler.sites.end()) {
+          &site->host >> in_channels[i];
+          site++;
+        } else {
+          std::string *b = NULL;
+          b >> in_channels[i];
+          finished++;
+        }
+
+        std::string *host;
+
+        host << out_channels[i];
+
+        if (host != NULL) {
+          pending_merge.push_back(*host);
+        }
+      }
+    }
+
+    if (!found) {
+      if (!pending_merge.empty() && (busy_busy > 5 || finished == n_threads)) {
+        for (auto &h: pending_merge) {
+          printf("load the created index\n");
+          search::index site_index(h);
+          site_index.load();
+          printf("merge %s index\n", h.c_str());
+          full_index.merge(site_index);
+        }
+
+        pending_merge.clear();
+
+      } else {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        busy_busy++;
+      }
+    } else {
+      busy_busy = 0;
+    }
+  }
+
+  printf("done\n");
+
   full_index.save();
+
+  printf("all done\n");
+
+  for (size_t i = 0; i < n_threads; i++) {
+    threads[i].join();
+  }
 
   return 0;
 }

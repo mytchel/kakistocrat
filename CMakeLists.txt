@@ -56,6 +56,7 @@ add_executable(indexer indexer.cc
     index.cc)
 
 target_link_libraries(indexer nlohmann_json::nlohmann_json)
+target_link_libraries(indexer Threads::Threads)
 
 add_executable(search_cli search_cli.cc
     search.cc
