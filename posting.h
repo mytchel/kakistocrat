@@ -6,28 +6,35 @@
 
 struct posting {
   std::vector<std::pair<uint64_t, uint8_t>> counts;
+  uint8_t *backing{NULL};
 
-  posting() {}
+  posting(uint64_t i) {
+    append(i);
+  }
+
+  posting(uint8_t *b) : backing{b} {}
 
   void append(uint64_t id);
 
   size_t save(uint8_t *buffer);
-  size_t load(uint8_t *buffer);
 
-  std::vector<std::pair<uint64_t, uint64_t>> decompress();
+  size_t backing_size();
 
-  void merge(posting &other);
+  void unload() {
+    counts.clear();
+  }
 
-  std::vector<std::pair<uint64_t, uint64_t>> to_pairs() {
-    std::vector<std::pair<uint64_t, uint64_t>> pairs;
+  void decompress();
 
-    pairs.reserve(counts.size());
-    for (auto &p: counts) {
-      pairs.emplace_back(p.first, p.second);
+  std::vector<std::pair<uint64_t, uint8_t>> to_pairs() {
+    if (counts.empty()) {
+      decompress();
     }
 
-    return pairs;
+    return counts;
   }
+
+  void merge(posting &other);
 };
 
 #endif

@@ -44,6 +44,19 @@ add_executable(scorer score_main.cc scorer.cc crawl.cc util.cc)
 
 target_link_libraries(scorer nlohmann_json::nlohmann_json)
 
+add_executable(indexer_single indexer_single.cc
+    crawl.cc
+    tokenizer.cc
+    util.cc
+    str.c
+	bst.cc
+	hash_table.cc
+	posting.cc
+	vbyte.cc
+    index.cc)
+
+target_link_libraries(indexer_single nlohmann_json::nlohmann_json)
+
 add_executable(indexer indexer.cc
     crawl.cc
     tokenizer.cc

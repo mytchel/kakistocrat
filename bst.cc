@@ -5,11 +5,9 @@
 
 #include "bst.h"
 
-bst::bst(std::string &k, uint64_t val) {
+bst::bst(std::string &k, uint64_t val) : store(val) {
 	left = right = {};
 	key = k;
-
-	store.append(val);
 }
 
 void bst::insert(std::string &k, uint64_t val)

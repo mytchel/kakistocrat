@@ -70,9 +70,9 @@ void index_part::load()
 
       offset += key.size() + 1;
 
-      posting p;
+      posting p(backing + offset);
 
-      offset += p.load(backing + offset);
+      offset += p.backing_size();
 
       pairs->emplace_back(key, p);
     }
@@ -158,8 +158,6 @@ static size_t part_to_buf(
 	    ((uint32_t *) (buffer + offset))[0] = postings->size();
 
       offset += sizeof(uint32_t);
-
-      printf("part depth %i\n", postings->size());
 
       for (auto &p: *postings) {
         memcpy(buffer + offset, p.first.c_str(), p.first.size());
@@ -284,7 +282,7 @@ posting *index_part::find(std::string key)
 
   printf("have match, check list %s\n", key.c_str());
   for (auto &p: *store[index]) {
-  printf("have match, check list %s == %s\n", key.c_str(), p.first.c_str());
+    printf("have match, check list %s == %s\n", key.c_str(), p.first.c_str());
     if (p.first == key) {
       return &p.second;
     }
@@ -471,22 +469,28 @@ static terms split_terms(char *line)
  * Trotman, A., X. Jia, M. Crane, Towards an Efficient and Effective Search Engine,
  * SIGIR 2012 Workshop on Open Source Information Retrieval, p. 40-47
  */
-static void rank(std::vector<std::pair<uint64_t, double>> &postings,
+static std::vector<std::pair<uint64_t, double>>
+rank(
+    std::vector<std::pair<uint64_t, uint8_t>> &postings,
     std::map<uint64_t, size_t> &page_lengths, double avgdl)
 {
+  std::vector<std::pair<uint64_t, double>> pairs_ranked;
+
+  pairs_ranked.reserve(postings.size());
+
 	// IDF = ln(N/df_t)
 	double wt = log(page_lengths.size() / postings.size());
 	for (auto &p: postings) {
 		uint64_t page_id = p.first;
-		double tf = p.second;
 
     auto it = page_lengths.find(page_id);
     if (it == page_lengths.end()) {
-      tf = 0;
       continue;
     }
 
 		double docLength = it->second;
+
+    double tf = p.second;
 
 		//                   (k_1 + 1) * tf_td
 		// IDF * ----------------------------------------- (over)
@@ -497,8 +501,10 @@ static void rank(std::vector<std::pair<uint64_t, double>> &postings,
 		double divisor = k1 * (1 - b + b * (docLength / avgdl) + tf);
 		double rsv = wt * dividend / divisor;
 
-		p.second = rsv;
+    pairs_ranked.emplace_back(page_id, rsv);
 	}
+
+  return pairs_ranked;
 }
 
 void index::find_part_matches(
@@ -510,16 +516,10 @@ void index::find_part_matches(
     printf("find term %s\n", term.c_str());
 		posting *post = part.find(term);
     if (post != NULL) {
-      std::vector<std::pair<uint64_t, double>> pairs;
+      auto pairs = post->to_pairs();
+      auto pairs_ranked = rank(pairs, page_lengths, average_page_length);
 
-      pairs.reserve(post->counts.size());
-      for (auto &p: post->counts) {
-        pairs.emplace_back(p.first, p.second);
-      }
-
-      rank(pairs, page_lengths, average_page_length);
-
-      postings.push_back(pairs);
+      postings.push_back(pairs_ranked);
 		}
 	}
 }
@@ -604,8 +604,8 @@ void index::merge(index &other)
   }
 
   word_parts.front().merge(other.word_parts.front());
-  pair_parts.front().merge(other.pair_parts.front());
-  trine_parts.front().merge(other.trine_parts.front());
+  //pair_parts.front().merge(other.pair_parts.front());
+  //trine_parts.front().merge(other.trine_parts.front());
 }
 
 }

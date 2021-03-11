@@ -31,7 +31,7 @@
 
 using nlohmann::json;
 
-void index_site(crawl::site &s) {
+void index_site(crawl::site &s, search::indexer &indexer) {
   printf("index site %s\n", s.host.c_str());
 
   size_t max_size = 1024 * 1024 * 10;
@@ -54,7 +54,7 @@ void index_site(crawl::site &s) {
 	tokenizer::token_type token;
   tokenizer::tokenizer tok;
 
-  search::indexer indexer;
+  search::indexer site_indexer;
 
   for (auto &page: s.pages) {
     if (!page.valid) continue;
@@ -121,6 +121,7 @@ void index_site(crawl::site &s) {
         std::string s(str_c(&tok_buffer));
 
         indexer.words.insert(s, id);
+        site_indexer.words.insert(s, id);
 
         if (str_length(&tok_buffer_trine) > 0) {
           str_cat(&tok_buffer_trine, " ");
@@ -129,6 +130,7 @@ void index_site(crawl::site &s) {
           std::string s(str_c(&tok_buffer_trine));
 
           indexer.trines.insert(s, id);
+          site_indexer.trines.insert(s, id);
 
           str_resize(&tok_buffer_trine, 0);
         }
@@ -140,6 +142,7 @@ void index_site(crawl::site &s) {
           std::string s(str_c(&tok_buffer_pair));
 
           indexer.pairs.insert(s, id);
+          site_indexer.pairs.insert(s, id);
 
           str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
         }
@@ -152,106 +155,24 @@ void index_site(crawl::site &s) {
     pfile.close();
 
     indexer.page_lengths.emplace(id, page_length);
+    site_indexer.page_lengths.emplace(id, page_length);
   }
 
   free(file_buf);
 
   printf("finished indexing site %s\n", s.host.c_str());
-  indexer.save(s.host);
-}
 
-
-void
-indexer_run(Channel<std::string*> &in, Channel<std::string*> &out, int tid)
-{
-  printf("thread %i started\n", tid);
-
-  std::string *b = NULL;
-  b >> out;
-
-  while (true) {
-    std::string *name;
-
-    name << in;
-
-    if (name == NULL) {
-      break;
-    }
-
-    printf("%i start on %s\n", tid, name->c_str());
-
-    crawl::site site(*name);
-    site.load();
-
-    index_site(site);
-
-    name >> out;
-  }
-}
-
-void
-index_merger(Channel<std::string*> &in)
-{
-  search::index full_index("full");
-
-  while (true) {
-    std::string *name;
-
-    name << in;
-
-    if (name == NULL) {
-      break;
-    }
-
-    printf("load %s for merging\n", name->c_str());
-
-    search::index site_index(*name);
-    site_index.load();
-
-    printf("merge %s index\n", name->c_str());
-    full_index.merge(site_index);
-  }
-
-  printf("saving\n");
-  full_index.save();
+  site_indexer.save(s.host);
 }
 
 int main(int argc, char *argv[]) {
   crawl::crawler crawler;
   crawler.load();
 
-  auto n_threads = std::thread::hardware_concurrency();
-  if (n_threads > 2) {
-    n_threads--;
-  }
+  printf("make indexer\n");
+  search::indexer indexer;
 
-  printf("starting %i threads\n", n_threads);
-
-  Channel<std::string*> merger_channel;
-  Channel<std::string*> in_channels[n_threads];
-  Channel<std::string*> out_channels[n_threads];
-
-  std::vector<std::thread> threads;
-
-  for (size_t i = 0; i < n_threads; i++) {
-    auto th = std::thread(
-        [](Channel<std::string*> &in,
-           Channel<std::string*> &out, int i) {
-          indexer_run(in, out, i);
-        },
-        std::ref(in_channels[i]),
-        std::ref(out_channels[i]), i);
-
-    threads.emplace_back(std::move(th));
-  }
-
-  auto th = std::thread(
-      [](Channel<std::string*> &in) {
-        index_merger(in);
-      },
-      std::ref(merger_channel));
-
-  threads.emplace_back(std::move(th));
+  printf("start\n");
 
   auto site = crawler.sites.begin();
   while (site != crawler.sites.end()) {
@@ -260,48 +181,18 @@ int main(int argc, char *argv[]) {
       continue;
     }
 
-    &site->host >> merger_channel;
+  printf("load site\n");
+    site->load();
+
+  printf("index site\n");
+    index_site(*site, indexer);
+
+  printf("unload site\n");
+    site->unload();
     site++;
-
-    /*
-    bool found = false;
-    for (size_t i = 0; !found && i < n_threads; i++) {
-      if (!out_channels[i].empty()) {
-        found = true;
-
-        if (site != crawler.sites.end()) {
-          &site->host >> in_channels[i];
-          site++;
-        }
-
-        std::string *host;
-
-        host << out_channels[i];
-
-        if (host != NULL) {
-          host >> merger_channel;
-        }
-      }
-    }
-
-    if (!found) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    */
   }
 
-  std::string *b = NULL;
-  b >> merger_channel;
-
-  for (size_t i = 0; i < n_threads; i++) {
-    b >> in_channels[i];
-  }
-
-  printf("wait for threads\n");
-
-  for (auto &t: threads) {
-    t.join();
-  }
+  indexer.save("full_single");
 
   return 0;
 }

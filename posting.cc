@@ -22,6 +22,32 @@ void posting::append(uint64_t id)
 	}
 }
 
+void posting::decompress()
+{
+	size_t id_length = ((uint32_t *) backing)[0];
+	size_t count_length = ((uint32_t *) backing)[1];
+
+  uint8_t *id_store = backing + 2 * sizeof(uint32_t);
+	uint8_t *count_store = id_store + id_length;
+
+	uint64_t prevI = 0;
+	uint64_t docI = 0;
+	size_t di = 0;
+	size_t ci = 0;
+
+  counts.clear();
+  counts.reserve(count_length);
+
+	while (ci < count_length && di < id_length) {
+		di += vbyte_read(&id_store[di], &docI);
+		docI += prevI;
+		prevI = docI;
+
+    counts.emplace_back(docI, count_store[ci]);
+		ci++;
+	}
+}
+
 size_t posting::save(uint8_t *buffer)
 {
   std::sort(counts.begin(), counts.end(),
@@ -37,9 +63,7 @@ size_t posting::save(uint8_t *buffer)
 
   uint64_t o = 0;
   for (auto &c: counts) {
-    //offset += vbyte_store(buffer + offset, c.first - o);
-    memcpy(id_store + id_length, &c.first, sizeof(uint64_t));
-    id_length += sizeof(uint64_t);
+    id_length += vbyte_store(id_store + id_length, c.first - o);
     o = c.first;
   }
 
@@ -56,52 +80,12 @@ size_t posting::save(uint8_t *buffer)
 	return offset;
 }
 
-size_t posting::load(uint8_t *buffer)
+size_t posting::backing_size()
 {
-  size_t id_length = ((uint32_t *) buffer)[0];
-	size_t count_length = ((uint32_t *) buffer)[1];
-
-	uint64_t *id_store = (uint64_t *) (buffer + 2 * sizeof(uint32_t));
-	uint8_t *count_store = (uint8_t *) id_store + id_length;
-
-  counts.clear();
-  counts.reserve(count_length);
-
-  size_t i;
-  for (i = 0; i < count_length; i++) {
-    uint64_t id;
-    memcpy(&id, id_store + i, sizeof(uint64_t));
-    uint8_t c = count_store[i];
-
-    counts.emplace_back(id, c);
-  }
+  size_t id_length = ((uint32_t *) backing)[0];
+	size_t count_length = ((uint32_t *) backing)[1];
 
   return sizeof(uint32_t) * 2 + id_length + count_length;
-  /*
-	size_t id_length = ((uint32_t *) buffer)[0];
-	size_t count_length = ((uint32_t *) buffer)[1];
-	uint8_t *id_store = (uint8_t *) buffer + 2 * sizeof(uint32_t);
-	uint8_t *count_store = id_store + id_length;
-
-	size_t prevI = 0;
-	uint32_t docI = 0;
-	size_t di = 0;
-	size_t ci = 0;
-
-  counts.clear();
-
-	while (ci < count_length && di < id_length) {
-	//	di += vbyte_read(&id_store[di], &docI);
-		docI += prevI;
-		prevI = docI;
-		size_t count = count_store[ci];
-
-    counts.emplace_back(docI, count);
-		ci++;
-	}
-
-  return sizeof(uint32_t) * 2 + id_length + count_length;
-  */
 }
 
 void posting::merge(posting &other)
@@ -111,14 +95,4 @@ void posting::merge(posting &other)
   }
 }
 
-std::vector<std::pair<uint64_t, uint64_t>> posting::decompress()
-{
-  std::vector<std::pair<uint64_t, uint64_t>> out;
-
-  for (auto &c: counts) {
-    out.emplace_back(c.first, c.second);
-  }
-
-	return out;
-}
 
