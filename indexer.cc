@@ -157,19 +157,17 @@ void index_site(crawl::site &s) {
   free(file_buf);
 
   printf("finished indexing site %s\n", s.host.c_str());
-  indexer.save(s.host + ".index");
-  printf("indexer done\n");
+  indexer.save(s.host);
 }
 
 int main(int argc, char *argv[]) {
   crawl::crawler crawler;
   crawler.load();
 
-  int i = 0;
+  search::index full_index("full");
 
   for (auto &s: crawler.sites) {
     if (!s.enabled) continue;
-    if (s.host != "slatestarcodex.com") continue;
 
     printf("site %lu %s\n", s.id, s.host.c_str());
 
@@ -177,10 +175,16 @@ int main(int argc, char *argv[]) {
 
     index_site(s);
 
-    printf("unload\n");
     s.unload();
+
+    printf("load the created index\n");
+    search::index site_index(s.host);
+    site_index.load();
+    printf("merge %s index\n", s.host.c_str());
+    full_index.merge(site_index);
   }
-  printf("finished\n");
+
+  full_index.save();
 
   return 0;
 }

@@ -46,6 +46,61 @@ void from_json(const nlohmann::json &j, index_info &i)
   j.at("trine_parts").get_to(i.trine_parts);
 }
 
+void index_part::load()
+{
+  if (!load_backing()) {
+    return;
+  }
+
+  uint32_t lists = ((uint32_t *)backing)[0];
+
+  size_t offset = sizeof(uint32_t);
+
+  for (size_t i = 0; i < lists; i++) {
+    size_t n_postings = ((uint32_t *) (backing + offset))[0];
+
+    offset += sizeof(uint32_t);
+
+    auto pairs = new std::vector<std::pair<std::string, posting>>();
+    pairs->reserve(n_postings);
+
+    for (size_t j = 0; j < n_postings; j++) {
+      uint8_t *c_key = backing + offset;
+      std::string key((char *) c_key);
+
+      offset += key.size() + 1;
+
+      posting p;
+
+      offset += p.load(backing + offset);
+
+      pairs->emplace_back(key, p);
+    }
+
+    uint32_t index = hash((*pairs)[0].first);
+    store[index] = pairs;
+  }
+}
+
+void write_buf(std::string path, uint8_t *buf, size_t len)
+{
+  printf("write %s\n", path.c_str());
+
+  std::ofstream file;
+
+  file.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
+
+  if (!file.is_open()) {
+    fprintf(stderr, "error opening file %s\n", path.c_str());
+    return;
+  }
+
+  printf("writing %i bytes\n", len);
+  file.write((const char *) buf, len);
+
+  file.close();
+}
+
 static size_t hash_to_buf(hash_table &t, uint8_t *buffer)
 {
   size_t offset = sizeof(uint32_t);
@@ -85,23 +140,56 @@ static size_t hash_to_buf(hash_table &t, uint8_t *buffer)
   return offset;
 }
 
-void write_buf(std::string path, uint8_t *buf, size_t len)
+static size_t part_to_buf(
+    std::vector<std::pair<std::string, posting>> **store,
+    uint8_t *buffer)
+{
+  size_t offset = sizeof(uint32_t);
+
+  size_t lists = 0;
+  size_t n_postings = 0;
+
+  for (size_t i = 0; i < HTCAP; i++) {
+    if (store[i]) {
+      lists++;
+
+      auto postings = store[i];
+
+	    ((uint32_t *) (buffer + offset))[0] = postings->size();
+
+      offset += sizeof(uint32_t);
+
+      for (auto &p: *postings) {
+        memcpy(buffer + offset, p.first.c_str(), p.first.size());
+        offset += p.first.size();
+        buffer[offset++] = 0;
+
+        offset += p.second.save(buffer + offset);
+
+        n_postings++;
+      }
+    }
+  }
+
+  ((uint32_t *) buffer)[0] = lists;
+
+  printf("have %i lists of %i postings\n",
+      lists, n_postings);
+
+  return offset;
+}
+
+void index_part::save()
 {
   printf("write %s\n", path.c_str());
 
-  std::ofstream file;
+  uint8_t *buffer = (uint8_t *) malloc(1024 * 1024 * 1024);
 
-  file.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
+  size_t len = part_to_buf(store, buffer);
 
-  if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
-    return;
-  }
+  write_buf(path, buffer, len);
 
-  printf("writing %i bytes\n", len);
-  file.write((const char *) buf, len);
-
-  file.close();
+  free(buffer);
 }
 
 void index_part_save(hash_table &t, std::string path)
@@ -121,15 +209,16 @@ void indexer::save(std::string base_path)
 {
   printf("indexer save %s\n", base_path.c_str());
 
-  auto words_path = base_path + ".words.dat";
-  auto pairs_path = base_path + ".pairs.dat";
-  auto trines_path = base_path + ".trines.dat";
+  auto words_path = base_path + ".index.words.dat";
+  auto pairs_path = base_path + ".index.pairs.dat";
+  auto trines_path = base_path + ".index.trines.dat";
+  auto meta_path = base_path + ".index.meta.json";
 
   index_part_save(words, words_path);
   index_part_save(pairs, pairs_path);
   index_part_save(trines, trines_path);
 
-  printf("indexer save meta data for %s\n", base_path.c_str());
+  printf("indexer save meta data %s\n", meta_path.c_str());
 
   index_info info;
 
@@ -143,13 +232,12 @@ void indexer::save(std::string base_path)
   json j = info;
   printf("open file\n");
 
-  std::string path = base_path + ".meta.json";
   std::ofstream file;
 
-  file.open(path, std::ios::out | std::ios::trunc);
+  file.open(meta_path, std::ios::out | std::ios::trunc);
 
   if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
+    fprintf(stderr, "error opening file %s\n", meta_path.c_str());
     return;
   }
 
@@ -181,42 +269,6 @@ bool index_part::load_backing()
   file.close();
 
   return true;
-}
-
-void index_part::load()
-{
-  if (!load_backing()) {
-    return;
-  }
-
-  uint32_t lists = ((uint32_t *)backing)[0];
-
-  size_t offset = sizeof(uint32_t);
-
-  for (size_t i = 0; i < lists; i++) {
-    size_t n_postings = ((uint32_t *) (backing + offset))[0];
-
-    offset += sizeof(uint32_t);
-
-    auto pairs = new std::vector<std::pair<std::string, posting>>();
-    pairs->reserve(n_postings);
-
-    for (size_t j = 0; j < n_postings; j++) {
-      uint8_t *c_key = backing + offset;
-      std::string key((char *) c_key);
-
-      offset += key.size() + 1;
-
-      posting p;
-
-      offset += p.load(backing + offset);
-
-      pairs->emplace_back(key, p);
-    }
-
-    uint32_t index = hash((*pairs)[0].first);
-    store[index] = pairs;
-  }
 }
 
 posting *index_part::find(std::string key)
@@ -252,10 +304,14 @@ void index::load()
 {
   std::ifstream file;
 
-  file.open(path, std::ios::in);
+  auto meta_path = base_path + ".index.meta.json";
+
+  printf("load index %s\n", meta_path.c_str());
+
+  file.open(meta_path, std::ios::in);
 
   if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
+    fprintf(stderr, "error opening file %s\n", meta_path.c_str());
     return;
   }
 
@@ -269,11 +325,17 @@ void index::load()
 
   average_page_length = 0;
 
-  for (auto &p: page_lengths) {
-    average_page_length += p.second;
-  }
+  if (page_lengths.size() > 0) {
+    printf("sum page lengts\n");
+    for (auto &p: page_lengths) {
+      average_page_length += p.second;
+    }
 
-  average_page_length /= page_lengths.size();
+    printf("sum page lengths %i / %i\n",
+        average_page_length, page_lengths.size());
+
+    average_page_length /= page_lengths.size();
+  }
 
   for (auto &p: info.word_parts) {
     word_parts.push_back(load_part(words, p));
@@ -286,6 +348,52 @@ void index::load()
   for (auto &p: info.trine_parts) {
     trine_parts.push_back(load_part(trines, p));
   }
+}
+
+void index::save()
+{
+  index_info info;
+
+  info.page_lengths = page_lengths;
+
+  for (auto &p: word_parts) {
+    p.save();
+    info.word_parts.emplace_back(p.path, p.start, p.end);
+  }
+
+  for (auto &p: pair_parts) {
+    p.save();
+    info.pair_parts.emplace_back(p.path, p.start, p.end);
+  }
+
+  for (auto &p: trine_parts) {
+    p.save();
+    info.trine_parts.emplace_back(p.path, p.start, p.end);
+  }
+
+  auto meta_path = base_path + ".index.meta.json";
+
+  printf("indexer save meta data %s\n", meta_path.c_str());
+
+  printf("to json\n");
+  json j = info;
+  printf("open file\n");
+
+  std::ofstream file;
+
+  file.open(meta_path, std::ios::out | std::ios::trunc);
+
+  if (!file.is_open()) {
+    fprintf(stderr, "error opening file %s\n", meta_path.c_str());
+    return;
+  }
+
+  printf("write json\n");
+  file << j;
+
+  printf("close file\n");
+  file.close();
+  printf("done\n");
 }
 
 struct terms {
@@ -422,27 +530,95 @@ std::vector<std::vector<std::pair<uint64_t, double>>> index::find_matches(char *
 {
   auto terms = split_terms(line);
 
-  printf("got terms\n");
-
   std::vector<std::vector<std::pair<uint64_t, double>>> postings;
 
-  printf("get postings\n");
   for (auto &p: word_parts) {
-  printf("find matches from %s\n", p.path.c_str());
     find_part_matches(p, terms.words, postings);
   }
 
   for (auto &p: pair_parts) {
-  printf("find matches from %s\n", p.path.c_str());
     find_part_matches(p, terms.pairs, postings);
   }
 
   for (auto &p: trine_parts) {
-  printf("find matches from %s\n", p.path.c_str());
     find_part_matches(p, terms.trines, postings);
   }
 
   return postings;
+}
+
+void index_part::merge(index_part &other)
+{
+  /* TODO: could order the vector and then be able
+   * to do the sub part more quickly.
+   * But may order the whole thing / have an order
+   * for the whole thing anyway. */
+  printf("merge part '%s' into '%s'\n", other.path.c_str(), path.c_str());
+  for (size_t i = 0; i < HTCAP; i++) {
+    if (other.store[i]) {
+
+      if (store[i] == NULL) {
+        store[i] = new std::vector<std::pair<std::string, posting>>();
+        store[i]->reserve(other.store[i]->size());
+      }
+
+      for (auto &o: *other.store[i]) {
+        bool found = false;
+
+        // This will scan over the added ones from other
+        // which is pointless.
+        for (auto &p: *store[i]) {
+          if (p.first == o.first) {
+            found = true;
+            p.second.merge(o.second);
+            break;
+          }
+        }
+
+        if (!found) {
+          store[i]->emplace_back(o.first, o.second);
+        }
+      }
+    }
+  }
+}
+
+void index::merge(index &other)
+{
+  average_page_length = 0;
+
+  printf("merge\n");
+
+  for (auto &p: page_lengths) {
+    average_page_length += p.second;
+  }
+
+  for (auto &p: other.page_lengths) {
+    average_page_length += p.second;
+    page_lengths.insert(p);
+  }
+
+  average_page_length /= page_lengths.size();
+  printf("new average page length %i\n", average_page_length);
+
+  if (word_parts.empty()) {
+    word_parts.emplace_back(words, base_path + ".index.words.dat",
+        "", "");
+  }
+
+  if (pair_parts.empty()) {
+    pair_parts.emplace_back(pairs, base_path + ".index.pairs.dat",
+        "", "");
+  }
+
+  if (trine_parts.empty()) {
+    trine_parts.emplace_back(trines, base_path + ".index.trines.dat",
+        "", "");
+  }
+
+  word_parts.front().merge(other.word_parts.front());
+  pair_parts.front().merge(other.pair_parts.front());
+  trine_parts.front().merge(other.trine_parts.front());
 }
 
 }

@@ -26,7 +26,7 @@
 #include "search.h"
 
 int main(int argc, char *argv[]) {
-  search::searcher searcher("scores.json", "slatestarcodex.com.index.meta.json");
+  search::searcher searcher("scores.json", "full");
 
   searcher.load();
 

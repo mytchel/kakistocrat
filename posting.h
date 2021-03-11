@@ -16,6 +16,8 @@ struct posting {
 
   std::vector<std::pair<uint64_t, uint64_t>> decompress();
 
+  void merge(posting &other);
+
   std::vector<std::pair<uint64_t, uint64_t>> to_pairs() {
     std::vector<std::pair<uint64_t, uint64_t>> pairs;
 

@@ -19,8 +19,6 @@ struct indexer {
   void save(std::string base_path);
 };
 
-const size_t ITCAP = (1 << 17);
-
 enum index_type{words, pairs, trines};
 
 struct index_part {
@@ -31,13 +29,13 @@ struct index_part {
   std::string end;
 
   uint8_t *backing;
-  std::vector<std::pair<std::string, posting>> *store[ITCAP];
+  std::vector<std::pair<std::string, posting>> *store[HTCAP];
 
   index_part(index_type t, std::string p,
       std::string s, std::string e)
     : type(t), path(p), start(s), end(e)
   {
-    for (size_t i = 0; i < ITCAP; i++) {
+    for (size_t i = 0; i < HTCAP; i++) {
       store[i] = NULL;
     }
   }
@@ -48,7 +46,7 @@ struct index_part {
   {
     backing = p.backing;
 
-    for (size_t i = 0; i < ITCAP; i++) {
+    for (size_t i = 0; i < HTCAP; i++) {
       store[i] = p.store[i];
     }
 
@@ -61,13 +59,16 @@ struct index_part {
 
     free(backing);
 
-    for (size_t i = 0; i < ITCAP; i++) {
+    for (size_t i = 0; i < HTCAP; i++) {
       if (store[i]) delete store[i];
     }
   }
 
   bool load_backing();
   void load();
+  void save();
+
+  void merge(index_part &other);
 
   posting *find(std::string key);
 };
@@ -104,7 +105,7 @@ void to_json(nlohmann::json &j, const index_info &i);
 void from_json(const nlohmann::json &j, index_info &i);
 
 struct index {
-  size_t average_page_length;
+  size_t average_page_length{0};
 
   std::map<uint64_t, size_t> page_lengths;
 
@@ -112,11 +113,14 @@ struct index {
   std::vector<index_part> pair_parts;
   std::vector<index_part> trine_parts;
 
-  std::string path;
+  std::string base_path;
 
-  index(std::string p) : path(p) {}
+  index(std::string p) : base_path(p) {}
 
   void load();
+  void save();
+
+  void merge(index &other);
 
   void find_part_matches(index_part &p,
     std::vector<std::string> &terms,

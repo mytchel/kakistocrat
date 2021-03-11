@@ -104,6 +104,13 @@ size_t posting::load(uint8_t *buffer)
   */
 }
 
+void posting::merge(posting &other)
+{
+  for (auto &p: other.counts) {
+    counts.emplace_back(p.first, p.second);
+  }
+}
+
 std::vector<std::pair<uint64_t, uint64_t>> posting::decompress()
 {
   std::vector<std::pair<uint64_t, uint64_t>> out;
