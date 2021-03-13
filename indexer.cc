@@ -37,7 +37,7 @@ void index_site(crawl::site &s) {
   size_t max_size = 1024 * 1024 * 10;
   char *file_buf = (char *) malloc(max_size);
 
-  const size_t buf_len = 512;
+  const size_t buf_len = 80;
 
   char tok_buffer_store[buf_len]; // Provide underlying storage for tok_buffer
 	struct str tok_buffer;
@@ -222,6 +222,7 @@ int main(int argc, char *argv[]) {
 
   auto n_threads = std::thread::hardware_concurrency();
   if (n_threads > 2) {
+    // make space for merger
     n_threads--;
   }
 
@@ -260,10 +261,6 @@ int main(int argc, char *argv[]) {
       continue;
     }
 
-    &site->host >> merger_channel;
-    site++;
-
-    /*
     bool found = false;
     for (size_t i = 0; !found && i < n_threads; i++) {
       if (!out_channels[i].empty()) {
@@ -287,7 +284,6 @@ int main(int argc, char *argv[]) {
     if (!found) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    */
   }
 
   std::string *b = NULL;

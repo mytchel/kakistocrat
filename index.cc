@@ -8,12 +8,15 @@
 #include <fstream>
 #include <sstream>
 #include <cstdint>
+#include <chrono>
 
 #include "posting.h"
 #include "bst.h"
 #include "hash_table.h"
 #include "index.h"
 #include "tokenizer.h"
+
+using namespace std::chrono_literals;
 
 using nlohmann::json;
 
@@ -52,34 +55,31 @@ void index_part::load()
     return;
   }
 
-  uint32_t lists = ((uint32_t *)backing)[0];
+  uint32_t count = ((uint32_t *)backing)[0];
+
+  printf("loading %i postings\n", count);
 
   size_t offset = sizeof(uint32_t);
 
-  for (size_t i = 0; i < lists; i++) {
-    size_t n_postings = ((uint32_t *) (backing + offset))[0];
+  for (size_t i = 0; i < count; i++) {
+    size_t key_len = backing[offset];
+    offset++;
 
-    offset += sizeof(uint32_t);
+    const char *c_key = (const char *) backing + offset;
+    offset += key_len;
 
-    auto pairs = new std::vector<std::pair<std::string, posting>>();
-    pairs->reserve(n_postings);
+    posting p(backing + offset);
 
-    for (size_t j = 0; j < n_postings; j++) {
-      uint8_t *c_key = backing + offset;
-      std::string key((char *) c_key);
+    offset += p.backing_size();
 
-      offset += key.size() + 1;
+    store.emplace_back(std::piecewise_construct,
+        std::forward_as_tuple(c_key, key_len),
+        std::forward_as_tuple(p));
 
-      posting p(backing + offset);
-
-      offset += p.backing_size();
-
-      pairs->emplace_back(key, p);
-    }
-
-    uint32_t index = hash((*pairs)[0].first);
-    store[index] = pairs;
+    update_index(std::prev(store.end()));
   }
+
+  printf("loaded %i\n", store.size());
 }
 
 void write_buf(std::string path, uint8_t *buf, size_t len)
@@ -103,78 +103,58 @@ void write_buf(std::string path, uint8_t *buf, size_t len)
 
 static size_t hash_to_buf(hash_table &t, uint8_t *buffer)
 {
+  printf("get postings\n");
+
+  auto postings = t.get_postings();
+
+  printf("got %i postings\n", postings.size());
+
+  std::sort(postings.begin(), postings.end(),
+      [](auto &a, auto &b) {
+        return a.first < b.first;
+      });
+
+  printf("posings sorted, start saving\n");
+
+  ((uint32_t *) buffer)[0] = postings.size();
   size_t offset = sizeof(uint32_t);
 
-  size_t lists = 0;
-  size_t n_postings = 0;
-
-  for (size_t i = 0; i < HTCAP; i++) {
-    if (t.store[i]) {
-      lists++;
-
-      std::map<std::string, posting> postings;
-
-      t.store[i]->get_postings(postings);
-
-	    ((uint32_t *) (buffer + offset))[0] = postings.size();
-
-      offset += sizeof(uint32_t);
-
-      for (auto &p: postings) {
-        memcpy(buffer + offset, p.first.c_str(), p.first.size());
-        offset += p.first.size();
-        buffer[offset++] = 0;
-
-        offset += p.second.save(buffer + offset);
-
-        n_postings++;
-      }
+  for (auto &p: postings) {
+    size_t len = p.first.size();
+    if (len > 255) {
+      printf("what the hell: %i : '%s'\n",
+          len, p.first.c_str());
+      len = 255;
     }
+
+    buffer[offset] = len;
+
+    offset++;
+
+    memcpy(buffer + offset, p.first.data(), len);
+    offset += len;
+
+    offset += p.second.save(buffer + offset);
   }
-
-  ((uint32_t *) buffer)[0] = lists;
-
-  printf("have %i lists of %i postings\n",
-      lists, n_postings);
 
   return offset;
 }
 
-static size_t part_to_buf(
-    std::vector<std::pair<std::string, posting>> **store,
+size_t index_part::save_to_buf(
     uint8_t *buffer)
 {
+  ((uint32_t *) buffer)[0] = store.size();
   size_t offset = sizeof(uint32_t);
 
-  size_t lists = 0;
-  size_t n_postings = 0;
+  for (auto &p: store) {
+    buffer[offset] = p.first.size();
+    offset++;
 
-  for (size_t i = 0; i < HTCAP; i++) {
-    if (store[i]) {
-      lists++;
+    memcpy(buffer + offset, p.first.data(), p.first.size());
+    offset += p.first.size();
 
-      auto postings = store[i];
-
-	    ((uint32_t *) (buffer + offset))[0] = postings->size();
-
-      offset += sizeof(uint32_t);
-
-      for (auto &p: *postings) {
-        memcpy(buffer + offset, p.first.c_str(), p.first.size());
-        offset += p.first.size();
-        buffer[offset++] = 0;
-
-        offset += p.second.save(buffer + offset);
-
-        n_postings++;
-      }
-    }
+    offset += p.second.save(buffer + offset);
   }
-
-  ((uint32_t *) buffer)[0] = lists;
-
-  printf("have %i lists of %i postings\n",
-      lists, n_postings);
 
   return offset;
 }
@@ -185,7 +165,7 @@ void index_part::save()
 
   uint8_t *buffer = (uint8_t *) malloc(1024 * 1024 * 1024);
 
-  size_t len = part_to_buf(store, buffer);
+  size_t len = save_to_buf(buffer);
 
   write_buf(path, buffer, len);
 
@@ -271,24 +251,49 @@ bool index_part::load_backing()
   return true;
 }
 
-posting *index_part::find(std::string key)
+void index_part::update_index(std::list<std::pair<key, posting>>::iterator ref)
 {
-  printf("find %s\n", key.c_str());
+  uint32_t hash_key = hash(ref->first.data(), ref->first.size());
 
-  uint32_t index = hash(key);
-  if (store[index] == NULL) {
-    return NULL;
+  if (index[hash_key] == NULL) {
+    index[hash_key] = new std::vector<
+        std::list<std::pair<key, posting>>::iterator>();
+
+    index[hash_key]->reserve(5);
+
+  } else if (index[hash_key]->size() == index[hash_key]->capacity()) {
+    index[hash_key]->reserve(index[hash_key]->size() * 2);
   }
 
-  printf("have match, check list %s\n", key.c_str());
-  for (auto &p: *store[index]) {
-    printf("have match, check list %s == %s\n", key.c_str(), p.first.c_str());
-    if (p.first == key) {
-      return &p.second;
+  auto it = index[hash_key]->begin();
+  while (it != index[hash_key]->end()) {
+    if (ref->first > (*it)->first) {
+      index[hash_key]->insert(it, ref);
+      return;
+    }
+
+    it++;
+  }
+
+  index[hash_key]->push_back(ref);
+}
+
+std::list<std::pair<key, posting>>::iterator index_part::find(key k)
+{
+  uint32_t hash_key = hash(k.data(), k.size());
+  if (index[hash_key] == NULL) {
+    return store.end();
+  }
+
+  for (auto i: *index[hash_key]) {
+    if (i->first == k) {
+      return i;
+    } else if (k > i->first) {
+      return store.end();
     }
   }
 
-  return NULL;
+  return store.end();
 }
 
 static index_part load_part(index_type type, index_part_info &info)
@@ -296,6 +301,8 @@ static index_part load_part(index_type type, index_part_info &info)
   index_part part(type, info.path, info.start, info.end);
 
   part.load();
+
+  printf("loaded part %i\n", part.store.size());
 
   return part;
 }
@@ -335,6 +342,7 @@ void index::load()
 
   for (auto &p: info.word_parts) {
     word_parts.push_back(load_part(words, p));
+    printf("loaded part %i\n", word_parts.back().store.size());
   }
 
   for (auto &p: info.pair_parts) {
@@ -471,7 +479,7 @@ static terms split_terms(char *line)
  */
 static std::vector<std::pair<uint64_t, double>>
 rank(
-    std::vector<std::pair<uint64_t, uint8_t>> &postings,
+    std::list<std::pair<uint64_t, uint8_t>> &postings,
     std::map<uint64_t, size_t> &page_lengths, double avgdl)
 {
   std::vector<std::pair<uint64_t, double>> pairs_ranked;
@@ -514,9 +522,12 @@ void index::find_part_matches(
 {
 	for (auto &term: terms) {
     printf("find term %s\n", term.c_str());
-		posting *post = part.find(term);
-    if (post != NULL) {
-      auto pairs = post->to_pairs();
+
+    key k(term);
+
+		auto pair = part.find(k);
+    if (pair != part.store.end()) {
+      auto &pairs = pair->second.to_pairs();
       auto pairs_ranked = rank(pairs, page_lengths, average_page_length);
 
       postings.push_back(pairs_ranked);
@@ -547,38 +558,88 @@ std::vector<std::vector<std::pair<uint64_t, double>>> index::find_matches(char *
 
 void index_part::merge(index_part &other)
 {
-  /* TODO: could order the vector and then be able
-   * to do the sub part more quickly.
-   * But may order the whole thing / have an order
-   * for the whole thing anyway. */
   printf("merge part '%s' into '%s'\n", other.path.c_str(), path.c_str());
-  for (size_t i = 0; i < HTCAP; i++) {
-    if (other.store[i]) {
 
-      if (store[i] == NULL) {
-        store[i] = new std::vector<std::pair<std::string, posting>>();
-        store[i]->reserve(other.store[i]->size());
+  printf("need %i + %i\n", store.size(), other.store.size());
+
+  auto s_it = store.begin();
+  auto o_it = other.store.begin();
+
+  size_t added = 0;
+
+  std::chrono::nanoseconds index_total = 0ms;
+  std::chrono::nanoseconds merge_total = 0ms;
+  std::chrono::nanoseconds find_total = 0ms;
+  std::chrono::nanoseconds skip_total = 0ms;
+
+  while (s_it != store.end() && o_it != other.store.end()) {
+
+    auto start = std::chrono::system_clock::now();
+    auto it = find(o_it->first);
+    auto end = std::chrono::system_clock::now();
+    find_total += end - start;
+
+    if (it != store.end()) {
+      s_it = it;
+
+    } else {
+
+      auto start = std::chrono::system_clock::now();
+      while (s_it != store.end() && o_it->first > s_it->first) {
+        s_it++;
       }
 
-      for (auto &o: *other.store[i]) {
-        bool found = false;
+      auto end = std::chrono::system_clock::now();
+      skip_total += end - start;
+    }
 
-        // This will scan over the added ones from other
-        // which is pointless.
-        for (auto &p: *store[i]) {
-          if (p.first == o.first) {
-            found = true;
-            p.second.merge(o.second);
-            break;
-          }
-        }
+    if (s_it->first == o_it->first) {
 
-        if (!found) {
-          store[i]->emplace_back(o.first, o.second);
-        }
-      }
+      auto start = std::chrono::system_clock::now();
+
+      s_it->second.merge(o_it->second);
+
+      auto end = std::chrono::system_clock::now();
+      merge_total += end - start;
+
+      o_it++;
+
+    } else if (s_it->first > o_it->first) {
+      s_it = store.emplace(s_it, *o_it);
+
+      auto start = std::chrono::system_clock::now();
+      update_index(s_it);
+      auto end = std::chrono::system_clock::now();
+      index_total += end - start;
+
+
+      o_it++;
+
+      added++;
     }
   }
+
+  while (o_it != other.store.end()) {
+    store.emplace_back(o_it->first, o_it->second);
+
+    auto start = std::chrono::system_clock::now();
+    update_index(std::prev(store.end()));
+    auto end = std::chrono::system_clock::now();
+    index_total += end - start;
+
+
+    s_it = store.end();
+    o_it++;
+
+    added++;
+  }
+
+  printf("finished, added %lu postings\n", added);
+
+  printf("total index took %15lu\n", index_total.count());
+  printf("total merge took %15lu\n", merge_total.count());
+  printf("total skip  took %15lu\n", skip_total.count());
+  printf("total find  took %15lu\n", find_total.count());
 }
 
 void index::merge(index &other)
@@ -604,8 +665,8 @@ void index::merge(index &other)
   }
 
   word_parts.front().merge(other.word_parts.front());
-  //pair_parts.front().merge(other.pair_parts.front());
-  //trine_parts.front().merge(other.trine_parts.front());
+  pair_parts.front().merge(other.pair_parts.front());
+  trine_parts.front().merge(other.trine_parts.front());
 }
 
 }

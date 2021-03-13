@@ -57,6 +57,19 @@ add_executable(indexer_single indexer_single.cc
 
 target_link_libraries(indexer_single nlohmann_json::nlohmann_json)
 
+add_executable(merger merger.cc
+    crawl.cc
+    tokenizer.cc
+    util.cc
+    str.c
+	bst.cc
+	hash_table.cc
+	posting.cc
+	vbyte.cc
+    index.cc)
+
+target_link_libraries(merger nlohmann_json::nlohmann_json)
+
 add_executable(indexer indexer.cc
     crawl.cc
     tokenizer.cc

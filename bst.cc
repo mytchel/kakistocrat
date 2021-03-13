@@ -10,7 +10,7 @@ bst::bst(std::string &k, uint64_t val) : store(val) {
 	key = k;
 }
 
-void bst::insert(std::string &k, uint64_t val)
+bool bst::insert(std::string &k, uint64_t val)
 {
   bst *b = this;
 	for (;;) {
@@ -21,7 +21,7 @@ void bst::insert(std::string &k, uint64_t val)
         b = b->left;
       } else {
 				b->left = new bst(k, val);
-				return;
+				return true;
       }
 
     } else if (cmp > 0) {
@@ -29,19 +29,19 @@ void bst::insert(std::string &k, uint64_t val)
 			  b = b->right;
       } else {
 				b->right = new bst(k, val);
-				return;
+				return true;
       }
 
     } else {
       b->store.append(val);
-			return;
+			return false;
 		}
 	}
 }
 
-void bst::get_postings(std::map<std::string, posting> &postings)
+void bst::get_postings(std::vector<std::pair<std::string, posting>> &postings)
 {
-  postings.emplace(key, store);
+  postings.emplace_back(key, store);
   if (left) left->get_postings(postings);
   if (right) right->get_postings(postings);
 }

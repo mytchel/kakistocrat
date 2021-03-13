@@ -5,8 +5,8 @@
 
 struct bst {
   std::string key;
-  bst *left, *right;
 	posting store;
+  bst *left, *right;
 
   ~bst() {
     if (left) delete left;
@@ -15,9 +15,9 @@ struct bst {
 
   bst(std::string &key, uint64_t val);
 
-  void insert(std::string &key, uint64_t val);
+  bool insert(std::string &key, uint64_t val);
 
-  void get_postings(std::map<std::string, posting> &postings);
+  void get_postings(std::vector<std::pair<std::string, posting>> &postings);
 };
 
 #endif

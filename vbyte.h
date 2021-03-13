@@ -20,7 +20,7 @@
 
 #include <stdint.h>
 
-int vbyte_read(uint8_t *p, uint64_t *out);
+int vbyte_read(const uint8_t *p, uint64_t *out);
 int vbyte_store(uint8_t *p, uint64_t value);
 
 #endif

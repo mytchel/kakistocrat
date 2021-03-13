@@ -7,6 +7,7 @@ const size_t HTCAP = (1 << 17);
 
 struct hash_table {
   bst *store[HTCAP];
+  size_t n_postings{0};
 
   hash_table()
   {
@@ -24,9 +25,11 @@ struct hash_table {
 
   void insert(std::string key, uint64_t val);
 
-  std::map<std::string, posting> get_postings();
+  std::vector<std::pair<std::string, posting>> get_postings();
 };
 
 uint32_t hash(std::string key);
+uint32_t hash(const char *key);
+uint32_t hash(const char *key, size_t l);
 
 #endif

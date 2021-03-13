@@ -2,10 +2,11 @@
 #define POSTING_H
 
 #include <vector>
+#include <list>
 #include <stdint.h>
 
 struct posting {
-  std::vector<std::pair<uint64_t, uint8_t>> counts;
+  std::list<std::pair<uint64_t, uint8_t>> counts;
   uint8_t *backing{NULL};
 
   posting(uint64_t i) {
@@ -14,8 +15,15 @@ struct posting {
 
   posting(uint8_t *b) : backing{b} {}
 
-  void append(uint64_t id);
+  posting(const posting &p) {
+    if (p.counts.empty()) {
+      decompress(p.backing);
+    } else {
+      counts = p.counts;
+    }
+  }
 
+  size_t save_backing(uint8_t *buffer);
   size_t save(uint8_t *buffer);
 
   size_t backing_size();
@@ -24,16 +32,17 @@ struct posting {
     counts.clear();
   }
 
-  void decompress();
+  void decompress(const uint8_t *backing);
 
-  std::vector<std::pair<uint64_t, uint8_t>> to_pairs() {
+  std::list<std::pair<uint64_t, uint8_t>> & to_pairs() {
     if (counts.empty()) {
-      decompress();
+      decompress(backing);
     }
 
     return counts;
   }
 
+  void append(uint64_t id);
   void merge(posting &other);
 };
 

@@ -54,8 +54,6 @@ void index_site(crawl::site &s, search::indexer &indexer) {
 	tokenizer::token_type token;
   tokenizer::tokenizer tok;
 
-  search::indexer site_indexer;
-
   for (auto &page: s.pages) {
     if (!page.valid) continue;
 
@@ -121,7 +119,6 @@ void index_site(crawl::site &s, search::indexer &indexer) {
         std::string s(str_c(&tok_buffer));
 
         indexer.words.insert(s, id);
-        site_indexer.words.insert(s, id);
 
         if (str_length(&tok_buffer_trine) > 0) {
           str_cat(&tok_buffer_trine, " ");
@@ -130,7 +127,6 @@ void index_site(crawl::site &s, search::indexer &indexer) {
           std::string s(str_c(&tok_buffer_trine));
 
           indexer.trines.insert(s, id);
-          site_indexer.trines.insert(s, id);
 
           str_resize(&tok_buffer_trine, 0);
         }
@@ -142,7 +138,6 @@ void index_site(crawl::site &s, search::indexer &indexer) {
           std::string s(str_c(&tok_buffer_pair));
 
           indexer.pairs.insert(s, id);
-          site_indexer.pairs.insert(s, id);
 
           str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
         }
@@ -155,14 +150,11 @@ void index_site(crawl::site &s, search::indexer &indexer) {
     pfile.close();
 
     indexer.page_lengths.emplace(id, page_length);
-    site_indexer.page_lengths.emplace(id, page_length);
   }
 
   free(file_buf);
 
   printf("finished indexing site %s\n", s.host.c_str());
-
-  site_indexer.save(s.host);
 }
 
 int main(int argc, char *argv[]) {
@@ -181,13 +173,10 @@ int main(int argc, char *argv[]) {
       continue;
     }
 
-  printf("load site\n");
     site->load();
 
-  printf("index site\n");
     index_site(*site, indexer);
 
-  printf("unload site\n");
     site->unload();
     site++;
   }

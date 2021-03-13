@@ -5,6 +5,10 @@
 
 #include <stdint.h>
 
+#include <list>
+#include <string>
+#include <vector>
+
 #include "posting.h"
 #include "hash_table.h"
 
@@ -19,6 +23,101 @@ struct indexer {
   void save(std::string base_path);
 };
 
+struct key {
+  char *c_str_buf{NULL};
+  const char *c;
+  size_t len;
+  bool owner;
+
+  key(const char *cc) :
+    c(cc), len(strlen(cc)), owner(false) {}
+
+  key(const char *cc, size_t l) :
+    c(cc), len(l), owner(false) {}
+
+  key(std::string const &s) {
+    len = s.size();
+
+    char *ccc = (char *) malloc(len);
+    memcpy(ccc, s.c_str(), len);
+
+    c = ccc;
+    owner = true;
+  }
+
+  key(key const &o) {
+    len = o.len;
+
+    char *ccc = (char *) malloc(len);
+    memcpy(ccc, o.c, len);
+
+    c = ccc;
+    owner = true;
+  }
+
+/*
+  key(key &&o) {
+    len = o.len;
+    c = o.c;
+    owner = o.owner;
+    o.owner = false;
+  }
+*/
+
+  ~key() {
+    if (owner) {
+      free((void *) c);
+    }
+
+    if (c_str_buf) {
+      free((void *) c_str_buf);
+    }
+  }
+
+  size_t size() {
+    return len;
+  }
+
+  const char *data() {
+    return c;
+  }
+
+  const char *c_str() {
+    if (c_str_buf == NULL) {
+      c_str_buf = (char *) malloc(len + 1);
+      memcpy(c_str_buf, c, len);
+      c_str_buf[len] = 0;
+    }
+
+    return c_str_buf;
+  }
+
+  bool operator==(std::string &s) const {
+    if (len != s.size()) return false;
+    return memcmp(c, s.data(), len) == 0;
+  }
+
+  bool operator==(const key &o) const {
+    if (len != o.len) return false;
+    return memcmp(c, o.c, len) == 0;
+  }
+
+  bool operator>(const key &o) const {
+    size_t l = 0;;
+    while (l < len && l < o.len) {
+      if (c[l] > o.c[l]) {
+        return true;
+      } else if (c[l] < o.c[l]) {
+        return false;
+      } else {
+        l++;
+      }
+    }
+
+    return l < len;
+  }
+};
+
 enum index_type{words, pairs, trines};
 
 struct index_part {
@@ -28,19 +127,17 @@ struct index_part {
   std::string start;
   std::string end;
 
-  uint8_t *backing;
-  std::vector<std::pair<std::string, posting>> *store[HTCAP];
+  uint8_t *backing{NULL};
+
+  std::list<std::pair<key, posting>> store;
+
+  std::vector<
+    std::list<std::pair<key, posting>>::iterator
+    > *index[HTCAP]{NULL};
 
   index_part(index_type t, std::string p,
       std::string s, std::string e)
-    : type(t), path(p), start(s), end(e)
-  {
-    backing = NULL;
-
-    for (size_t i = 0; i < HTCAP; i++) {
-      store[i] = NULL;
-    }
-  }
+    : type(t), path(p), start(s), end(e) {}
 
   index_part(index_part &&p)
     : type(p.type), path(p.path),
@@ -48,9 +145,11 @@ struct index_part {
   {
     backing = p.backing;
 
+    store = std::move(p.store);
+
     for (size_t i = 0; i < HTCAP; i++) {
-      store[i] = p.store[i];
-      p.store[i] = NULL;
+      index[i] = p.index[i];
+      p.index[i] = NULL;
     }
 
     p.backing = NULL;
@@ -63,17 +162,21 @@ struct index_part {
     }
 
     for (size_t i = 0; i < HTCAP; i++) {
-      if (store[i]) delete store[i];
+      if (index[i]) {
+        delete index[i];
+      }
     }
   }
 
   bool load_backing();
   void load();
   void save();
+  size_t save_to_buf(uint8_t *buffer);
 
   void merge(index_part &other);
 
-  posting *find(std::string key);
+  void update_index(std::list<std::pair<key, posting>>::iterator);
+  std::list<std::pair<key, posting>>::iterator find(key k);
 };
 
 struct index_part_info {

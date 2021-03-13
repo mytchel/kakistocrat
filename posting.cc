@@ -10,25 +10,13 @@
 
 #include "posting.h"
 
-void posting::append(uint64_t id)
-{
-  auto &b = counts.back();
-	if (counts.size() > 0 && b.first == id) {
-    if (b.second < 255)
-      b.second++;
-
-  } else {
-    counts.emplace_back(id, 1);
-	}
-}
-
-void posting::decompress()
+void posting::decompress(const uint8_t *backing)
 {
 	size_t id_length = ((uint32_t *) backing)[0];
 	size_t count_length = ((uint32_t *) backing)[1];
 
-  uint8_t *id_store = backing + 2 * sizeof(uint32_t);
-	uint8_t *count_store = id_store + id_length;
+  const uint8_t *id_store = backing + 2 * sizeof(uint32_t);
+	const uint8_t *count_store = id_store + id_length;
 
 	uint64_t prevI = 0;
 	uint64_t docI = 0;
@@ -36,7 +24,7 @@ void posting::decompress()
 	size_t ci = 0;
 
   counts.clear();
-  counts.reserve(count_length);
+  //counts.reserve(count_length);
 
 	while (ci < count_length && di < id_length) {
 		di += vbyte_read(&id_store[di], &docI);
@@ -48,9 +36,21 @@ void posting::decompress()
 	}
 }
 
+size_t posting::save_backing(uint8_t *buffer)
+{
+  size_t s = backing_size();
+
+  memcpy(buffer, backing, s);
+  return s;
+}
+
 size_t posting::save(uint8_t *buffer)
 {
-  std::sort(counts.begin(), counts.end(),
+  if (backing != NULL) {
+    return save_backing(buffer);
+  }
+
+  counts.sort(
       [](auto &a, auto &b) {
         return a.first < b.first;
       }
@@ -90,9 +90,39 @@ size_t posting::backing_size()
 
 void posting::merge(posting &other)
 {
-  for (auto &p: other.counts) {
+  if (backing != NULL && counts.empty()) {
+    decompress(backing);
+  }
+
+  // backing is no longer valid
+  backing = NULL;
+
+  auto &pairs = other.to_pairs();
+
+  //counts.reserve(counts.size() + pairs.size());
+
+  for (auto &p: pairs) {
     counts.emplace_back(p.first, p.second);
   }
+}
+
+void posting::append(uint64_t id)
+{
+  if (backing != NULL && counts.empty()) {
+    decompress(backing);
+  }
+
+  // backing is no longer valid
+  backing = NULL;
+
+  auto &b = counts.back();
+	if (counts.size() > 0 && b.first == id) {
+    if (b.second < 255)
+      b.second++;
+
+  } else {
+    counts.emplace_back(id, 1);
+	}
 }
 
 
