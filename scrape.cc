@@ -8,6 +8,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include <unistd.h>
+#include <fcntl.h>
+
 #include <list>
 #include <vector>
 #include <set>
@@ -25,6 +28,70 @@
 #include "scrape.h"
 
 namespace scrape {
+
+std::string make_path(const std::string &url) {
+  auto host = util::get_host(url);
+  if (host.empty()) {
+    printf("make path bad input '%s'\n", url.c_str());
+    return "junk_path";
+  }
+
+  auto h = util::host_hash(host);
+
+  auto path = util::get_path(url);
+  auto path_parts = util::split_path(path);
+
+  auto file_path = "scrape_output/" + h + "/" + host;
+
+  util::make_path(file_path);
+
+  if (path_parts.empty()) {
+    return file_path + "/index";
+  }
+
+  for (int i = 0; i < path_parts.size(); i++) {
+    auto &part = path_parts[i];
+
+    bool need_dir = i + 1 < path_parts.size();
+    bool exists = false;
+
+    auto p = file_path + "/" + part;
+
+    struct stat s;
+    if (stat(p.c_str(), &s) != -1) {
+
+      bool is_dir = (s.st_mode & S_IFMT) == S_IFDIR;
+      bool is_file = (s.st_mode & S_IFMT) == S_IFDIR;
+
+      if (need_dir && !is_dir) {
+        p = file_path + "/" + part + "_dir";
+      } else if (!need_dir && is_dir) {
+        p = file_path + "/" + part + "/index";
+      }
+
+      exists = stat(p.c_str(), &s) != -1;
+
+    } else {
+      exists = false;
+    }
+
+    file_path = p;
+
+    if (!exists) {
+      if (need_dir) {
+        mkdir(file_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
+      } else {
+        int fd = creat(file_path.c_str(), S_IRUSR | S_IWUSR);
+        if (fd > 0) {
+          close(fd);
+        }
+      }
+    }
+  }
+
+  return file_path;
+}
 
 bool want_proto(std::string proto) {
   return proto.empty() || proto == "http" || proto == "https";
@@ -150,7 +217,7 @@ void site::process_sitemap_entry(
     return;
   }
 
-  auto p = util::make_path(url);
+  auto p = make_path(url);
 
   if (index_check_path(url_scanned, p)) {
     return;
@@ -211,7 +278,7 @@ void site::finish(
         continue;
       }
 
-      auto p = util::make_path(u);
+      auto p = make_path(u);
 
       if (index_check_path(url_scanned, p)) {
         continue;
@@ -368,6 +435,15 @@ bool site::disallow_url(std::string u) {
   }
 
   return false;
+}
+
+void site::init_paths() {
+  for (auto &i: url_pending) {
+    if (i.path == "") {
+      i.path = make_path(i.url);
+      printf("updating %s path to %s\n", i.url.c_str(), i.path.c_str());
+    }
+  }
 }
 
 }

@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <chrono>
 
+#include "util.h"
 #include "posting.h"
 #include "bst.h"
 #include "hash_table.h"
@@ -196,10 +197,12 @@ void indexer::save(std::string base_path)
 {
   printf("indexer save %s\n", base_path.c_str());
 
-  auto words_path = base_path + ".index.words.dat";
-  auto pairs_path = base_path + ".index.pairs.dat";
-  auto trines_path = base_path + ".index.trines.dat";
-  auto meta_path = base_path + ".index.meta.json";
+  util::make_path(base_path);
+
+  auto words_path = base_path + "/index.words.dat";
+  auto pairs_path = base_path + "/index.pairs.dat";
+  auto trines_path = base_path + "/index.trines.dat";
+  auto meta_path = base_path + "/index.meta.json";
 
   index_part_save(words, words_path);
   index_part_save(pairs, pairs_path);
@@ -317,7 +320,7 @@ void index::load()
 {
   std::ifstream file;
 
-  auto meta_path = base_path + ".index.meta.json";
+  auto meta_path = base_path + "/index.meta.json";
 
   printf("load index %s\n", meta_path.c_str());
 

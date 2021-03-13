@@ -54,10 +54,6 @@ page* site_find_add_page(site *site, std::string url, size_t level,
     return p;
   }
 
-  if (path.empty()) {
-    path = util::make_path(url);
-  }
-
   p = site->find_page_by_path(path);
   if (p != NULL) {
     if (p->level > level) p->level = level;
@@ -108,7 +104,7 @@ void crawler::enable_references(
     if (site != NULL) {
       site->max_pages += next_max_pages;
       add_sites++;
-      
+
       printf("site %s is adding available pages %i to %s\n", isite->host.c_str(),
           next_max_pages, site->host.c_str());
 
@@ -131,6 +127,7 @@ void crawler::update_site(
 
     p->title = u.title;
 
+    p->path = u.path;
     p->last_scanned = u.last_scanned;
     p->valid = u.ok;
   }
@@ -190,7 +187,7 @@ void crawler::load_seed(std::vector<std::string> url)
     if (site == NULL) {
       sites.emplace_back(next_id++, 0, host);
       site = &sites.back();
-    }  
+    }
 
     site_find_add_page(site, o, 0);
 

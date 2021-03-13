@@ -45,7 +45,9 @@ void merge(std::string out, std::vector<std::string> &in)
 
     auto start = std::chrono::system_clock::now();
 
-    search::index site_index(s);
+    std::string path = "meta/sites/" + util::host_hash(s) + "/" + s;
+
+    search::index site_index(path);
     site_index.load();
 
     auto mid = std::chrono::system_clock::now();
@@ -111,7 +113,7 @@ int main(int argc, char *argv[]) {
 
   printf("now merge the parts\n");
 
-  merge("full", parts);
+  merge("meta/full", parts);
 
   printf("done\n");
 

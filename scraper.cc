@@ -651,6 +651,8 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
       }
 
       printf("start scraping site %s\n", s->host.c_str());
+
+      s->init_paths();
       sites.push_back(s);
     }
 

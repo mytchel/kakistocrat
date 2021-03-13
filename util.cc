@@ -204,67 +204,42 @@ std::string get_dir(const std::string &path) {
   return dir;
 }
 
-std::string make_path(const std::string &url) {
-  auto host = get_host(url);
-  if (host.empty()) {
-    printf("make path bad input '%s'\n", url.c_str());
-    assert(false);
-    return "junk_path";
-  }
+std::string host_hash(const std::string &host) {
+	uint32_t result = 0;
 
-  auto path = get_path(url);
+  for (auto &c: host)
+		result = (c + 31 * result);
+
+	result = result & ((1<<15) - 1);
+
+  return std::to_string(result);
+}
+
+void make_path(const std::string &path) {
   auto path_parts = split_path(path);
 
-  auto file_path = host;
+  if (path_parts.empty()) return;
 
-  mkdir(host.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-
-  if (path_parts.empty()) {
-    return file_path + "/index";
-  }
-
+  std::string file_path = "";
   for (int i = 0; i < path_parts.size(); i++) {
     auto &part = path_parts[i];
 
-    bool need_dir = i + 1 < path_parts.size();
-    bool exists = false;
-
-    auto p = file_path + "/" + part;
+    file_path += part + "/";
 
     struct stat s;
-    if (stat(p.c_str(), &s) != -1) {
+    if (stat(file_path.c_str(), &s) != -1) {
 
       bool is_dir = (s.st_mode & S_IFMT) == S_IFDIR;
-      bool is_file = (s.st_mode & S_IFMT) == S_IFDIR;
 
-      if (need_dir && !is_dir) {
-        p = file_path + "/" + part + "_dir";
-      } else if (!need_dir && is_dir) {
-        p = file_path + "/" + part + "/index";
+      if (!is_dir) {
+        printf("make path failed for %s\n", path.c_str());
+        return;
       }
-
-      exists = stat(p.c_str(), &s) != -1;
 
     } else {
-      exists = false;
-    }
-
-    file_path = p;
-
-    if (!exists) {
-      if (need_dir) {
-        mkdir(file_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-
-      } else {
-        int fd = creat(file_path.c_str(), S_IRUSR | S_IWUSR);
-        if (fd > 0) {
-          close(fd);
-        }
-      }
+      mkdir(file_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     }
   }
-
-  return file_path;
 }
 
 bool bare_minimum_valid_url(const std::string &url) {

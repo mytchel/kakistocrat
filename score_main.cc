@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
     scores.iteration();
   }
 
-  scores.save("scores.json");
+  scores.save("meta/scores.json");
 
   return 0;
 }

@@ -7,3 +7,6 @@
 [submodule "x_seed"]
 	path = x_seed
 	url = revisionist.lackname.space:git/scraper-seed.git
+[submodule "x_spdlog"]
+	path = x_spdlog
+	url = https://github.com/gabime/spdlog.git

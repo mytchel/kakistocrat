@@ -59,13 +59,14 @@ void from_json(const json &j, page &p) {
 void site::load() {
   if (loaded) return;
 
-  std::string path = host + ".map.json";
+  std::string path = "meta/sites/" + util::host_hash(host) + "/" + host + "/map.json";
+
   std::ifstream file;
 
   file.open(path, std::ios::in);
 
   if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
+    //fprintf(stderr, "error opening file %s\n", path.c_str());
 
     // So the file gets created
     loaded = true;
@@ -91,7 +92,10 @@ void site::load() {
 void site::save() {
   if (!loaded) return;
 
-  std::string path = host + ".map.json";
+  std::string dir_path = "meta/sites/" + util::host_hash(host) + "/" + host;
+  std::string path = dir_path + "/map.json";
+  util::make_path(dir_path);
+
   std::ofstream file;
 
   json j = {
@@ -125,7 +129,9 @@ void site::unload() {
 
 void crawler::save()
 {
-  std::string path = "map.json";
+  std::string path = "meta/map.json";
+  util::make_path("meta");
+
   std::ofstream file;
 
   std::vector<json> j_sites;
@@ -162,7 +168,7 @@ void crawler::save()
 
 void crawler::load()
 {
-  std::string path = "map.json";
+  std::string path = "meta/map.json";
   std::ifstream file;
 
   file.open(path, std::ios::in);

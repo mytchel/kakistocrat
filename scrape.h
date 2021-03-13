@@ -56,6 +56,8 @@ struct site {
   site(std::string h, size_t m, std::list<index_url> s)
     : host(h), max_pages(m), url_pending(s) {}
 
+  void init_paths();
+
   void process_sitemap_entry(std::string url, std::optional<time_t> lastmod);
   void add_disallow(std::string path);
 

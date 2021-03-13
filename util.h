@@ -11,7 +11,10 @@ std::string get_host(const std::string &url);
 std::string get_path(const std::string &url);
 std::string get_dir(const std::string &path);
 
-std::string make_path(const std::string &url);
+std::vector<std::string> split_path(std::string s);
+
+void make_path(const std::string &path);
+std::string host_hash(const std::string &host);
 
 bool bare_minimum_valid_url(const std::string &url);
 

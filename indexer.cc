@@ -157,9 +157,11 @@ void index_site(crawl::site &s) {
   free(file_buf);
 
   printf("finished indexing site %s\n", s.host.c_str());
-  indexer.save(s.host);
-}
 
+  std::string path = "meta/sites/" + util::host_hash(s.host) + "/" + s.host;
+
+  indexer.save(path);
+}
 
 void
 indexer_run(Channel<std::string*> &in, Channel<std::string*> &out, int tid)
@@ -180,7 +182,9 @@ indexer_run(Channel<std::string*> &in, Channel<std::string*> &out, int tid)
 
     printf("%i start on %s\n", tid, name->c_str());
 
-    crawl::site site(*name);
+    std::string path = "meta/sites/" + util::host_hash(*name) + "/" + *name;
+
+    crawl::site site(path);
     site.load();
 
     index_site(site);
