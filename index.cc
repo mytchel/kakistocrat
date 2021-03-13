@@ -35,6 +35,7 @@ void from_json(const nlohmann::json &j, index_part_info &i)
 void to_json(nlohmann::json &j, const index_info &i)
 {
   j = json{
+      {"average_page_length", i.average_page_length},
       {"page_lengths", i.page_lengths},
       {"word_parts", i.word_parts},
       {"pair_parts", i.pair_parts},
@@ -43,6 +44,7 @@ void to_json(nlohmann::json &j, const index_info &i)
 
 void from_json(const nlohmann::json &j, index_info &i)
 {
+  j.at("average_page_length").get_to(i.average_page_length);
   j.at("page_lengths").get_to(i.page_lengths);
   j.at("word_parts").get_to(i.word_parts);
   j.at("pair_parts").get_to(i.pair_parts);
@@ -109,7 +111,7 @@ static size_t hash_to_buf(hash_table &t, uint8_t *buffer)
 
   printf("got %i postings\n", postings.size());
 
-  std::sort(postings.begin(), postings.end(),
+  postings.sort(
       [](auto &a, auto &b) {
         return a.first < b.first;
       });
@@ -143,6 +145,11 @@ static size_t hash_to_buf(hash_table &t, uint8_t *buffer)
 size_t index_part::save_to_buf(
     uint8_t *buffer)
 {
+  store.sort(
+      [](auto &a, auto &b) {
+        return a.first < b.first;
+      });
+
   ((uint32_t *) buffer)[0] = store.size();
   size_t offset = sizeof(uint32_t);
 
@@ -202,6 +209,17 @@ void indexer::save(std::string base_path)
 
   index_info info;
 
+  size_t average_page_length = 0;
+
+  if (page_lengths.size() > 0) {
+    for (auto &p: page_lengths) {
+      average_page_length += p.second;
+    }
+
+    average_page_length /= page_lengths.size();
+  }
+
+  info.average_page_length = average_page_length;
   info.page_lengths = page_lengths;
 
   info.word_parts.emplace_back(words_path);
@@ -251,6 +269,8 @@ bool index_part::load_backing()
   return true;
 }
 
+/* == is faster than <. so don't bother ordering */
+
 void index_part::update_index(std::list<std::pair<key, posting>>::iterator ref)
 {
   uint32_t hash_key = hash(ref->first.data(), ref->first.size());
@@ -263,16 +283,6 @@ void index_part::update_index(std::list<std::pair<key, posting>>::iterator ref)
 
   } else if (index[hash_key]->size() == index[hash_key]->capacity()) {
     index[hash_key]->reserve(index[hash_key]->size() * 2);
-  }
-
-  auto it = index[hash_key]->begin();
-  while (it != index[hash_key]->end()) {
-    if (ref->first > (*it)->first) {
-      index[hash_key]->insert(it, ref);
-      return;
-    }
-
-    it++;
   }
 
   index[hash_key]->push_back(ref);
@@ -288,8 +298,6 @@ std::list<std::pair<key, posting>>::iterator index_part::find(key k)
   for (auto i: *index[hash_key]) {
     if (i->first == k) {
       return i;
-    } else if (k > i->first) {
-      return store.end();
     }
   }
 
@@ -301,8 +309,6 @@ static index_part load_part(index_type type, index_part_info &info)
   index_part part(type, info.path, info.start, info.end);
 
   part.load();
-
-  printf("loaded part %i\n", part.store.size());
 
   return part;
 }
@@ -330,19 +336,10 @@ void index::load()
 
   page_lengths = info.page_lengths;
 
-  average_page_length = 0;
-
-  if (page_lengths.size() > 0) {
-    for (auto &p: page_lengths) {
-      average_page_length += p.second;
-    }
-
-    average_page_length /= page_lengths.size();
-  }
+  average_page_length = info.average_page_length;
 
   for (auto &p: info.word_parts) {
     word_parts.push_back(load_part(words, p));
-    printf("loaded part %i\n", word_parts.back().store.size());
   }
 
   for (auto &p: info.pair_parts) {
@@ -358,6 +355,18 @@ void index::save()
 {
   index_info info;
 
+  // TODO: already have this if it hasn't changed
+  size_t average_page_length = 0;
+
+  if (page_lengths.size() > 0) {
+    for (auto &p: page_lengths) {
+      average_page_length += p.second;
+    }
+
+    average_page_length /= page_lengths.size();
+  }
+
+  info.average_page_length = average_page_length;
   info.page_lengths = page_lengths;
 
   for (auto &p: word_parts) {
@@ -562,6 +571,60 @@ void index_part::merge(index_part &other)
 
   printf("need %i + %i\n", store.size(), other.store.size());
 
+  auto o_it = other.store.begin();
+
+  size_t added = 0;
+
+  std::chrono::nanoseconds index_total = 0ms;
+  std::chrono::nanoseconds merge_total = 0ms;
+  std::chrono::nanoseconds find_total = 0ms;
+  std::chrono::nanoseconds skip_total = 0ms;
+
+  while (o_it != other.store.end()) {
+
+    auto start = std::chrono::system_clock::now();
+    auto it = find(o_it->first);
+    auto end = std::chrono::system_clock::now();
+    find_total += end - start;
+
+    if (it != store.end()) {
+      auto start = std::chrono::system_clock::now();
+
+      it->second.merge(o_it->second);
+
+      auto end = std::chrono::system_clock::now();
+      merge_total += end - start;
+
+    } else {
+      store.emplace_back(*o_it);
+
+      auto start = std::chrono::system_clock::now();
+      update_index(std::prev(store.end()));
+      auto end = std::chrono::system_clock::now();
+      index_total += end - start;
+
+      added++;
+    }
+
+    o_it++;
+  }
+
+  printf("finished, added %lu postings\n", added);
+
+  if (added > 0 && other.store.size() > added) {
+  printf("total index took %15lu\n", index_total.count() / added);
+  printf("total merge took %15lu\n", merge_total.count() / (other.store.size() - added));
+  printf("total find  took %15lu\n", find_total.count() / other.store.size());
+  }
+}
+
+/*
+void index_part::merge(index_part &other)
+{
+  printf("merge part '%s' into '%s'\n", other.path.c_str(), path.c_str());
+
+  printf("need %i + %i\n", store.size(), other.store.size());
+
   auto s_it = store.begin();
   auto o_it = other.store.begin();
 
@@ -641,13 +704,11 @@ void index_part::merge(index_part &other)
   printf("total skip  took %15lu\n", skip_total.count());
   printf("total find  took %15lu\n", find_total.count());
 }
+*/
 
 void index::merge(index &other)
 {
   printf("merge\n");
-
-  // Average the page lengths here?
-  // or keep a sum for quick averaging
 
   if (word_parts.empty()) {
     word_parts.emplace_back(words, base_path + ".index.words.dat",

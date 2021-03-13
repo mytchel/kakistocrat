@@ -32,37 +32,28 @@
 
 using nlohmann::json;
 
-int main(int argc, char *argv[]) {
-  crawl::crawler crawler;
-  crawler.load();
+void merge(std::string out, std::vector<std::string> &in)
+{
+  printf("starting %s with %i\n", out.c_str(), in.size());
 
-  search::index full_index("full");
+  search::index out_index(out);
 
   using namespace std::chrono_literals;
 
-  std::chrono::nanoseconds load_total = 0ms;
-  std::chrono::nanoseconds merge_total = 0ms;
-
-  auto site = crawler.sites.begin();
-  while (site != crawler.sites.end()) {
-    if (!site->enabled) {
-      site++;
-      continue;
-    }
-
-    printf("load %s for merging\n", site->host.c_str());
+  for (auto &s: in) {
+    printf("load %s for merging\n", s.c_str());
 
     auto start = std::chrono::system_clock::now();
 
-    search::index site_index(site->host);
+    search::index site_index(s);
     site_index.load();
 
     auto mid = std::chrono::system_clock::now();
 
     std::chrono::nanoseconds load = mid - start;
 
-    printf("merge %s index\n", site->host.c_str());
-    full_index.merge(site_index);
+    printf("merge %s index\n", s.c_str());
+    out_index.merge(site_index);
 
     auto done = std::chrono::system_clock::now();
 
@@ -70,18 +61,59 @@ int main(int argc, char *argv[]) {
 
     printf("load  took %15lu\n", load.count());
     printf("merge took %15lu\n", merge.count());
-
-    load_total += load;
-    merge_total += merge;
-
-    site++;
   }
 
-  printf("saving\n");
-  full_index.save();
+  printf("saving %s\n", out.c_str());
+  out_index.save();
+}
 
-  printf("total load  took %15lu\n", load_total.count());
-  printf("total merge took %15lu\n", merge_total.count());
+int main(int argc, char *argv[]) {
+  crawl::crawler crawler;
+  crawler.load();
+
+  auto n_threads = std::thread::hardware_concurrency();
+
+  printf("starting %i threads\n", n_threads);
+
+  std::vector<std::string> in[n_threads];
+
+  size_t i = 0;
+  for (auto &site: crawler.sites) {
+    if (site.enabled) {
+      in[i++ % n_threads].push_back(site.host);
+    }
+  }
+
+  std::vector<std::thread> threads;
+  std::vector<std::string> parts;
+
+  for (size_t i = 0; i < n_threads; i++) {
+    printf("part %i has %i sites\n", i, in[i].size());
+
+    char *buf = (char*)malloc(250);
+    sprintf(buf, "part.%i", i);
+
+    std::string out(buf);
+
+    parts.emplace_back(out);
+
+    auto th = std::thread(
+        [](std::string o, std::vector<std::string> in) {
+          merge(o, in);
+        }, out, std::ref(in[i]));
+
+    threads.emplace_back(std::move(th));
+  }
+
+  for (auto &t: threads) {
+    t.join();
+  }
+
+  printf("now merge the parts\n");
+
+  merge("full", parts);
+
+  printf("done\n");
 
   return 0;
 }

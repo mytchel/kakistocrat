@@ -26,7 +26,7 @@
 #include "search.h"
 
 int main(int argc, char *argv[]) {
-  search::searcher searcher("scores.json", "meaningness.com");
+  search::searcher searcher("scores.json", "full");
 
   searcher.load();
 

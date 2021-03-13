@@ -39,7 +39,7 @@ bool bst::insert(std::string &k, uint64_t val)
 	}
 }
 
-void bst::get_postings(std::vector<std::pair<std::string, posting>> &postings)
+void bst::get_postings(std::list<std::pair<std::string, posting>> &postings)
 {
   postings.emplace_back(key, store);
   if (left) left->get_postings(postings);

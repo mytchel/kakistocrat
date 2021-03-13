@@ -44,6 +44,20 @@ add_executable(scorer score_main.cc scorer.cc crawl.cc util.cc)
 
 target_link_libraries(scorer nlohmann_json::nlohmann_json)
 
+add_executable(indexer indexer.cc
+    crawl.cc
+    tokenizer.cc
+    util.cc
+    str.c
+	bst.cc
+	hash_table.cc
+	posting.cc
+	vbyte.cc
+    index.cc)
+
+target_link_libraries(indexer nlohmann_json::nlohmann_json)
+target_link_libraries(indexer Threads::Threads)
+
 add_executable(indexer_single indexer_single.cc
     crawl.cc
     tokenizer.cc
@@ -69,8 +83,9 @@ add_executable(merger merger.cc
     index.cc)
 
 target_link_libraries(merger nlohmann_json::nlohmann_json)
+target_link_libraries(merger Threads::Threads)
 
-add_executable(indexer indexer.cc
+add_executable(merger_single merger_single.cc
     crawl.cc
     tokenizer.cc
     util.cc
@@ -81,8 +96,7 @@ add_executable(indexer indexer.cc
 	vbyte.cc
     index.cc)
 
-target_link_libraries(indexer nlohmann_json::nlohmann_json)
-target_link_libraries(indexer Threads::Threads)
+target_link_libraries(merger_single nlohmann_json::nlohmann_json)
 
 add_executable(search_cli search_cli.cc
     search.cc
@@ -101,7 +115,6 @@ target_include_directories(search_cli PUBLIC ${CURL_INCLUDE_DIRS})
 
 target_link_libraries(search_cli nlohmann_json::nlohmann_json)
 
-if (FALSE)
 add_executable(search_server search_server.cc
     search.cc
     crawl.cc
@@ -125,4 +138,3 @@ target_link_libraries(search_server z)
 
 configure_file(templates/search.html templates/search.html COPYONLY)
 
-endif()

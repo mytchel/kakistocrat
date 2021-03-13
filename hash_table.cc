@@ -53,11 +53,11 @@ void hash_table::insert(std::string key, uint64_t val)
   }
 }
 
-std::vector<std::pair<std::string, posting>> hash_table::get_postings()
+std::list<std::pair<std::string, posting>> hash_table::get_postings()
 {
-  std::vector<std::pair<std::string, posting>> postings;
+  std::list<std::pair<std::string, posting>> postings;
 
-  postings.reserve(n_postings);
+  //postings.reserve(n_postings);
 
   for (size_t i = 0; i < HTCAP; i++) {
     if (store[i]) {

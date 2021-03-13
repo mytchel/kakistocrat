@@ -25,7 +25,7 @@ struct hash_table {
 
   void insert(std::string key, uint64_t val);
 
-  std::vector<std::pair<std::string, posting>> get_postings();
+  std::list<std::pair<std::string, posting>> get_postings();
 };
 
 uint32_t hash(std::string key);

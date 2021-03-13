@@ -189,42 +189,11 @@ indexer_run(Channel<std::string*> &in, Channel<std::string*> &out, int tid)
   }
 }
 
-void
-index_merger(Channel<std::string*> &in)
-{
-  search::index full_index("full");
-
-  while (true) {
-    std::string *name;
-
-    name << in;
-
-    if (name == NULL) {
-      break;
-    }
-
-    printf("load %s for merging\n", name->c_str());
-
-    search::index site_index(*name);
-    site_index.load();
-
-    printf("merge %s index\n", name->c_str());
-    full_index.merge(site_index);
-  }
-
-  printf("saving\n");
-  full_index.save();
-}
-
 int main(int argc, char *argv[]) {
   crawl::crawler crawler;
   crawler.load();
 
   auto n_threads = std::thread::hardware_concurrency();
-  if (n_threads > 2) {
-    // make space for merger
-    n_threads--;
-  }
 
   printf("starting %i threads\n", n_threads);
 
@@ -246,14 +215,6 @@ int main(int argc, char *argv[]) {
     threads.emplace_back(std::move(th));
   }
 
-  auto th = std::thread(
-      [](Channel<std::string*> &in) {
-        index_merger(in);
-      },
-      std::ref(merger_channel));
-
-  threads.emplace_back(std::move(th));
-
   auto site = crawler.sites.begin();
   while (site != crawler.sites.end()) {
     if (!site->enabled) {
@@ -274,10 +235,6 @@ int main(int argc, char *argv[]) {
         std::string *host;
 
         host << out_channels[i];
-
-        if (host != NULL) {
-          host >> merger_channel;
-        }
       }
     }
 
@@ -287,8 +244,6 @@ int main(int argc, char *argv[]) {
   }
 
   std::string *b = NULL;
-  b >> merger_channel;
-
   for (size_t i = 0; i < n_threads; i++) {
     b >> in_channels[i];
   }

@@ -102,19 +102,19 @@ struct key {
     return memcmp(c, o.c, len) == 0;
   }
 
-  bool operator>(const key &o) const {
+  bool operator<(const key &o) const {
     size_t l = 0;;
     while (l < len && l < o.len) {
-      if (c[l] > o.c[l]) {
+      if (c[l] < o.c[l]) {
         return true;
-      } else if (c[l] < o.c[l]) {
+      } else if (c[l] > o.c[l]) {
         return false;
       } else {
         l++;
       }
     }
 
-    return l < len;
+    return l == len;
   }
 };
 
@@ -198,6 +198,7 @@ void to_json(nlohmann::json &j, const index_part_info &i);
 void from_json(const nlohmann::json &j, index_part_info &i);
 
 struct index_info {
+  size_t average_page_length;
   std::map<uint64_t, size_t> page_lengths;
 
   std::vector<index_part_info> word_parts;

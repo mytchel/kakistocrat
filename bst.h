@@ -17,7 +17,7 @@ struct bst {
 
   bool insert(std::string &key, uint64_t val);
 
-  void get_postings(std::vector<std::pair<std::string, posting>> &postings);
+  void get_postings(std::list<std::pair<std::string, posting>> &postings);
 };
 
 #endif

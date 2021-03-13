@@ -31,17 +31,13 @@
 using namespace nlohmann;
 
 int main(int argc, char *argv[]) {
-  scorer::scores index_scores;
+  search::searcher searcher("scores.json", "full");
 
-  index_scores.load("index.scores");
-
-  search::searcher searcher;
-
-  searcher.load("index.dat");
+  searcher.load();
 
   crow::SimpleApp app;
 
-  CROW_ROUTE(app, "/json")([&index_scores, &searcher](const crow::request &req){
+  CROW_ROUTE(app, "/json")([&searcher](const crow::request &req){
     auto query = req.url_params.get("q");
     if (query == nullptr) {
       crow::json::wvalue response;
@@ -54,7 +50,7 @@ int main(int argc, char *argv[]) {
     char query_c[1024];
     strncpy(query_c, query, sizeof(query_c));
 
-    auto results = searcher.search(query_c, index_scores);
+    auto results = searcher.search(query_c);
 
     crow::json::wvalue j;
 
@@ -80,7 +76,7 @@ int main(int argc, char *argv[]) {
 
   auto search_page = crow::mustache::load("search.html");
 
-  CROW_ROUTE(app, "/")([&search_page, &index_scores, &searcher](const crow::request &req){
+  CROW_ROUTE(app, "/")([&search_page, &searcher](const crow::request &req){
     crow::mustache::context ctx;
 
     auto query = req.url_params.get("q");
@@ -93,7 +89,7 @@ int main(int argc, char *argv[]) {
     char query_c[1024];
     strncpy(query_c, query, sizeof(query_c));
 
-    auto results = searcher.search(query_c, index_scores);
+    auto results = searcher.search(query_c);
 
     std::vector<crow::json::wvalue> results_r;
     for (auto &result: results) {

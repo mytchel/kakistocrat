@@ -181,7 +181,7 @@ int main(int argc, char *argv[]) {
     site++;
   }
 
-  indexer.save("full_single");
+  indexer.save("full");
 
   return 0;
 }
