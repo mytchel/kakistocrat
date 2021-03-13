@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
 
   size_t i = 0;
   for (auto &site: crawler.sites) {
-    if (site.enabled) {
+    if (site.last_scanned > 0) {
       in[i++ % n_threads].push_back(site.host);
     }
   }

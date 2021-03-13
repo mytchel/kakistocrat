@@ -69,9 +69,58 @@ page* site_find_add_page(site *site, std::string url, size_t level,
   return &site->pages.emplace_back(id, level, url, path);
 }
 
-size_t crawler::insert_site(
+void crawler::enable_references(
     site *isite,
     size_t max_add_sites,
+    size_t next_max_pages)
+{
+  std::map<uint32_t, size_t> sites_link_count;
+
+  for (auto &page: isite->pages) {
+    if (!page.valid) continue;
+
+    for (auto &l: page.links) {
+      auto it = sites_link_count.find(l.site);
+      if (it == sites_link_count.end()) {
+        sites_link_count.emplace(l.site, 1);
+      } else {
+        it->second++;
+      }
+    }
+  }
+
+  std::list<uint32_t> linked_sites;
+
+  for (auto &s: sites_link_count) {
+    linked_sites.push_back(s.first);
+  }
+
+  linked_sites.sort(
+      [&sites_link_count](uint32_t a, uint32_t b) {
+        auto aa = sites_link_count.find(a);
+        auto bb = sites_link_count.find(b);
+        return aa->second > bb->second;
+      });
+
+  size_t add_sites = 0;
+  for (auto &sid: linked_sites) {
+    if (add_sites >= max_add_sites) {
+      break;
+    }
+
+    add_sites++;
+    auto site = find_site(sid);
+    if (site != NULL) {
+      site->max_pages += next_max_pages;
+
+      printf("site %s is adding available pages %i to %s\n", isite->host.c_str(),
+          next_max_pages, site->host.c_str());
+    }
+  }
+}
+
+void crawler::update_site(
+    site *isite,
     std::list<scrape::index_url> &page_list)
 {
   isite->pages.reserve(page_list.size());
@@ -87,8 +136,6 @@ size_t crawler::insert_site(
     p->last_scanned = u.last_scanned;
     p->valid = u.ok;
   }
-
-  std::map<std::string, size_t> new_sites_link_count;
 
   for (auto &u: page_list) {
     auto p = isite->find_page(u.url);
@@ -122,52 +169,14 @@ size_t crawler::insert_site(
 
           sites.push_back(n_site);
 
-          new_sites_link_count.emplace(host, 1);
-
         } else {
           auto o_p = site_find_add_page(o_site, l, p->level + 1);
 
           p->links.emplace_back(o_site->id, o_p->id);
-
-          auto it = new_sites_link_count.find(host);
-          if (it == new_sites_link_count.end()) {
-            new_sites_link_count.emplace(host, 1);
-          } else {
-            it->second++;
-          }
         }
       }
     }
   }
-
-  std::list<std::string> new_sites;
-
-  for (auto &s: new_sites_link_count) {
-    new_sites.push_back(s.first);
-  }
-
-  new_sites.sort(
-      [&new_sites_link_count](std::string &a, std::string &b) {
-        auto aa = new_sites_link_count.find(a);
-        auto bb = new_sites_link_count.find(b);
-        return aa->second > bb->second;
-      });
-
-  size_t add_sites = 0;
-  for (auto &host: new_sites) {
-    if (add_sites >= max_add_sites) {
-      break;
-    }
-
-    add_sites++;
-    auto site = find_site(host);
-    if (!site->enabled) {
-      printf("site %s is enabling %s\n", isite->host.c_str(), site->host.c_str());
-      site->enabled = true;
-    }
-  }
-
-  return add_sites;
 }
 
 void crawler::load_seed(std::vector<std::string> url)
@@ -183,7 +192,7 @@ void crawler::load_seed(std::vector<std::string> url)
     if (o_site == NULL) {
       site n_site(next_id++, 0, host);
 
-      n_site.enabled = true;
+      n_site.max_pages = levels[0].max_pages;
 
       site_find_add_page(&n_site, o, 0);
 
@@ -200,7 +209,8 @@ bool crawler::have_next_site()
   for (auto &site: sites) {
     if (site.scraping) continue;
     if (site.scraped) continue;
-    if (!site.enabled) continue;
+    if (site.max_pages == 0) continue;
+    if (site.level >= levels.size()) continue;
 
     return true;
   }
@@ -217,7 +227,8 @@ site* crawler::get_next_site()
   for (auto &site: sites) {
     if (site.scraping) continue;
     if (site.scraped) continue;
-    if (!site.enabled) continue;
+    if (site.max_pages == 0) continue;
+    if (site.level >= levels.size()) continue;
 
     if (s == NULL || site.level < s->level) {
       s = &site;
@@ -237,7 +248,7 @@ site* crawler::get_next_site()
   return s;
 }
 
-void crawler::crawl(std::vector<level> levels)
+void crawler::crawl()
 {
   auto n_threads = std::thread::hardware_concurrency();
   // TODO: get from file limit
@@ -324,12 +335,17 @@ void crawler::crawl(std::vector<level> levels)
         site->scraping = false;
         site->last_scanned = time(NULL);
 
-        size_t added = insert_site(site,
-            levels[site->level].max_add_sites,
-            s->url_scanned);
+        update_site(site, s->url_scanned);
 
-        printf("site finished for level %zu with %3zu (+ %3zu unchanged) pages, %2zu external: %s\n",
-            site->level, s->url_scanned.size(), s->url_unchanged.size(), added,
+        if (site->level + 1 < levels.size()) {
+          auto level = levels[site->level];
+          auto next_level = levels[site->level + 1];
+
+          enable_references(site, level.max_add_sites, next_level.max_pages);
+        }
+
+        printf("site finished for level %zu with %3zu (+ %3zu unchanged) pages : %s\n",
+            site->level, s->url_scanned.size(), s->url_unchanged.size(),
             site->host.c_str());
 
         scrapping_sites.remove_if([s](const scrape::site &ss) {

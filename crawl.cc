@@ -79,7 +79,6 @@ void site::load() {
   j.at("id").get_to(id);
   j.at("host").get_to(host);
   j.at("level").get_to(level);
-  j.at("enabled").get_to(enabled);
   j.at("last_scanned").get_to(last_scanned);
   j.at("next_id").get_to(next_id);
   j.at("pages").get_to(pages);
@@ -99,7 +98,6 @@ void site::save() {
       {"id", id},
       {"level", level},
       {"host", host},
-      {"enabled", enabled},
       {"last_scanned", last_scanned},
       {"next_id", next_id},
       {"pages", pages}};
@@ -139,7 +137,6 @@ void crawler::save()
       {"id", s.id},
       {"host", s.host},
       {"level", s.level},
-      {"enabled", s.enabled},
       {"last_scanned", s.last_scanned}
     };
 
@@ -188,8 +185,7 @@ void crawler::load()
           s_j.at("id").get<std::uint32_t>(),
           s_j.at("level").get<size_t>(),
           s_j.at("host").get<std::string>(),
-          s_j.at("last_scanned").get<time_t>(),
-          s_j.at("enabled").get<bool>());
+          s_j.at("last_scanned").get<time_t>());
   }
 }
 

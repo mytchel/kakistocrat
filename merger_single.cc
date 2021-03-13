@@ -45,7 +45,7 @@ int main(int argc, char *argv[]) {
 
   auto site = crawler.sites.begin();
   while (site != crawler.sites.end()) {
-    if (!site->enabled) {
+    if (site->last_scanned == 0) {
       site++;
       continue;
     }
