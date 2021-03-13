@@ -196,14 +196,19 @@ void crawler::load_seed(std::vector<std::string> url)
     site->max_pages = levels[0].max_pages;
   }
 
+  spdlog::info("seed loaded, recalc page allowances");
+
   for (size_t l = 0; l < levels.size() - 1; l++) {
     auto level = levels[l];
     auto next_level = levels[l + 1];
+
+    spdlog::info("recalc page allowances level {}", l);
 
     for (auto &s: sites) {
       if (s.level != l) continue;
       if (s.max_pages > 0) {
         s.load();
+        spdlog::debug("recalc page allowances {}", s.host);
         enable_references(&s, level.max_add_sites, next_level.max_pages);
         s.unload();
       }
