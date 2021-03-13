@@ -84,7 +84,7 @@ struct curl_data {
   void finish_bad_http(int code);
   void finish_bad_net(CURLcode res);
 
-  void save();
+  bool save();
 
   std::list<std::string> find_links(std::string page_url, std::string &title);
   void process_robots();
@@ -142,24 +142,26 @@ size_t curl_cb_header_write(char *buffer, size_t size, size_t nitems, void *ctx)
   return nitems * size;
 }
 
-void curl_data::save()
+bool curl_data::save()
 {
   std::ofstream file;
 
   if (buf == NULL) {
-    return;
+    return false;
   }
 
   file.open(url.path, std::ios::out | std::ios::binary | std::ios::trunc);
 
   if (!file.is_open()) {
     fprintf(stderr, "error opening file %s for %s\n", url.path.c_str(), url.url.c_str());
-    return;
+    return false;
   }
 
   file.write(buf, size);
 
   file.close();
+
+  return true;
 }
 
 std::optional<std::string> process_link(
@@ -422,8 +424,11 @@ void curl_data::finish(std::string effective_url) {
 
     std::string title = "";
     auto urls = find_links(effective_url, title);
-    save();
-    m_site->finish(url, urls, title);
+    if (save()) {
+      m_site->finish(url, urls, title);
+    } else {
+      m_site->finish_bad(url, true);
+    }
 
   } else if (req_type == ROBOTS) {
     printf("process robots %s\n", effective_url.c_str());
@@ -517,9 +522,9 @@ CURL *make_handle(std::list<curl_data> &store, site* s, index_url u)
   curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, d);
   curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
   curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
-  curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 3L);
-  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10L);
-  curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 5L);
+  curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 5L);
+  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 30L);
+  curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 10L);
 
   curl_easy_setopt(curl_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
 
@@ -542,7 +547,7 @@ CURL *make_handle_other(std::list<curl_data> &store, site* s, request_type r, st
   curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_cb_buffer_write);
   curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, d);
   curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "crawlycralwer");
-  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 15L);
+  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 30L);
   curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 5L);
 
   curl_easy_setopt(curl_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);

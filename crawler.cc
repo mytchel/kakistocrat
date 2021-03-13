@@ -104,17 +104,17 @@ void crawler::enable_references(
 
   size_t add_sites = 0;
   for (auto &sid: linked_sites) {
-    if (add_sites >= max_add_sites) {
-      break;
-    }
-
-    add_sites++;
     auto site = find_site(sid);
     if (site != NULL) {
       site->max_pages += next_max_pages;
-
+      add_sites++;
+      
       printf("site %s is adding available pages %i to %s\n", isite->host.c_str(),
           next_max_pages, site->host.c_str());
+
+      if (add_sites >= max_add_sites) {
+        break;
+      }
     }
   }
 }
@@ -186,24 +186,28 @@ void crawler::load_seed(std::vector<std::string> url)
       continue;
     }
 
-    auto o_site = find_site(host);
-    if (o_site == NULL) {
-      site n_site(next_id++, 0, host);
+    auto site = find_site(host);
+    if (site == NULL) {
+      sites.emplace_back(next_id++, 0, host);
+      site = &sites.back();
+    }  
 
-      n_site.max_pages = levels[0].max_pages;
+    site_find_add_page(site, o, 0);
 
-      printf("give site %s %i pages\n", n_site.host.c_str(), n_site.max_pages);
+    site->max_pages = levels[0].max_pages;
+  }
 
-      site_find_add_page(&n_site, o, 0);
+  for (size_t l = 0; l < levels.size() - 1; l++) {
+    auto level = levels[l];
+    auto next_level = levels[l + 1];
 
-      sites.push_back(n_site);
-
-    } else {
-      site_find_add_page(o_site, o, 0);
-
-      o_site->max_pages = levels[0].max_pages;
-
-      printf("give site %s %i pages\n", o_site->host.c_str(), o_site->max_pages);
+    for (auto &s: sites) {
+      if (s.level != l) continue;
+      if (s.max_pages > 0) {
+        s.load();
+        enable_references(&s, level.max_add_sites, next_level.max_pages);
+        s.unload();
+      }
     }
   }
 }
