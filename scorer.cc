@@ -105,7 +105,9 @@ scores::scores(crawl::crawler &crawler)
   size_t n_pages = 0;
 
   for (auto &s: crawler.sites) {
-    if (!s.enabled) continue;
+    if (s.last_scanned == 0) {
+      continue;
+    }
 
     s.load();
 

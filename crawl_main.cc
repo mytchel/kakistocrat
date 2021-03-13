@@ -29,7 +29,11 @@ int main(int argc, char *argv[]) {
   std::vector<std::string> blacklist = util::load_list("blacklist");
   std::vector<std::string> initial_seed = util::load_list("seed");
 
-  crawl::crawler crawler;
+  std::vector<crawl::level> levels = {{5000, 5000}, {100, 50}, {5, 1}, {1, 0}};
+  //std::vector<crawl::level> levels = {{50, 5}, {10, 1}, {1, 0}};
+  //std::vector<crawl::level> levels = {{10, 0}};
+
+  crawl::crawler crawler(levels);
 
   crawler.load();
 
@@ -38,11 +42,7 @@ int main(int argc, char *argv[]) {
 
   curl_global_init(CURL_GLOBAL_ALL);
 
-  std::vector<crawl::level> levels = {{5000, 5000}, {100, 50}, {5, 1}, {1, 0}};
-  //std::vector<crawl::level> levels = {{50, 5}, {10, 1}, {1, 0}};
-  //std::vector<crawl::level> levels = {{10, 0}};
-
-  crawler.crawl(levels);
+  crawler.crawl();
 
   curl_global_cleanup();
 

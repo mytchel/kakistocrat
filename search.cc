@@ -82,6 +82,11 @@ std::vector<search_entry> searcher::search(char *line)
 
   auto postings = index.find_matches(line);
   printf("got postings %i\n", postings.size());
+  for (auto &v: postings) {
+    for (auto &p: v) {
+      printf("have %lu\n", p.first);
+    }
+  }
 
   auto results_raw = intersect_postings(postings);
   printf("got results %i\n", results_raw.size());

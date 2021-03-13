@@ -74,7 +74,7 @@ struct site {
   bool loaded{false};
   bool scraped{false};
   bool scraping{false};
-  bool enabled{false};
+  size_t max_pages{0};
 
   std::uint32_t id;
   std::string host;
@@ -92,8 +92,8 @@ struct site {
 
   site() {}
   site(std::string h) : host(h) {}
-  site(uint32_t i, size_t l, std::string h, time_t ls, bool e) :
-    id(i), level(l), host(h), last_scanned(ls), enabled(e) {
+  site(uint32_t i, size_t l, std::string h, time_t ls) :
+    id(i), level(l), host(h), last_scanned(ls) {
       scraped = last_scanned > 0;
   }
 
@@ -118,8 +118,10 @@ struct crawler {
   std::list<site> sites;
   std::uint32_t next_id{1};
   std::vector<std::string> blacklist;
+  std::vector<level> levels;
 
   crawler() {}
+  crawler(std::vector<level> l) : levels(l) {}
 
   site* find_site(std::string host);
   site* find_site(uint32_t id);
@@ -138,12 +140,15 @@ struct crawler {
   bool have_next_site();
   site* get_next_site();
 
-  size_t insert_site(
+  void update_site(site *isite,
+      std::list<scrape::index_url> &page_list);
+
+  void enable_references(
     site *isite,
     size_t max_add_sites,
-    std::list<scrape::index_url> &page_list);
+    size_t next_max_page);
 
-  void crawl(std::vector<level> levels);
+  void crawl();
 
   void save();
   void load();
