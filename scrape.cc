@@ -441,7 +441,6 @@ void site::init_paths() {
   for (auto &i: url_pending) {
     if (i.path == "") {
       i.path = make_path(i.url);
-      printf("updating %s path to %s\n", i.url.c_str(), i.path.c_str());
     }
   }
 }

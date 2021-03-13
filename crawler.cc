@@ -292,10 +292,16 @@ void crawler::crawl()
 
   while (true) {
     if (have_changes && last_save + 10s < std::chrono::system_clock::now()) {
+      last_save = std::chrono::system_clock::now();
+
       // Save the current index so exiting early doesn't loose
       // all the work that has been done
       save();
-      last_save = std::chrono::system_clock::now();
+
+      // Clear everything every so often
+      for (auto &s: sites) {
+        s.unload();
+      }
     }
 
     bool all_blocked = true;
@@ -377,11 +383,8 @@ void crawler::crawl()
             printf("transition %s from scraped to ready as %i + %i + %i < %i\n",
                 s.host.c_str(), s.last_scanned, min, r, now);
 
-            s.load();
             have_something = true;
           }
-        } else {
-          s.unload();
         }
       }
 

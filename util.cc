@@ -99,7 +99,19 @@ std::string get_host(const std::string &url) {
     }
   }
 
-  return std::string(s.begin(), s.end());
+  bool have_dot = false;
+  for (auto c: s) {
+    if (c == '.') {
+      have_dot = true;
+      break;
+    }
+  }
+
+  if (have_dot && s.size() > 3) {
+    return std::string(s.begin(), s.end());
+  } else {
+    return "";
+  }
 }
 
 std::vector<std::string> split_path(std::string s) {
