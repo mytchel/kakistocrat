@@ -121,6 +121,8 @@ void crawler::update_site(
     site *isite,
     std::list<scrape::index_url> &page_list)
 {
+  spdlog::info("update {} info", isite->host);
+
   for (auto &u: page_list) {
     auto p = site_find_add_page(isite, u.url, isite->level + 1, u.path);
 
@@ -133,6 +135,8 @@ void crawler::update_site(
     p->last_scanned = u.last_scanned;
     p->valid = u.ok;
   }
+
+  std::set<uint32_t> loaded_sites;
 
   for (auto &u: page_list) {
     auto p = isite->find_page(u.url);
@@ -156,23 +160,28 @@ void crawler::update_site(
         }
 
         site *o_site = find_site(host);
-
         if (o_site == NULL) {
-          site n_site(next_id++, p->level + 1, host);
+          sites.emplace_back(next_id++, p->level + 1, host);
+          o_site = &sites.back();
 
-          auto n_p = site_find_add_page(&n_site, l, p->level + 1);
+          loaded_sites.emplace(o_site->id);
 
-          p->links.emplace_back(n_site.id, n_p->id);
-
-          sites.push_back(n_site);
-
-        } else {
-          auto o_p = site_find_add_page(o_site, l, p->level + 1);
-
-          p->links.emplace_back(o_site->id, o_p->id);
+        } else if (o_site->loaded == 0) {
+          o_site->load();
+          loaded_sites.emplace(o_site->id);
         }
+
+        auto o_p = site_find_add_page(o_site, l, p->level + 1);
+
+        p->links.emplace_back(o_site->id, o_p->id);
       }
     }
+  }
+
+  spdlog::debug("unloading sites that {} touched", isite->host);
+  for (auto i: loaded_sites) {
+    site *o_site = find_site(i);
+    o_site->unload();
   }
 }
 
@@ -194,25 +203,6 @@ void crawler::load_seed(std::vector<std::string> url)
     site_find_add_page(site, o, 0);
 
     site->max_pages = levels[0].max_pages;
-  }
-
-  spdlog::info("seed loaded, recalc page allowances");
-
-  for (size_t l = 0; l < levels.size() - 1; l++) {
-    auto level = levels[l];
-    auto next_level = levels[l + 1];
-
-    spdlog::info("recalc page allowances level {}", l);
-
-    for (auto &s: sites) {
-      if (s.level != l) continue;
-      if (s.max_pages > 0) {
-        s.load();
-        spdlog::debug("recalc page allowances {}", s.host);
-        enable_references(&s, level.max_add_sites, next_level.max_pages);
-        s.unload();
-      }
-    }
   }
 }
 
@@ -251,10 +241,6 @@ site* crawler::get_next_site()
   std::chrono::duration<double, std::milli> elapsed = end - start;
   if (elapsed.count() > 100) {
     spdlog::info("get next site took {}ms", elapsed.count());
-  }
-
-  if (s != NULL) {
-    s->load();
   }
 
   return s;
@@ -301,13 +287,17 @@ void crawler::crawl()
     if (have_changes && last_save + 10s < std::chrono::system_clock::now()) {
       last_save = std::chrono::system_clock::now();
 
+      spdlog::info("periodic save");
+
       // Save the current index so exiting early doesn't loose
       // all the work that has been done
       save();
 
       // Clear everything every so often
       for (auto &s: sites) {
-        s.unload();
+        if (s.loaded > 0) {
+          spdlog::debug("site {} is loaded {}", s.host, s.loaded);
+        }
       }
     }
 
@@ -322,6 +312,10 @@ void crawler::crawl()
       if (thread_stats[i]) {
         auto site = get_next_site();
         if (site != NULL) {
+          spdlog::info("send site {} to be scraped", site->host);
+
+          site->load();
+
           site->scraping = true;
 
           std::list<scrape::index_url> urls;
@@ -334,6 +328,8 @@ void crawler::crawl()
           auto &s = scrapping_sites.back();
 
           &s >> in_channels[i];
+
+          site->unload();
         }
       }
 
@@ -349,8 +345,12 @@ void crawler::crawl()
           exit(1);
         }
 
+        site->load();
+
+        site->max_pages = 0;
         site->scraped = true;
         site->scraping = false;
+
         site->last_scanned = time(NULL);
 
         update_site(site, s->url_scanned);
@@ -389,6 +389,11 @@ void crawler::crawl()
           if (!s.scraped) {
             spdlog::info("transition {} from scraped to ready", s.host);
 
+            if (s.level == 0) {
+              spdlog::info("give site {} at level 0 more pages", s.host);
+              s.max_pages = levels[0].max_pages;
+            }
+
             have_something = true;
           }
         }
@@ -397,7 +402,6 @@ void crawler::crawl()
       if (!have_something) {
         delay = std::chrono::minutes(1);
         spdlog::info("have nothing");
-        save();
       }
 
     } else if (all_blocked) {

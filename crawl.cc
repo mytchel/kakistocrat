@@ -59,7 +59,8 @@ void from_json(const json &j, page &p) {
 }
 
 void site::load() {
-  if (loaded) return;
+  spdlog::debug("load {} {}", loaded, host);
+  if (loaded++ > 0) return;
 
   std::string path = "meta/sites/" + util::host_hash(host) + "/" + host + "/map.json";
 
@@ -69,9 +70,6 @@ void site::load() {
 
   if (!file.is_open()) {
     //spdlog::warn("error opening file {}", path);
-
-    // So the file gets created
-    loaded = true;
     return;
   }
 
@@ -81,18 +79,15 @@ void site::load() {
 
   j.at("id").get_to(id);
   j.at("host").get_to(host);
-  j.at("level").get_to(level);
   j.at("last_scanned").get_to(last_scanned);
   j.at("next_id").get_to(next_id);
   j.at("pages").get_to(pages);
-
-  scraped = last_scanned > 0;
-  loaded = true;
-  scraping = false;
 }
 
 void site::save() {
-  if (!loaded) return;
+  if (loaded == 0) {
+    return;
+  }
 
   std::string dir_path = "meta/sites/" + util::host_hash(host) + "/" + host;
   std::string path = dir_path + "/map.json";
@@ -102,7 +97,6 @@ void site::save() {
 
   json j = {
       {"id", id},
-      {"level", level},
       {"host", host},
       {"last_scanned", last_scanned},
       {"next_id", next_id},
@@ -121,11 +115,19 @@ void site::save() {
 }
 
 void site::unload() {
-  if (!loaded || scraping) return;
+  spdlog::debug("unload {} {}", loaded, host);
+  if (loaded == 0) {
+    return;
+  }
+
+  if (loaded > 1) {
+    loaded--;
+    return;
+  }
 
   save();
 
-  loaded = false;
+  loaded = 0;
   pages.clear();
 }
 
@@ -145,6 +147,7 @@ void crawler::save()
       {"id", s.id},
       {"host", s.host},
       {"level", s.level},
+      {"max_pages", s.max_pages},
       {"last_scanned", s.last_scanned}
     };
 
@@ -191,8 +194,9 @@ void crawler::load()
   for (auto &s_j: j.at("sites")) {
     sites.emplace_back(
           s_j.at("id").get<std::uint32_t>(),
-          s_j.at("level").get<size_t>(),
           s_j.at("host").get<std::string>(),
+          s_j.at("level").get<size_t>(),
+          s_j.at("max_pages").get<size_t>(),
           s_j.at("last_scanned").get<time_t>());
   }
 }

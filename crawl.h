@@ -71,17 +71,20 @@ void to_json(nlohmann::json &j, const page &s);
 void from_json(const nlohmann::json &j, page &s);
 
 struct site {
-  bool loaded{false};
-  bool scraped{false};
-  bool scraping{false};
-  size_t max_pages{0};
-
   std::uint32_t id;
   std::string host;
 
+  // Scanned data
   time_t last_scanned{0};
   std::uint32_t next_id{1};
   std::list<page> pages;
+
+  size_t loaded{0};
+
+  // For crawler to manage
+  bool scraped{false};
+  bool scraping{false};
+  size_t max_pages{0};
   size_t level;
 
   void load();
@@ -90,16 +93,17 @@ struct site {
 
   // For loading from json
 
-  site() {}
+//  site() {}
   site(std::string h) : host(h) {}
-  site(uint32_t i, size_t l, std::string h, time_t ls) :
-    id(i), level(l), host(h), last_scanned(ls) {
+
+  site(uint32_t i, std::string h, size_t l, size_t m, time_t ls) :
+    id(i), host(h), level(l), max_pages(m), last_scanned(ls) {
       scraped = last_scanned > 0;
   }
 
   // For creating new sites
   site(uint32_t i, size_t l, std::string h) :
-    id(i), level(l), host(h), loaded(true) {}
+    id(i), level(l), host(h), loaded(1) {}
 
   page* find_page(uint32_t id);
   page* find_page(std::string url);

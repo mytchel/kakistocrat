@@ -21,11 +21,14 @@
 #include <curl/curl.h>
 
 #include <nlohmann/json.hpp>
+#include "spdlog/spdlog.h"
 
 #include "util.h"
 #include "crawl.h"
 
 int main(int argc, char *argv[]) {
+  spdlog::set_level(spdlog::level::debug);
+
   std::vector<std::string> blacklist = util::load_list("blacklist");
   std::vector<std::string> initial_seed = util::load_list("seed");
 
