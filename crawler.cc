@@ -192,12 +192,18 @@ void crawler::load_seed(std::vector<std::string> url)
 
       n_site.max_pages = levels[0].max_pages;
 
+      printf("give site %s %i pages\n", n_site.host.c_str(), n_site.max_pages);
+
       site_find_add_page(&n_site, o, 0);
 
       sites.push_back(n_site);
 
     } else {
       site_find_add_page(o_site, o, 0);
+
+      o_site->max_pages = levels[0].max_pages;
+
+      printf("give site %s %i pages\n", o_site->host.c_str(), o_site->max_pages);
     }
   }
 }
