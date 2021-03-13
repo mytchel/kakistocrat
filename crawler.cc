@@ -74,8 +74,6 @@ size_t crawler::insert_site(
     size_t max_add_sites,
     std::list<scrape::index_url> &page_list)
 {
-  isite->pages.reserve(page_list.size());
-
   for (auto &u: page_list) {
     auto p = site_find_add_page(isite, u.url, isite->level + 1, u.path);
 

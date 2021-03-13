@@ -81,7 +81,7 @@ struct site {
 
   time_t last_scanned{0};
   std::uint32_t next_id{1};
-  std::vector<page> pages;
+  std::list<page> pages;
   size_t level;
 
   void load();

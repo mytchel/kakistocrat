@@ -38,8 +38,8 @@ int main(int argc, char *argv[]) {
 
   curl_global_init(CURL_GLOBAL_ALL);
 
-  //std::vector<crawl::level> levels = {{5000, 1000}, {100, 5}, {1, 0}};
-  std::vector<crawl::level> levels = {{50, 5}, {10, 1}, {1, 0}};
+  std::vector<crawl::level> levels = {{5000, 5000}, {100, 50}, {5, 1}, {1, 0}};
+  //std::vector<crawl::level> levels = {{50, 5}, {10, 1}, {1, 0}};
   //std::vector<crawl::level> levels = {{10, 0}};
 
   crawler.crawl(levels);
