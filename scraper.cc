@@ -425,7 +425,7 @@ void curl_data::finish(std::string effective_url) {
 
     // Sites seem to do this to facebook for some things
     if (util::get_host(effective_url) != m_site->host) {
-      spdlog::warn("redirected from {} to other site {}",
+      spdlog::trace("redirected from {} to other site {}",
           url.url, effective_url);
 
       m_site->finish_bad(url, false);
