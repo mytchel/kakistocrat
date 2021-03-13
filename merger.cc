@@ -20,6 +20,7 @@
 #include <cstdint>
 
 #include <nlohmann/json.hpp>
+#include "spdlog/spdlog.h"
 
 #include "channel.h"
 #include "util.h"
@@ -34,14 +35,14 @@ using nlohmann::json;
 
 void merge(std::string out, std::vector<std::string> &in)
 {
-  printf("starting %s with %i\n", out.c_str(), in.size());
+  spdlog::info("starting {} with {}", out, in.size());
 
   search::index out_index(out);
 
   using namespace std::chrono_literals;
 
   for (auto &s: in) {
-    printf("load %s for merging\n", s.c_str());
+    spdlog::info("load {} for merging", s);
 
     auto start = std::chrono::system_clock::now();
 
@@ -54,18 +55,18 @@ void merge(std::string out, std::vector<std::string> &in)
 
     std::chrono::nanoseconds load = mid - start;
 
-    printf("merge %s index\n", s.c_str());
+    spdlog::info("merge {} index", s);
     out_index.merge(site_index);
 
     auto done = std::chrono::system_clock::now();
 
     std::chrono::nanoseconds merge = done - mid;
 
-    printf("load  took %15lu\n", load.count());
-    printf("merge took %15lu\n", merge.count());
+    spdlog::debug("load  took {:15}", load.count());
+    spdlog::debug("merge took {:15}", merge.count());
   }
 
-  printf("saving %s\n", out.c_str());
+  spdlog::info("saving {}", out);
   out_index.save();
 }
 
@@ -75,7 +76,7 @@ int main(int argc, char *argv[]) {
 
   auto n_threads = std::thread::hardware_concurrency();
 
-  printf("starting %i threads\n", n_threads);
+  spdlog::info("starting {} threads", n_threads);
 
   std::vector<std::string> in[n_threads];
 
@@ -90,12 +91,9 @@ int main(int argc, char *argv[]) {
   std::vector<std::string> parts;
 
   for (size_t i = 0; i < n_threads; i++) {
-    printf("part %i has %i sites\n", i, in[i].size());
+    spdlog::info("part {} has {} sites", i, in[i].size());
 
-    char *buf = (char*)malloc(250);
-    sprintf(buf, "part.%i", i);
-
-    std::string out(buf);
+    std::string out = fmt::format("part.{}", i);
 
     parts.emplace_back(out);
 
@@ -111,11 +109,11 @@ int main(int argc, char *argv[]) {
     t.join();
   }
 
-  printf("now merge the parts\n");
+  spdlog::info("now merge the parts");
 
   merge("meta/full", parts);
 
-  printf("done\n");
+  spdlog::info("done");
 
   return 0;
 }

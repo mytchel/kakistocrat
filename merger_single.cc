@@ -20,6 +20,7 @@
 #include <cstdint>
 
 #include <nlohmann/json.hpp>
+#include "spdlog/spdlog.h"
 
 #include "channel.h"
 #include "util.h"
@@ -50,7 +51,7 @@ int main(int argc, char *argv[]) {
       continue;
     }
 
-    printf("load %s for merging\n", site->host.c_str());
+    spdlog::info("load {} for merging", site->host);
 
     auto start = std::chrono::system_clock::now();
 
@@ -61,15 +62,15 @@ int main(int argc, char *argv[]) {
 
     std::chrono::nanoseconds load = mid - start;
 
-    printf("merge %s index\n", site->host.c_str());
+    spdlog::info("merge {} index", site->host);
     full_index.merge(site_index);
 
     auto done = std::chrono::system_clock::now();
 
     std::chrono::nanoseconds merge = done - mid;
 
-    printf("load  took %15lu\n", load.count());
-    printf("merge took %15lu\n", merge.count());
+    spdlog::debug("load  took {:15}", load.count());
+    spdlog::debug("merge took {:15}", merge.count());
 
     load_total += load;
     merge_total += merge;
@@ -77,11 +78,11 @@ int main(int argc, char *argv[]) {
     site++;
   }
 
-  printf("saving\n");
+  spdlog::info("saving");
   full_index.save();
 
-  printf("total load  took %15lu\n", load_total.count());
-  printf("total merge took %15lu\n", merge_total.count());
+  spdlog::debug("total load  took {:15}", load_total.count());
+  spdlog::debug("total merge took {:15}", merge_total.count());
 
   return 0;
 }

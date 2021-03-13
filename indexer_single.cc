@@ -19,6 +19,7 @@
 #include <cstdint>
 
 #include <nlohmann/json.hpp>
+#include "spdlog/spdlog.h"
 
 #include "channel.h"
 #include "util.h"
@@ -32,7 +33,7 @@
 using nlohmann::json;
 
 void index_site(crawl::site &s, search::indexer &indexer) {
-  printf("index site %s\n", s.host.c_str());
+  spdlog::info("index site {}", s.host);
 
   size_t max_size = 1024 * 1024 * 10;
   char *file_buf = (char *) malloc(max_size);
@@ -64,13 +65,13 @@ void index_site(crawl::site &s, search::indexer &indexer) {
     pfile.open(page.path, std::ios::in | std::ios::binary);
 
     if (!pfile.is_open() || pfile.fail() || !pfile.good() || pfile.bad()) {
-      fprintf(stderr, "error opening file %s\n", page.path.c_str());
+      spdlog::warn("error opening file {}", page.path);
       continue;
     }
 
     pfile.read(file_buf, max_size);
 
-    printf("process page %lu : %s\n", id, page.url.c_str());
+    spdlog::debug("process page {} : {}", id, page.url);
     size_t len = pfile.gcount();
 
     tok.init(file_buf, len);
@@ -154,17 +155,14 @@ void index_site(crawl::site &s, search::indexer &indexer) {
 
   free(file_buf);
 
-  printf("finished indexing site %s\n", s.host.c_str());
+  spdlog::info("finished indexing site {}", s.host);
 }
 
 int main(int argc, char *argv[]) {
   crawl::crawler crawler;
   crawler.load();
 
-  printf("make indexer\n");
   search::indexer indexer;
-
-  printf("start\n");
 
   auto site = crawler.sites.begin();
   while (site != crawler.sites.end()) {

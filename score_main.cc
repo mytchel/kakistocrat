@@ -19,6 +19,7 @@
 #include <cstdint>
 
 #include <nlohmann/json.hpp>
+#include "spdlog/spdlog.h"
 
 #include "util.h"
 #include "crawl.h"
@@ -28,11 +29,10 @@ int main(int argc, char *argv[]) {
   crawl::crawler crawler;
   crawler.load();
 
-  printf("score initial from index\n");
   scorer::scores scores(crawler);
 
   for (int i = 0; i < 10; i++) {
-    printf("score iteration %i\n", i);
+    spdlog::debug("score iteration {}", i);
     scores.iteration();
   }
 

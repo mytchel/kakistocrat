@@ -16,6 +16,7 @@
 #include <cstdint>
 
 #include <nlohmann/json.hpp>
+#include "spdlog/spdlog.h"
 
 #include "channel.h"
 #include "util.h"
@@ -91,7 +92,7 @@ void scores::iteration()
     sum += p.score;
   }
 
-  printf("total score = %f\n", sum);
+  spdlog::info("total score = {}", sum);
 
   for (auto &i: pages) {
     auto &p = i.second;
@@ -118,7 +119,7 @@ scores::scores(crawl::crawler &crawler)
     }
   }
 
-  printf("init from scrape with %lu pages\n", n_pages);
+  spdlog::info("init from scrape with {} pages", n_pages);
 
   /*
    * TODO:
@@ -188,19 +189,19 @@ scores::scores(crawl::crawler &crawler)
     sum += p.score;
   }
 
-  printf("total score = %f\n", sum);
+  spdlog::debug("total score = {}", sum);
 }
 
 void scores::save(std::string path)
 {
   std::ofstream file;
 
-  printf("save scores %lu -> %s\n", pages.size(), path.c_str());
+  spdlog::info("save scores {} -> {}", pages.size(), path);
 
   file.open(path, std::ios::out | std::ios::trunc);
 
   if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
+    spdlog::warn("error opening file {}", path);
     return;
   }
 
@@ -215,12 +216,12 @@ void scores::load(std::string path)
 {
   std::ifstream file;
 
-  printf("load %s\n", path.c_str());
+  spdlog::info("load {}", path);
 
   file.open(path, std::ios::in);
 
   if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
+    spdlog::warn("error opening file {}", path);
     return;
   }
 

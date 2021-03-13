@@ -26,6 +26,8 @@ using namespace std::chrono_literals;
 
 #include <nlohmann/json.hpp>
 
+#include "spdlog/spdlog.h"
+
 #include "util.h"
 #include "crawl.h"
 
@@ -105,8 +107,8 @@ void crawler::enable_references(
       site->max_pages += next_max_pages;
       add_sites++;
 
-      printf("site %s is adding available pages %i to %s\n", isite->host.c_str(),
-          next_max_pages, site->host.c_str());
+      spdlog::debug("site {} is adding available pages {} to {}",
+          isite->host, next_max_pages, site->host);
 
       if (add_sites >= max_add_sites) {
         break;
@@ -243,7 +245,7 @@ site* crawler::get_next_site()
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<double, std::milli> elapsed = end - start;
   if (elapsed.count() > 100) {
-    printf("get next site took %fms\n", elapsed.count());
+    spdlog::info("get next site took {}ms", elapsed.count());
   }
 
   if (s != NULL) {
@@ -259,7 +261,7 @@ void crawler::crawl()
   // TODO: get from file limit
   size_t max_con_per_thread = 100;//1000 / (2 * n_threads);
 
-  printf("starting %i threads\n", n_threads);
+  spdlog::info("starting {} threads", n_threads);
 
   Channel<scrape::site*> in_channels[n_threads];
   Channel<scrape::site*> out_channels[n_threads];
@@ -334,11 +336,11 @@ void crawler::crawl()
         scrape::site *s;
         s << out_channels[i];
 
-        printf("site finished %s\n", s->host.c_str());
+        spdlog::info("site finished {}", s->host);
 
         auto site = find_site(s->host);
         if (site == NULL) {
-          printf("site '%s' not found in map.\n", s->host.c_str());
+          spdlog::info("site '{}' not found in map.", s->host);
           exit(1);
         }
 
@@ -355,9 +357,9 @@ void crawler::crawl()
           enable_references(site, level.max_add_sites, next_level.max_pages);
         }
 
-        printf("site finished for level %zu with %3zu (+ %3zu unchanged) pages : %s\n",
+        spdlog::info("site finished for level {} with {:3} (+ {:3} unchanged) pages : {}",
             site->level, s->url_scanned.size(), s->url_unchanged.size(),
-            site->host.c_str());
+            site->host);
 
         scrapping_sites.remove_if([s](const scrape::site &ss) {
             return &ss == s;
@@ -380,8 +382,7 @@ void crawler::crawl()
           int r = rand() % ((24 * (1 + s.level) - 4) * 60 * 60);
           s.scraped = s.last_scanned + min + r < now;
           if (!s.scraped) {
-            printf("transition %s from scraped to ready as %i + %i + %i < %i\n",
-                s.host.c_str(), s.last_scanned, min, r, now);
+            spdlog::info("transition {} from scraped to ready", s.host);
 
             have_something = true;
           }
@@ -390,7 +391,7 @@ void crawler::crawl()
 
       if (!have_something) {
         delay = std::chrono::minutes(1);
-        printf("have nothing\n");
+        spdlog::info("have nothing");
         save();
       }
 

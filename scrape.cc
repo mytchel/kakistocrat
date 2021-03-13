@@ -32,7 +32,6 @@ namespace scrape {
 std::string make_path(const std::string &url) {
   auto host = util::get_host(url);
   if (host.empty()) {
-    printf("make path bad input '%s'\n", url.c_str());
     return "junk_path";
   }
 

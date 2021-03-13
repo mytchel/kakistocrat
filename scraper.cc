@@ -24,6 +24,8 @@
 #include <chrono>
 #include <thread>
 
+#include "spdlog/spdlog.h"
+
 using namespace std::chrono_literals;
 
 #include "util.h"
@@ -153,7 +155,7 @@ bool curl_data::save()
   file.open(url.path, std::ios::out | std::ios::binary | std::ios::trunc);
 
   if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s for %s\n", url.path.c_str(), url.url.c_str());
+    spdlog::warn("error opening file {} for {}", url.path, url.url);
     return false;
   }
 
@@ -235,9 +237,8 @@ std::list<std::string> curl_data::find_links(std::string page_url, std::string &
   auto page_dir = util::get_dir(util::get_path(page_url));
 
   if (page_proto.empty() || page_host.empty() || page_dir.empty()) {
-    printf("BAD PAGE URL '%s' : '%s' -> '%s' '%s' '%s'\n",
-        url.url.c_str(), page_url.c_str(),
-        page_proto.c_str(), page_host.c_str(), page_dir.c_str());
+    spdlog::error("BAD PAGE URL '{}' : '{}' -> '{}' '{}' '{}'",
+        url.url, page_url, page_proto, page_host, page_dir);
     return urls;
   }
 
@@ -420,7 +421,15 @@ void curl_data::process_sitemap() {
 
 void curl_data::finish(std::string effective_url) {
   if (req_type == URL) {
-    printf("process page %s\n", effective_url.c_str());
+    spdlog::trace("process page {}", effective_url);
+
+    // Sites seem to do this to facebook for some things
+    if (util::get_host(effective_url) != m_site->host) {
+      spdlog::warn("redirected from {} to other site {}",
+          url.url, effective_url);
+
+      m_site->finish_bad(url, false);
+    }
 
     std::string title = "";
     auto urls = find_links(effective_url, title);
@@ -431,14 +440,14 @@ void curl_data::finish(std::string effective_url) {
     }
 
   } else if (req_type == ROBOTS) {
-    printf("process robots %s\n", effective_url.c_str());
+    spdlog::trace("process robots {}", effective_url);
     process_robots();
 
     m_site->getting_robots = false;
     m_site->got_robots = true;
 
   } else if (req_type == SITEMAP) {
-    printf("process sitemap %s\n", effective_url.c_str());
+    spdlog::trace("process sitemap {}", effective_url);
     process_sitemap();
 
     m_site->sitemap_url_got.insert(s_url);
@@ -474,7 +483,7 @@ void curl_data::finish_bad_net(CURLcode res) {
     } else {
       if (res != CURLE_WRITE_ERROR) {
         if (res != CURLE_OPERATION_TIMEDOUT) {
-          printf("miss (%i) %s %s\n", (int) res, curl_easy_strerror(res), url.url.c_str());
+          spdlog::info("miss ({}) {} {}", (int) res, curl_easy_strerror(res), url.url);
         }
         m_site->finish_bad(url, true);
       } else {
@@ -562,7 +571,7 @@ CURL *make_handle_other(std::list<curl_data> &store, site* s, request_type r, st
 void
 scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, size_t max_con)
 {
-  printf("thread %i started\n", tid);
+  spdlog::info("thread {} started", tid);
 
   sigset_t sigpipe_mask;
   sigemptyset(&sigpipe_mask);
@@ -650,7 +659,7 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
         break;
       }
 
-      printf("start scraping site %s\n", s->host.c_str());
+      spdlog::info("start scraping site {}", s->host);
 
       s->init_paths();
       sites.push_back(s);

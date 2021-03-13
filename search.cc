@@ -18,6 +18,8 @@
 #include <sstream>
 #include <cstdint>
 
+#include "spdlog/spdlog.h"
+
 #include "util.h"
 #include "scorer.h"
 #include "tokenizer.h"
@@ -78,25 +80,26 @@ std::vector<search_entry> searcher::search(char *line)
 {
   std::vector<search_entry> results;
 
-  printf("search for %s\n", line);
+  spdlog::info("search for {}", line);
 
   auto postings = index.find_matches(line);
-  printf("got postings %i\n", postings.size());
+  spdlog::debug("got postings {}", postings.size());
+
   for (auto &v: postings) {
     for (auto &p: v) {
-      printf("have %lu\n", p.first);
+      spdlog::trace("have {}", p.first);
     }
   }
 
   auto results_raw = intersect_postings(postings);
-  printf("got results %i\n", results_raw.size());
+  spdlog::debug("got results {}", results_raw.size());
 
   for (auto &result: results_raw) {
     uint64_t page_id = result.first;
 
     auto page = scores.find_page(page_id);
     if (page == NULL) {
-      printf("failed to find page id: %llu\n", page_id);
+      spdlog::debug("failed to find page id: {}", page_id);
       continue;
     }
 

@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include "spdlog/spdlog.h"
+
 #include <vector>
 #include <set>
 #include <map>
@@ -244,7 +246,7 @@ void make_path(const std::string &path) {
       bool is_dir = (s.st_mode & S_IFMT) == S_IFDIR;
 
       if (!is_dir) {
-        printf("make path failed for %s\n", path.c_str());
+        spdlog::error("make path failed for {}", path);
         return;
       }
 
@@ -281,12 +283,12 @@ std::vector<std::string> load_list(std::string path) {
   std::ifstream file;
   std::vector<std::string> values;
 
-  printf("load %s\n", path.c_str());
+  spdlog::info("load {}", path);
 
   file.open(path, std::ios::in);
 
   if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
+    spdlog::error("error opening file {}", path);
     return values;
   }
 

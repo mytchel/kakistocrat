@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <chrono>
 
+#include "spdlog/spdlog.h"
+
 #include "util.h"
 #include "posting.h"
 #include "bst.h"
@@ -60,7 +62,7 @@ void index_part::load()
 
   uint32_t count = ((uint32_t *)backing)[0];
 
-  printf("loading %i postings\n", count);
+  spdlog::info("loading {} postings", count);
 
   size_t offset = sizeof(uint32_t);
 
@@ -82,23 +84,23 @@ void index_part::load()
     update_index(std::prev(store.end()));
   }
 
-  printf("loaded %i\n", store.size());
+  spdlog::info("loaded {}", store.size());
 }
 
 void write_buf(std::string path, uint8_t *buf, size_t len)
 {
-  printf("write %s\n", path.c_str());
+  spdlog::info("write {}", path);
 
   std::ofstream file;
 
   file.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
 
   if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
+    spdlog::info("error opening file {}", path);
     return;
   }
 
-  printf("writing %i bytes\n", len);
+  spdlog::info("writing {} bytes", len);
   file.write((const char *) buf, len);
 
   file.close();
@@ -106,18 +108,18 @@ void write_buf(std::string path, uint8_t *buf, size_t len)
 
 static size_t hash_to_buf(hash_table &t, uint8_t *buffer)
 {
-  printf("get postings\n");
+  spdlog::info("get postings");
 
   auto postings = t.get_postings();
 
-  printf("got %i postings\n", postings.size());
+  spdlog::info("got {} postings", postings.size());
 
   postings.sort(
       [](auto &a, auto &b) {
         return a.first < b.first;
       });
 
-  printf("posings sorted, start saving\n");
+  spdlog::info("posings sorted, start saving");
 
   ((uint32_t *) buffer)[0] = postings.size();
   size_t offset = sizeof(uint32_t);
@@ -125,8 +127,7 @@ static size_t hash_to_buf(hash_table &t, uint8_t *buffer)
   for (auto &p: postings) {
     size_t len = p.first.size();
     if (len > 255) {
-      printf("what the hell: %i : '%s'\n",
-          len, p.first.c_str());
+      spdlog::info("what the hell: {} : '{}'", len, p.first);
       len = 255;
     }
 
@@ -169,7 +170,7 @@ size_t index_part::save_to_buf(
 
 void index_part::save()
 {
-  printf("write %s\n", path.c_str());
+  spdlog::info("write {}", path);
 
   uint8_t *buffer = (uint8_t *) malloc(1024 * 1024 * 1024);
 
@@ -182,7 +183,7 @@ void index_part::save()
 
 void index_part_save(hash_table &t, std::string path)
 {
-  printf("write %s\n", path.c_str());
+  spdlog::info("write {}", path);
 
   uint8_t *buffer = (uint8_t *) malloc(1024 * 1024 * 1024);
 
@@ -195,7 +196,7 @@ void index_part_save(hash_table &t, std::string path)
 
 void indexer::save(std::string base_path)
 {
-  printf("indexer save %s\n", base_path.c_str());
+  spdlog::info("indexer save {}", base_path);
 
   util::make_path(base_path);
 
@@ -208,7 +209,7 @@ void indexer::save(std::string base_path)
   index_part_save(pairs, pairs_path);
   index_part_save(trines, trines_path);
 
-  printf("indexer save meta data %s\n", meta_path.c_str());
+  spdlog::info("indexer save meta data {}", meta_path);
 
   index_info info;
 
@@ -229,25 +230,25 @@ void indexer::save(std::string base_path)
   info.pair_parts.emplace_back(pairs_path);
   info.trine_parts.emplace_back(trines_path);
 
-  printf("to json\n");
+  spdlog::info("to json");
   json j = info;
-  printf("open file\n");
+  spdlog::info("open file");
 
   std::ofstream file;
 
   file.open(meta_path, std::ios::out | std::ios::trunc);
 
   if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", meta_path.c_str());
+    spdlog::info("error opening file {}", meta_path);
     return;
   }
 
-  printf("write json\n");
+  spdlog::info("write json");
   file << j;
 
-  printf("close file\n");
+  spdlog::info("close file");
   file.close();
-  printf("done\n");
+  spdlog::info("done");
 }
 
 bool index_part::load_backing()
@@ -256,12 +257,12 @@ bool index_part::load_backing()
 
   std::ifstream file;
 
-  printf("load %s\n", path.c_str());
+  spdlog::info("load {}", path);
 
   file.open(path.c_str(), std::ios::in | std::ios::binary);
 
   if (!file.is_open() || file.fail() || !file.good() || file.bad()) {
-    fprintf(stderr, "error opening file %s\n",  path.c_str());
+    spdlog::warn("error opening file {}",  path);
     return false;
   }
 
@@ -322,12 +323,12 @@ void index::load()
 
   auto meta_path = base_path + "/index.meta.json";
 
-  printf("load index %s\n", meta_path.c_str());
+  spdlog::info("load index {}", meta_path);
 
   file.open(meta_path, std::ios::in);
 
   if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", meta_path.c_str());
+    spdlog::warn("error opening file {}", meta_path);
     return;
   }
 
@@ -389,27 +390,27 @@ void index::save()
 
   auto meta_path = base_path + ".index.meta.json";
 
-  printf("indexer save meta data %s\n", meta_path.c_str());
+  spdlog::info("indexer save meta data {}", meta_path);
 
-  printf("to json\n");
+  spdlog::info("to json");
   json j = info;
-  printf("open file\n");
+  spdlog::info("open file");
 
   std::ofstream file;
 
   file.open(meta_path, std::ios::out | std::ios::trunc);
 
   if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", meta_path.c_str());
+    spdlog::info("error opening file {}", meta_path);
     return;
   }
 
-  printf("write json\n");
+  spdlog::info("write json");
   file << j;
 
-  printf("close file\n");
+  spdlog::info("close file");
   file.close();
-  printf("done\n");
+  spdlog::info("done");
 }
 
 struct terms {
@@ -533,7 +534,7 @@ void index::find_part_matches(
     std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
 {
 	for (auto &term: terms) {
-    printf("find term %s\n", term.c_str());
+    spdlog::info("find term {}", term);
 
     key k(term);
 
@@ -570,9 +571,9 @@ std::vector<std::vector<std::pair<uint64_t, double>>> index::find_matches(char *
 
 void index_part::merge(index_part &other)
 {
-  printf("merge part '%s' into '%s'\n", other.path.c_str(), path.c_str());
+  spdlog::info("merge part '{}' into '{}'", other.path, path);
 
-  printf("need %i + %i\n", store.size(), other.store.size());
+  spdlog::debug("need {} + {}", store.size(), other.store.size());
 
   auto o_it = other.store.begin();
 
@@ -612,21 +613,21 @@ void index_part::merge(index_part &other)
     o_it++;
   }
 
-  printf("finished, added %lu postings\n", added);
+  spdlog::debug("finished, added {} postings", added);
 
   if (added > 0 && other.store.size() > added) {
-  printf("total index took %15lu\n", index_total.count() / added);
-  printf("total merge took %15lu\n", merge_total.count() / (other.store.size() - added));
-  printf("total find  took %15lu\n", find_total.count() / other.store.size());
+    spdlog::debug("total index took {:15}", index_total.count() / added);
+    spdlog::debug("total merge took {:15}", merge_total.count() / (other.store.size() - added));
+    spdlog::debug("total find  took {:15}", find_total.count() / other.store.size());
   }
 }
 
 /*
 void index_part::merge(index_part &other)
 {
-  printf("merge part '%s' into '%s'\n", other.path.c_str(), path.c_str());
+  spdlog::info("merge part '%s' into '%s'", other.path.c_str(), path.c_str());
 
-  printf("need %i + %i\n", store.size(), other.store.size());
+  spdlog::info("need %i + %i\n", store.size(), other.store.size());
 
   auto s_it = store.begin();
   auto o_it = other.store.begin();
@@ -700,18 +701,18 @@ void index_part::merge(index_part &other)
     added++;
   }
 
-  printf("finished, added %lu postings\n", added);
+  spdlog::info("finished, added %lu postings\n", added);
 
-  printf("total index took %15lu\n", index_total.count());
-  printf("total merge took %15lu\n", merge_total.count());
-  printf("total skip  took %15lu\n", skip_total.count());
-  printf("total find  took %15lu\n", find_total.count());
+  spdlog::info("total index took %15lu\n", index_total.count());
+  spdlog::info("total merge took %15lu\n", merge_total.count());
+  spdlog::info("total skip  took %15lu\n", skip_total.count());
+  spdlog::info("total find  took %15lu\n", find_total.count());
 }
 */
 
 void index::merge(index &other)
 {
-  printf("merge\n");
+  spdlog::info("merge");
 
   if (word_parts.empty()) {
     word_parts.emplace_back(words, base_path + ".index.words.dat",

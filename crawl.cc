@@ -15,6 +15,8 @@
 #include <cstdint>
 #include <ctime>
 
+#include "spdlog/spdlog.h"
+
 #include "util.h"
 #include "crawl.h"
 
@@ -66,7 +68,7 @@ void site::load() {
   file.open(path, std::ios::in);
 
   if (!file.is_open()) {
-    //fprintf(stderr, "error opening file %s\n", path.c_str());
+    //spdlog::warn("error opening file {}", path);
 
     // So the file gets created
     loaded = true;
@@ -109,7 +111,7 @@ void site::save() {
   file.open(path, std::ios::out | std::ios::trunc);
 
   if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
+    spdlog::warn("error opening file {}", path);
     return;
   }
 
@@ -157,7 +159,7 @@ void crawler::save()
   file.open(path, std::ios::out | std::ios::trunc);
 
   if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
+    spdlog::warn("error opening file {}", path);
     return;
   }
 
@@ -174,7 +176,7 @@ void crawler::load()
   file.open(path, std::ios::in);
 
   if (!file.is_open()) {
-    fprintf(stderr, "error opening file %s\n", path.c_str());
+    spdlog::warn("error opening file {}", path);
     return;
   }
 

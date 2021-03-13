@@ -19,6 +19,7 @@
 #include <cstdint>
 
 #include <nlohmann/json.hpp>
+#include "spdlog/spdlog.h"
 
 #include "channel.h"
 #include "util.h"
@@ -32,7 +33,7 @@
 using nlohmann::json;
 
 void index_site(crawl::site &s) {
-  printf("index site %s\n", s.host.c_str());
+  spdlog::info("index site {}", s.host);
 
   size_t max_size = 1024 * 1024 * 10;
   char *file_buf = (char *) malloc(max_size);
@@ -66,13 +67,13 @@ void index_site(crawl::site &s) {
     pfile.open(page.path, std::ios::in | std::ios::binary);
 
     if (!pfile.is_open() || pfile.fail() || !pfile.good() || pfile.bad()) {
-      fprintf(stderr, "error opening file %s\n", page.path.c_str());
+      spdlog::warn("error opening file {}", page.path);
       continue;
     }
 
     pfile.read(file_buf, max_size);
 
-    printf("process page %lu : %s\n", id, page.url.c_str());
+    spdlog::debug("process page {} : {}", id, page.url);
     size_t len = pfile.gcount();
 
     tok.init(file_buf, len);
@@ -156,7 +157,7 @@ void index_site(crawl::site &s) {
 
   free(file_buf);
 
-  printf("finished indexing site %s\n", s.host.c_str());
+  spdlog::info("finished indexing site {}", s.host);
 
   std::string path = "meta/sites/" + util::host_hash(s.host) + "/" + s.host;
 
@@ -166,7 +167,7 @@ void index_site(crawl::site &s) {
 void
 indexer_run(Channel<std::string*> &in, Channel<std::string*> &out, int tid)
 {
-  printf("thread %i started\n", tid);
+  spdlog::info("thread {} started", tid);
 
   std::string *b = NULL;
   b >> out;
@@ -180,7 +181,7 @@ indexer_run(Channel<std::string*> &in, Channel<std::string*> &out, int tid)
       break;
     }
 
-    printf("%i start on %s\n", tid, name->c_str());
+    spdlog::info("{} start on {}", tid, *name);
 
     std::string path = "meta/sites/" + util::host_hash(*name) + "/" + *name;
 
@@ -199,7 +200,7 @@ int main(int argc, char *argv[]) {
 
   auto n_threads = std::thread::hardware_concurrency();
 
-  printf("starting %i threads\n", n_threads);
+  spdlog::info("starting {} threads", n_threads);
 
   Channel<std::string*> merger_channel;
   Channel<std::string*> in_channels[n_threads];
@@ -252,7 +253,7 @@ int main(int argc, char *argv[]) {
     b >> in_channels[i];
   }
 
-  printf("wait for threads\n");
+  spdlog::info("wait for threads");
 
   for (auto &t: threads) {
     t.join();
