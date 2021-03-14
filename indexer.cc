@@ -183,9 +183,9 @@ indexer_run(Channel<std::string*> &in, Channel<std::string*> &out, int tid)
 
     spdlog::info("{} start on {}", tid, *name);
 
-    std::string path = "meta/sites/" + util::host_hash(*name) + "/" + *name;
+    //std::string path = "meta/sites/" + util::host_hash(*name) + "/" + *name;
 
-    crawl::site site(path);
+    crawl::site site(*name);
     site.load();
 
     index_site(site);

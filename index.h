@@ -198,6 +198,7 @@ void to_json(nlohmann::json &j, const index_part_info &i);
 void from_json(const nlohmann::json &j, index_part_info &i);
 
 struct index_info {
+  std::string path;
   size_t average_page_length;
   std::map<uint64_t, size_t> page_lengths;
 
@@ -205,11 +206,11 @@ struct index_info {
   std::vector<index_part_info> pair_parts;
   std::vector<index_part_info> trine_parts;
 
-  index_info() {}
-};
+  index_info(std::string p) : path(p) {}
 
-void to_json(nlohmann::json &j, const index_info &i);
-void from_json(const nlohmann::json &j, index_info &i);
+  void load();
+  void save();
+};
 
 struct index {
   size_t average_page_length{0};

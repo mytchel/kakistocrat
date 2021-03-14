@@ -28,46 +28,75 @@
 #include "crawl.h"
 #include "tokenizer.h"
 
-#include "hash_table.h"
 #include "index.h"
 
 using nlohmann::json;
 
-void merge(std::string out, std::vector<std::string> &in)
+void merge(
+    std::string w_p,
+    std::string p_p,
+    std::string t_p,
+    std::string start)
 {
-  spdlog::info("starting {} with {}", out, in.size());
+  spdlog::info("starting");
 
-  search::index out_index(out);
+  crawl::crawler crawler;
+  crawler.load();
+
+  search::index_part out_word(search::words, w_p, start, "");
+  search::index_part out_pair(search::pairs, p_p, start, "");
+  search::index_part out_trine(search::trines, t_p, start, "");
 
   using namespace std::chrono_literals;
 
-  for (auto &s: in) {
-    spdlog::info("load {} for merging", s);
+  for (auto &s: crawler.sites) {
+    if (s.last_scanned == 0) continue;
 
-    auto start = std::chrono::system_clock::now();
+    spdlog::info("load {} for merging", s.host);
 
-    std::string path = "meta/sites/" + util::host_hash(s) + "/" + s;
+    auto path = fmt::format("meta/sites/{}/{}/index.meta.json", util::host_hash(s.host), s.host);
 
-    search::index site_index(path);
+    search::index_info site_index(path);
     site_index.load();
 
-    auto mid = std::chrono::system_clock::now();
+    spdlog::info("merge {} index", s.host);
 
-    std::chrono::nanoseconds load = mid - start;
+    for (auto &p: site_index.word_parts) {
+      spdlog::debug("check part starting {} == {}", p.start, start);
+      if (p.start <= start) {
+        search::index_part in(search::words, p.path, p.start, p.end);
+        in.load();
 
-    spdlog::info("merge {} index", s);
-    out_index.merge(site_index);
+        out_word.merge(in);
+      }
+    }
 
-    auto done = std::chrono::system_clock::now();
+    for (auto &p: site_index.pair_parts) {
+      spdlog::debug("check part starting {} == {}", p.start, start);
+      if (p.start <= start) {
+        search::index_part in(search::pairs, p.path, p.start, p.end);
+        in.load();
 
-    std::chrono::nanoseconds merge = done - mid;
+        out_pair.merge(in);
+      }
+    }
 
-    spdlog::debug("load  took {:15}", load.count());
-    spdlog::debug("merge took {:15}", merge.count());
+    for (auto &p: site_index.trine_parts) {
+      spdlog::debug("check part starting {} == {}", p.start, start);
+      if (p.start <= start) {
+        search::index_part in(search::trines, p.path, p.start, p.end);
+        in.load();
+
+        out_trine.merge(in);
+      }
+    }
   }
 
-  spdlog::info("saving {}", out);
-  out_index.save();
+  spdlog::info("saving");
+  out_word.save();
+  out_pair.save();
+  out_trine.save();
+  spdlog::info("thread done");
 }
 
 int main(int argc, char *argv[]) {
@@ -78,40 +107,36 @@ int main(int argc, char *argv[]) {
 
   spdlog::info("starting {} threads", n_threads);
 
-  std::vector<std::string> in[n_threads];
-
-  size_t i = 0;
-  for (auto &site: crawler.sites) {
-    if (site.last_scanned > 0) {
-      in[i++ % n_threads].push_back(site.host);
-    }
-  }
-
   std::vector<std::thread> threads;
-  std::vector<std::string> parts;
 
-  for (size_t i = 0; i < n_threads; i++) {
-    spdlog::info("part {} has {} sites", i, in[i].size());
+  std::vector<std::string> split_at;
+  split_at.emplace_back("f");
+  split_at.emplace_back("m");
+  split_at.emplace_back("t");
 
-    std::string out = fmt::format("part.{}", i);
+  search::index_info info("meta/full.index.meta.json");
 
-    parts.emplace_back(out);
+  for (auto &s: split_at) {
+    auto start = s;
 
-    auto th = std::thread(
-        [](std::string o, std::vector<std::string> in) {
-          merge(o, in);
-        }, out, std::ref(in[i]));
+    auto w_p = fmt::format("meta/full.index.words.{}.dat", start);
+    auto p_p = fmt::format("meta/full.index.pairs.{}.dat", start);
+    auto t_p = fmt::format("meta/full.index.trines.{}.dat", start);
+
+    auto th = std::thread(merge, w_p, p_p, t_p, start);
 
     threads.emplace_back(std::move(th));
+
+    info.word_parts.emplace_back(w_p, start, "");
+    info.pair_parts.emplace_back(p_p, start, "");
+    info.trine_parts.emplace_back(t_p, start, "");
   }
 
   for (auto &t: threads) {
     t.join();
   }
 
-  spdlog::info("now merge the parts");
-
-  merge("meta/full", parts);
+  info.save();
 
   spdlog::info("done");
 

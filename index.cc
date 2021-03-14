@@ -27,31 +27,64 @@ namespace search {
 
 void to_json(nlohmann::json &j, const index_part_info &i)
 {
-  j = json{{"path", i.path}};
+  j = json{
+    {"path", i.path},
+    {"start", i.start},
+    {"end", i.end}};
 }
 
 void from_json(const nlohmann::json &j, index_part_info &i)
 {
   j.at("path").get_to(i.path);
+  j.at("start").get_to(i.start);
+  j.at("end").get_to(i.end);
 }
 
-void to_json(nlohmann::json &j, const index_info &i)
+void index_info::save()
 {
-  j = json{
-      {"average_page_length", i.average_page_length},
-      {"page_lengths", i.page_lengths},
-      {"word_parts", i.word_parts},
-      {"pair_parts", i.pair_parts},
-      {"trine_parts", i.trine_parts}};
+  json j = json{
+      {"average_page_length", average_page_length},
+      {"page_lengths", page_lengths},
+      {"word_parts", word_parts},
+      {"pair_parts", pair_parts},
+      {"trine_parts", trine_parts}};
+
+  std::ofstream file;
+
+  file.open(path, std::ios::out | std::ios::trunc);
+
+  if (!file.is_open()) {
+    spdlog::warn("error opening file {}", path);
+    return;
+  }
+
+  file << j;
+
+  file.close();
 }
 
-void from_json(const nlohmann::json &j, index_info &i)
+void index_info::load()
 {
-  j.at("average_page_length").get_to(i.average_page_length);
-  j.at("page_lengths").get_to(i.page_lengths);
-  j.at("word_parts").get_to(i.word_parts);
-  j.at("pair_parts").get_to(i.pair_parts);
-  j.at("trine_parts").get_to(i.trine_parts);
+  spdlog::info("load index info {}", path);
+
+  std::ifstream file;
+
+  file.open(path, std::ios::in);
+
+  if (!file.is_open()) {
+    spdlog::warn("error opening file {}", path);
+    return;
+  }
+
+  json j = json::parse(file);
+
+  file.close();
+
+  j.at("average_page_length").get_to(average_page_length);
+  j.at("page_lengths").get_to(page_lengths);
+  j.at("word_parts").get_to(word_parts);
+  j.at("pair_parts").get_to(pair_parts);
+  j.at("trine_parts").get_to(trine_parts);
 }
 
 void index_part::load()
@@ -106,28 +139,19 @@ void write_buf(std::string path, uint8_t *buf, size_t len)
   file.close();
 }
 
-static size_t hash_to_buf(hash_table &t, uint8_t *buffer)
+static size_t hash_to_buf(
+    std::list<std::pair<std::string, posting>>::iterator &start,
+    std::list<std::pair<std::string, posting>>::iterator &end,
+    size_t count,
+    uint8_t *buffer)
 {
-  spdlog::info("get postings");
-
-  auto postings = t.get_postings();
-
-  spdlog::info("got {} postings", postings.size());
-
-  postings.sort(
-      [](auto &a, auto &b) {
-        return a.first < b.first;
-      });
-
-  spdlog::info("posings sorted, start saving");
-
-  ((uint32_t *) buffer)[0] = postings.size();
+  ((uint32_t *) buffer)[0] = count;
   size_t offset = sizeof(uint32_t);
 
-  for (auto &p: postings) {
-    size_t len = p.first.size();
+  for (auto p = start; p != end; p++) {
+    size_t len = p->first.size();
     if (len > 255) {
-      spdlog::info("what the hell: {} : '{}'", len, p.first);
+      spdlog::info("what the hell: {} : '{}'", len, p->first);
       len = 255;
     }
 
@@ -135,17 +159,16 @@ static size_t hash_to_buf(hash_table &t, uint8_t *buffer)
 
     offset++;
 
-    memcpy(buffer + offset, p.first.data(), len);
+    memcpy(buffer + offset, p->first.data(), len);
     offset += len;
 
-    offset += p.second.save(buffer + offset);
+    offset += p->second.save(buffer + offset);
   }
 
   return offset;
 }
 
-size_t index_part::save_to_buf(
-    uint8_t *buffer)
+size_t index_part::save_to_buf(uint8_t *buffer)
 {
   store.sort(
       [](auto &a, auto &b) {
@@ -181,17 +204,68 @@ void index_part::save()
   free(buffer);
 }
 
-void index_part_save(hash_table &t, std::string path)
+std::vector<index_part_info> index_part_save(hash_table &t, std::string base_path)
 {
-  spdlog::info("write {}", path);
+  std::vector<index_part_info> parts;
+
+  spdlog::info("get postings");
+
+  auto postings = t.get_postings();
+
+  spdlog::info("got {} postings", postings.size());
+
+  if (postings.empty()) {
+    return parts;
+  }
+
+  postings.sort(
+      [](auto &a, auto &b) {
+        return a.first < b.first;
+      });
+
+  spdlog::info("posings sorted, start saving");
 
   uint8_t *buffer = (uint8_t *) malloc(1024 * 1024 * 1024);
 
-  size_t len = hash_to_buf(t, buffer);
+  std::vector<std::string> split_at;
+  split_at.emplace_back("f");
+  split_at.emplace_back("m");
+  split_at.emplace_back("t");
 
-  write_buf(path, buffer, len);
+  auto split = split_at.begin();
+  auto start = postings.begin();
+  auto end = postings.begin();
+
+  size_t count = 0;
+
+  while (true) {
+    if (end == postings.end() || (split != split_at.end() && *split < end->first)) {
+      if (start != end) {
+        size_t len = hash_to_buf(start, end, count, buffer);
+
+        auto path = fmt::format("{}.{}.dat", base_path, start->first);
+        spdlog::info("write {}", path);
+
+        write_buf(path, buffer, len);
+
+        parts.emplace_back(path, start->first, std::prev(end)->first);
+      }
+      count = 0;
+      start = end;
+      split++;
+
+      if (end == postings.end()) {
+        break;
+      }
+    }
+
+    count++;
+    end++;
+  }
 
   free(buffer);
+
+  return parts;
 }
 
 void indexer::save(std::string base_path)
@@ -200,18 +274,18 @@ void indexer::save(std::string base_path)
 
   util::make_path(base_path);
 
-  auto words_path = base_path + "/index.words.dat";
-  auto pairs_path = base_path + "/index.pairs.dat";
-  auto trines_path = base_path + "/index.trines.dat";
+  auto words_path = base_path + "/index.words";
+  auto pairs_path = base_path + "/index.pairs";
+  auto trines_path = base_path + "/index.trines";
   auto meta_path = base_path + "/index.meta.json";
 
-  index_part_save(words, words_path);
-  index_part_save(pairs, pairs_path);
-  index_part_save(trines, trines_path);
+  auto word_parts = index_part_save(words, words_path);
+  auto pair_parts = index_part_save(pairs, pairs_path);
+  auto trine_parts = index_part_save(trines, trines_path);
 
   spdlog::info("indexer save meta data {}", meta_path);
 
-  index_info info;
+  index_info info(meta_path);
 
   size_t average_page_length = 0;
 
@@ -226,28 +300,12 @@ void indexer::save(std::string base_path)
   info.average_page_length = average_page_length;
   info.page_lengths = page_lengths;
 
-  info.word_parts.emplace_back(words_path);
-  info.pair_parts.emplace_back(pairs_path);
-  info.trine_parts.emplace_back(trines_path);
+  info.word_parts = word_parts;
+  info.pair_parts = pair_parts;
+  info.trine_parts = trine_parts;
 
-  spdlog::info("to json");
-  json j = info;
-  spdlog::info("open file");
+  info.save();
 
-  std::ofstream file;
-
-  file.open(meta_path, std::ios::out | std::ios::trunc);
-
-  if (!file.is_open()) {
-    spdlog::info("error opening file {}", meta_path);
-    return;
-  }
-
-  spdlog::info("write json");
-  file << j;
-
-  spdlog::info("close file");
-  file.close();
   spdlog::info("done");
 }
 
@@ -323,20 +381,9 @@ void index::load()
 
   auto meta_path = base_path + "/index.meta.json";
 
-  spdlog::info("load index {}", meta_path);
+  index_info info(meta_path);
 
-  file.open(meta_path, std::ios::in);
-
-  if (!file.is_open()) {
-    spdlog::warn("error opening file {}", meta_path);
-    return;
-  }
-
-  json j = json::parse(file);
-
-  file.close();
-
-  index_info info = j;
+  info.load();
 
   page_lengths = info.page_lengths;
 
@@ -357,7 +404,8 @@ void index::load()
 
 void index::save()
 {
-  index_info info;
+  auto meta_path = base_path + ".index.meta.json";
+  index_info info(meta_path);
 
   // TODO: already have this if it hasn't changed
   size_t average_page_length = 0;
@@ -388,29 +436,7 @@ void index::save()
     info.trine_parts.emplace_back(p.path, p.start, p.end);
   }
 
-  auto meta_path = base_path + ".index.meta.json";
-
-  spdlog::info("indexer save meta data {}", meta_path);
-
-  spdlog::info("to json");
-  json j = info;
-  spdlog::info("open file");
-
-  std::ofstream file;
-
-  file.open(meta_path, std::ios::out | std::ios::trunc);
-
-  if (!file.is_open()) {
-    spdlog::info("error opening file {}", meta_path);
-    return;
-  }
-
-  spdlog::info("write json");
-  file << j;
-
-  spdlog::info("close file");
-  file.close();
-  spdlog::info("done");
+  info.save();
 }
 
 struct terms {
