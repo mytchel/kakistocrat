@@ -23,6 +23,14 @@ struct posting {
     }
   }
 
+  posting(posting &&p) {
+    if (p.counts.empty()) {
+      decompress(p.backing);
+    } else {
+      counts = std::move(p.counts);
+    }
+  }
+
   size_t save_backing(uint8_t *buffer);
   size_t save(uint8_t *buffer);
 

@@ -221,14 +221,12 @@ struct index {
   std::vector<index_part> pair_parts;
   std::vector<index_part> trine_parts;
 
-  std::string base_path;
+  std::string path;
 
-  index(std::string p) : base_path(p) {}
+  index(std::string p) : path(p) {}
 
   void load();
   void save();
-
-  void merge(index &other);
 
   void find_part_matches(index_part &p,
     std::vector<std::string> &terms,

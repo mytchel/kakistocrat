@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
     std::chrono::nanoseconds load = mid - start;
 
     spdlog::info("merge {} index", site->host);
-    full_index.merge(site_index);
+    //full_index.merge(site_index);
 
     auto done = std::chrono::system_clock::now();
 

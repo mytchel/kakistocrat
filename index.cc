@@ -379,9 +379,7 @@ void index::load()
 {
   std::ifstream file;
 
-  auto meta_path = base_path + "/index.meta.json";
-
-  index_info info(meta_path);
+  index_info info(path);
 
   info.load();
 
@@ -404,8 +402,7 @@ void index::load()
 
 void index::save()
 {
-  auto meta_path = base_path + ".index.meta.json";
-  index_info info(meta_path);
+  index_info info(path);
 
   // TODO: already have this if it hasn't changed
   size_t average_page_length = 0;
@@ -560,15 +557,19 @@ void index::find_part_matches(
     std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
 {
 	for (auto &term: terms) {
-    spdlog::info("find term {}", term);
+    spdlog::info("find term {} in {}", term, part.path);
 
     key k(term);
+
+    spdlog::info("find term {}", k.c_str());
 
 		auto pair = part.find(k);
     if (pair != part.store.end()) {
       auto &pairs = pair->second.to_pairs();
+      spdlog::info("have pair {} with %i docs", pair->first.c_str(), pairs.size());
       auto pairs_ranked = rank(pairs, page_lengths, average_page_length);
 
+      spdlog::info("have ranked {} with %i docs", pair->first.c_str(), pairs_ranked.size());
       postings.push_back(pairs_ranked);
 		}
 	}
@@ -735,29 +736,5 @@ void index_part::merge(index_part &other)
   spdlog::info("total find  took %15lu\n", find_total.count());
 }
 */
-
-void index::merge(index &other)
-{
-  spdlog::info("merge");
-
-  if (word_parts.empty()) {
-    word_parts.emplace_back(words, base_path + ".index.words.dat",
-        "", "");
-  }
-
-  if (pair_parts.empty()) {
-    pair_parts.emplace_back(pairs, base_path + ".index.pairs.dat",
-        "", "");
-  }
-
-  if (trine_parts.empty()) {
-    trine_parts.emplace_back(trines, base_path + ".index.trines.dat",
-        "", "");
-  }
-
-  word_parts.front().merge(other.word_parts.front());
-  pair_parts.front().merge(other.pair_parts.front());
-  trine_parts.front().merge(other.trine_parts.front());
-}
 
 }
