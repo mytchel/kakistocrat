@@ -3,7 +3,7 @@
 
 #include "bst.h"
 
-const size_t HTCAP = (1 << 17);
+const size_t HTCAP = (1 << 16);
 
 struct hash_table {
   bst *store[HTCAP];

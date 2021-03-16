@@ -14,13 +14,20 @@
 
 namespace search {
 
+const size_t max_index_part_size = 1024 * 1024 * 200;
+
 struct indexer {
   std::map<uint64_t, size_t> page_lengths;
   hash_table words, pairs, trines;
 
+  void save(std::string base_path);
+
   indexer() {}
 
-  void save(std::string base_path);
+  void destroy() const { delete this; }
+  
+  protected:
+  ~indexer() {}
 };
 
 struct key {

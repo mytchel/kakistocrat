@@ -195,7 +195,7 @@ void index_part::save()
 {
   spdlog::info("write {}", path);
 
-  uint8_t *buffer = (uint8_t *) malloc(1024 * 1024 * 1024);
+  uint8_t *buffer = (uint8_t *) malloc(max_index_part_size);
 
   size_t len = save_to_buf(buffer);
 
@@ -225,7 +225,7 @@ std::vector<index_part_info> index_part_save(hash_table &t, std::string base_pat
 
   spdlog::info("posings sorted, start saving");
 
-  uint8_t *buffer = (uint8_t *) malloc(1024 * 1024 * 1024);
+  uint8_t *buffer = (uint8_t *) malloc(max_index_part_size);
 
   std::vector<std::string> split_at;
   split_at.emplace_back("f");
@@ -311,7 +311,7 @@ void indexer::save(std::string base_path)
 
 bool index_part::load_backing()
 {
-  backing = (uint8_t *) malloc(1024*1024*1024);
+  backing = (uint8_t *) malloc(max_index_part_size);
 
   std::ifstream file;
 
@@ -324,7 +324,7 @@ bool index_part::load_backing()
     return false;
   }
 
-  file.read((char *) backing, 1024*1024*1024);
+  file.read((char *) backing, max_index_part_size);
 
   file.close();
 
