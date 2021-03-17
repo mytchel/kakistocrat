@@ -82,6 +82,10 @@ size_t posting::save(uint8_t *buffer)
 
 size_t posting::backing_size()
 {
+  if (backing == NULL) {
+    return 0;
+  }
+
   size_t id_length = ((uint32_t *) backing)[0];
 	size_t count_length = ((uint32_t *) backing)[1];
 

@@ -80,6 +80,7 @@ struct site {
   std::list<page> pages;
 
   size_t loaded{0};
+  bool changed{false};
 
   // For crawler to manage
   bool scraped{false};
@@ -91,9 +92,6 @@ struct site {
   void unload();
   void save();
 
-  // For loading from json
-
-//  site() {}
   site(std::string h) : host(h) {}
 
   site(uint32_t i, std::string h, size_t l, size_t m, time_t ls) :
@@ -103,7 +101,7 @@ struct site {
 
   // For creating new sites
   site(uint32_t i, size_t l, std::string h) :
-    id(i), level(l), host(h), loaded(1) {}
+    id(i), level(l), host(h), loaded(1), changed(true) {}
 
   page* find_page(uint32_t id);
   page* find_page(std::string url);

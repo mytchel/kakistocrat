@@ -10,6 +10,9 @@
 #include <vector>
 #include <optional>
 
+#include <chrono>
+using namespace std::chrono_literals;
+
 #include "posting.h"
 #include "hash_table.h"
 
@@ -27,54 +30,23 @@ struct indexer {
 };
 
 struct key {
-  char *c_str_buf{NULL};
   const char *c;
-  size_t len;
-  bool owner;
+  uint8_t len;
 
   key(const char *cc) :
-    c(cc), len(strlen(cc)), owner(false) {}
+    c(cc), len(strlen(cc)) {}
 
-  key(const char *cc, size_t l) :
-    c(cc), len(l), owner(false) {}
+  key(const char *cc, uint8_t l) :
+    c(cc), len(l) {}
 
   key(std::string const &s) {
     len = s.size();
-
-    char *ccc = (char *) malloc(len);
-    memcpy(ccc, s.c_str(), len);
-
-    c = ccc;
-    owner = true;
+    c = s.data();
   }
 
   key(key const &o) {
     len = o.len;
-
-    char *ccc = (char *) malloc(len);
-    memcpy(ccc, o.c, len);
-
-    c = ccc;
-    owner = true;
-  }
-
-/*
-  key(key &&o) {
-    len = o.len;
     c = o.c;
-    owner = o.owner;
-    o.owner = false;
-  }
-*/
-
-  ~key() {
-    if (owner) {
-      free((void *) c);
-    }
-
-    if (c_str_buf) {
-      free((void *) c_str_buf);
-    }
   }
 
   size_t size() {
@@ -86,11 +58,9 @@ struct key {
   }
 
   const char *c_str() {
-    if (c_str_buf == NULL) {
-      c_str_buf = (char *) malloc(len + 1);
-      memcpy(c_str_buf, c, len);
-      c_str_buf[len] = 0;
-    }
+    char *c_str_buf = (char *) malloc(len + 1);
+    memcpy(c_str_buf, c, len);
+    c_str_buf[len] = 0;
 
     return c_str_buf;
   }
@@ -168,11 +138,20 @@ struct index_part {
 
   uint8_t *backing{NULL};
 
+  char *extra_backing{NULL};
+  size_t extra_backing_offset{0};
+  std::list<char *> extra_backing_list;
+
   std::list<std::pair<key, posting>> store;
 
   std::vector<std::vector<
       std::pair<size_t, std::list<std::pair<key, posting>>::iterator>
     >> index;
+
+
+  std::chrono::nanoseconds index_total{0ms};
+  std::chrono::nanoseconds merge_total{0ms};
+  std::chrono::nanoseconds find_total{0ms};
 
   index_part(index_type t, std::string p,
       std::optional<std::string> s,
@@ -197,6 +176,14 @@ struct index_part {
   {
     if (backing) {
       free(backing);
+    }
+
+    if (extra_backing) {
+      free(extra_backing);
+
+      for (auto b: extra_backing_list) {
+        free(b);
+      }
     }
   }
 

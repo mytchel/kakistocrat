@@ -85,7 +85,7 @@ void site::load() {
 }
 
 void site::save() {
-  if (loaded == 0) {
+  if (loaded == 0 || !changed) {
     return;
   }
 

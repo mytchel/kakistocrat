@@ -101,6 +101,14 @@ void merge(
   out_trine.save();
   spdlog::info("thread done");
 
+  spdlog::info("STAT word index  took {}", out_word.index_total.count() / 1000000);
+  spdlog::info("STAT word merge  took {}", out_word.merge_total.count() / 1000000);
+  spdlog::info("STAT word find   took {}", out_word.find_total.count() / 1000000);
+
+  spdlog::info("STAT trine index took {}", out_trine.index_total.count() / 1000000);
+  spdlog::info("STAT trine merge took {}", out_trine.merge_total.count() / 1000000);
+  spdlog::info("STAT trine find  took {}", out_trine.find_total.count() / 1000000);
+
   id >> done_channel;
 }
 
@@ -181,6 +189,7 @@ int main(int argc, char *argv[]) {
     info.trine_parts.emplace_back(t_p, start, end);
 
     start = end;
+
   } while (end);
 
   info.average_page_length = 0;
@@ -202,7 +211,9 @@ int main(int argc, char *argv[]) {
   info.average_page_length /= info.page_lengths.size();
 
   for (auto &t: threads) {
-    t.join();
+    if (t.joinable()) {
+      t.join();
+    }
   }
 
   info.save();

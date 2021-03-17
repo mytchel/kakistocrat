@@ -181,6 +181,7 @@ void crawler::update_site(
   spdlog::debug("unloading sites that {} touched", isite->host);
   for (auto i: loaded_sites) {
     site *o_site = find_site(i);
+    o_site->changed = true;
     o_site->unload();
   }
 }
@@ -202,6 +203,7 @@ void crawler::load_seed(std::vector<std::string> url)
 
     site_find_add_page(site, o, 0);
 
+    site->changed = true;
     site->max_pages = levels[0].max_pages;
   }
 }
@@ -292,13 +294,6 @@ void crawler::crawl()
       // Save the current index so exiting early doesn't loose
       // all the work that has been done
       save();
-
-      // Clear everything every so often
-      for (auto &s: sites) {
-        if (s.loaded > 0) {
-          spdlog::debug("site {} is loaded {}", s.host, s.loaded);
-        }
-      }
     }
 
     bool all_blocked = true;
@@ -370,6 +365,7 @@ void crawler::crawl()
             return &ss == s;
             });
 
+        site->changed = true;
         site->unload();
         have_changes = true;
       }

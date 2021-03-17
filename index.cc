@@ -117,7 +117,7 @@ void index_part::load()
   size_t offset = sizeof(uint32_t);
 
   for (size_t i = 0; i < count; i++) {
-    size_t key_len = backing[offset];
+    uint8_t key_len = backing[offset];
     offset++;
 
     const char *c_key = (const char *) backing + offset;
@@ -127,9 +127,7 @@ void index_part::load()
 
     offset += p.backing_size();
 
-    store.emplace_back(std::piecewise_construct,
-        std::forward_as_tuple(c_key, key_len),
-        std::forward_as_tuple(p));
+    store.emplace_back(key(c_key, key_len), std::move(p));
 
     update_index(std::prev(store.end()));
   }
@@ -166,11 +164,11 @@ static size_t hash_to_buf(
   size_t offset = sizeof(uint32_t);
 
   for (auto p = start; p != end; p++) {
-    size_t len = p->first.size();
-    if (len > 255) {
-      spdlog::info("what the hell: {} : '{}'", len, p->first);
-      len = 255;
+    if (p->first.size() > 255) {
+      spdlog::warn("what the hell: {} : '{}'", p->first.size(), p->first);
     }
+
+    uint8_t len = p->first.size();
 
     buffer[offset] = len;
 
@@ -272,6 +270,7 @@ std::vector<index_part_info> index_part_save(hash_table &t, std::string base_pat
 
         parts.emplace_back(path, start->first, std::prev(end)->first);
       }
+
       count = 0;
       start = end;
       split++;
@@ -632,10 +631,7 @@ void index_part::merge(index_part &other)
 
   size_t added = 0;
 
-  std::chrono::nanoseconds index_total = 0ms;
-  std::chrono::nanoseconds merge_total = 0ms;
-  std::chrono::nanoseconds find_total = 0ms;
-  std::chrono::nanoseconds skip_total = 0ms;
+  size_t key_buf_size = 1024 * 10;
 
   while (o_it != other.store.end()) {
     if (start && o_it->first < *start) {
@@ -654,13 +650,38 @@ void index_part::merge(index_part &other)
 
       it->second.merge(o_it->second);
 
+      o_it->second.unload();
+
       auto end = std::chrono::system_clock::now();
       merge_total += end - start;
 
     } else {
-      store.emplace_back(*o_it);
-
       auto start = std::chrono::system_clock::now();
+
+      size_t c_len = o_it->first.size();
+      size_t p_len = o_it->second.backing_size();
+
+      if (extra_backing == NULL || extra_backing_offset + c_len + p_len >= key_buf_size) {
+        if (extra_backing != NULL) {
+          extra_backing_list.push_back(extra_backing);
+        }
+
+        extra_backing = (char *) malloc(key_buf_size);
+        extra_backing_offset = 0;
+      }
+
+      char *p_buf = &extra_backing[extra_backing_offset];
+      memcpy(p_buf, o_it->second.backing, p_len);
+
+      extra_backing_offset += p_len;
+
+      char *c_buf = &extra_backing[extra_backing_offset];
+      memcpy(c_buf, o_it->first.data(), c_len);
+
+      extra_backing_offset += c_len;
+
+      store.emplace_back(key(c_buf, c_len), posting((uint8_t *) p_buf));
+
       update_index(std::prev(store.end()));
       auto end = std::chrono::system_clock::now();
       index_total += end - start;
@@ -672,100 +693,7 @@ void index_part::merge(index_part &other)
   }
 
   spdlog::debug("finished, added {} postings", added);
-
-  if (added > 0 && other.store.size() > added) {
-    spdlog::debug("total index took {:15}", index_total.count() / added);
-    spdlog::debug("total merge took {:15}", merge_total.count() / (other.store.size() - added));
-    spdlog::debug("total find  took {:15}", find_total.count() / other.store.size());
-  }
 }
 
-/*
-void index_part::merge(index_part &other)
-{
-  spdlog::info("merge part '%s' into '%s'", other.path.c_str(), path.c_str());
-
-  spdlog::info("need %i + %i\n", store.size(), other.store.size());
-
-  auto s_it = store.begin();
-  auto o_it = other.store.begin();
-
-  size_t added = 0;
-
-  std::chrono::nanoseconds index_total = 0ms;
-  std::chrono::nanoseconds merge_total = 0ms;
-  std::chrono::nanoseconds find_total = 0ms;
-  std::chrono::nanoseconds skip_total = 0ms;
-
-  while (s_it != store.end() && o_it != other.store.end()) {
-
-    auto start = std::chrono::system_clock::now();
-    auto it = find(o_it->first);
-    auto end = std::chrono::system_clock::now();
-    find_total += end - start;
-
-    if (it != store.end()) {
-      s_it = it;
-
-    } else {
-
-      auto start = std::chrono::system_clock::now();
-      while (s_it != store.end() && o_it->first > s_it->first) {
-        s_it++;
-      }
-
-      auto end = std::chrono::system_clock::now();
-      skip_total += end - start;
-    }
-
-    if (s_it->first == o_it->first) {
-
-      auto start = std::chrono::system_clock::now();
-
-      s_it->second.merge(o_it->second);
-
-      auto end = std::chrono::system_clock::now();
-      merge_total += end - start;
-
-      o_it++;
-
-    } else if (s_it->first > o_it->first) {
-      s_it = store.emplace(s_it, *o_it);
-
-      auto start = std::chrono::system_clock::now();
-      update_index(s_it);
-      auto end = std::chrono::system_clock::now();
-      index_total += end - start;
-
-
-      o_it++;
-
-      added++;
-    }
-  }
-
-  while (o_it != other.store.end()) {
-    store.emplace_back(o_it->first, o_it->second);
-
-    auto start = std::chrono::system_clock::now();
-    update_index(std::prev(store.end()));
-    auto end = std::chrono::system_clock::now();
-    index_total += end - start;
-
-
-    s_it = store.end();
-    o_it++;
-
-    added++;
-  }
-
-  spdlog::info("finished, added %lu postings\n", added);
-
-  spdlog::info("total index took %15lu\n", index_total.count());
-  spdlog::info("total merge took %15lu\n", merge_total.count());
-  spdlog::info("total skip  took %15lu\n", skip_total.count());
-  spdlog::info("total find  took %15lu\n", find_total.count());
 }
-*/
 
-}
