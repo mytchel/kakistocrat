@@ -23,11 +23,6 @@ struct indexer {
   void save(std::string base_path);
 
   indexer() {}
-
-  void destroy() const { delete this; }
-  
-  protected:
-  ~indexer() {}
 };
 
 struct key {
@@ -139,15 +134,19 @@ struct index_part {
   std::list<std::pair<key, posting>> store;
 
   std::vector<
-    std::list<std::pair<key, posting>>::iterator
-    > *index[HTCAP]{NULL};
+    std::vector<
+      std::list<std::pair<key, posting>>::iterator
+    >*
+    > index;
 
   index_part(index_type t, std::string p,
       std::string s, std::string e)
-    : type(t), path(p), start(s), end(e) {}
+    : index(HTCAP, {}), 
+    type(t), path(p), start(s), end(e) {}
 
   index_part(index_part &&p)
-    : type(p.type), path(p.path),
+    : index(HTCAP, {}), 
+    type(p.type), path(p.path),
     start(p.start), end(p.end)
   {
     backing = p.backing;

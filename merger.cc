@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
   crawl::crawler crawler;
   crawler.load();
 
-  auto n_threads = std::thread::hardware_concurrency();
+  auto n_threads = 2;//std::thread::hardware_concurrency();
 
   spdlog::info("starting {} threads", n_threads);
 
@@ -135,10 +135,10 @@ int main(int argc, char *argv[]) {
     auto p_p = fmt::format("meta/index.pairs.{}.dat", start);
     auto t_p = fmt::format("meta/index.trines.{}.dat", start);
 
-    auto th = std::thread(merge, w_p, p_p, t_p, start, end);
-    //merge(w_p, p_p, t_p, start, end);
-
-    threads.emplace_back(std::move(th));
+    //auto th = std::thread(merge, w_p, p_p, t_p, start, end);
+    //threads.emplace_back(std::move(th));
+    
+    merge(w_p, p_p, t_p, start, end);
 
     info.word_parts.emplace_back(w_p, start, end);
     info.pair_parts.emplace_back(p_p, start, end);

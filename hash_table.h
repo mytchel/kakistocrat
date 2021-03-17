@@ -6,20 +6,15 @@
 const size_t HTCAP = (1 << 16);
 
 struct hash_table {
-  bst *store[HTCAP];
+  std::vector<bst*> store;
   size_t n_postings{0};
 
-  hash_table()
-  {
-    for (size_t i = 0; i < HTCAP; i++) {
-      store[i] = {};
-    }
-  }
+  hash_table() : store(HTCAP, {}) {}
 
   ~hash_table()
   {
-    for (size_t i = 0; i < HTCAP; i++) {
-      if (store[i]) delete store[i];
+    for (auto b: store) {
+      if (b) delete b;
     }
   }
 

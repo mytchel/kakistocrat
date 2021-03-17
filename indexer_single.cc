@@ -32,7 +32,7 @@
 
 using nlohmann::json;
 
-void index_site(crawl::site &s, search::indexer *indexer) {
+void index_site(crawl::site &s, search::indexer &indexer) {
   spdlog::info("index site {}", s.host);
 
   char *file_buf = (char *) malloc(scrape::max_file_size);
@@ -118,7 +118,7 @@ void index_site(crawl::site &s, search::indexer *indexer) {
 
         std::string s(str_c(&tok_buffer));
 
-        indexer->words.insert(s, id);
+        indexer.words.insert(s, id);
 
         if (str_length(&tok_buffer_trine) > 0) {
           str_cat(&tok_buffer_trine, " ");
@@ -126,7 +126,7 @@ void index_site(crawl::site &s, search::indexer *indexer) {
 
           std::string s(str_c(&tok_buffer_trine));
 
-          indexer->trines.insert(s, id);
+          indexer.trines.insert(s, id);
 
           str_resize(&tok_buffer_trine, 0);
         }
@@ -137,7 +137,7 @@ void index_site(crawl::site &s, search::indexer *indexer) {
 
           std::string s(str_c(&tok_buffer_pair));
 
-          indexer->pairs.insert(s, id);
+          indexer.pairs.insert(s, id);
 
           str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
         }
@@ -149,7 +149,7 @@ void index_site(crawl::site &s, search::indexer *indexer) {
 
     pfile.close();
 
-    indexer->page_lengths.emplace(id, page_length);
+    indexer.page_lengths.emplace(id, page_length);
   }
 
   free(file_buf);
@@ -161,7 +161,7 @@ int main(int argc, char *argv[]) {
   crawl::crawler crawler;
   crawler.load();
 
-  search::indexer* indexer = new search::indexer();
+  search::indexer indexer;
 
   auto site = crawler.sites.begin();
   while (site != crawler.sites.end()) {
@@ -178,9 +178,7 @@ int main(int argc, char *argv[]) {
     site++;
   }
 
-  indexer->save("meta/full");
-
-  indexer->destroy();
+  indexer.save("meta/full");
 
   return 0;
 }

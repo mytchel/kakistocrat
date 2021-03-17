@@ -331,7 +331,9 @@ bool index_part::load_backing()
   return true;
 }
 
-/* == is faster than <. so don't bother ordering */
+/* == is faster than <. so don't bother ordering.
+  Should store the key size along side the iterator
+  then check that first. Should improve cache hitting. */
 
 void index_part::update_index(std::list<std::pair<key, posting>>::iterator ref)
 {
@@ -343,11 +345,20 @@ void index_part::update_index(std::list<std::pair<key, posting>>::iterator ref)
 
     index[hash_key]->reserve(5);
 
-  } else if (index[hash_key]->size() == index[hash_key]->capacity()) {
-    index[hash_key]->reserve(index[hash_key]->size() * 2);
+  } else if (index[hash_key]->size() + 1 >= index[hash_key]->capacity()) {
+    index[hash_key]->reserve((index[hash_key]->size() + 1) * 2);
   }
 
-  index[hash_key]->push_back(ref);
+  auto it = index[hash_key]->begin();
+  auto end = index[hash_key]->end();
+  while (it != end) {
+    if ((*it)->first.size() > ref->first.size()) {
+      break;
+    }
+    it++;
+  }
+
+  index[hash_key]->insert(it, ref);
 }
 
 std::list<std::pair<key, posting>>::iterator index_part::find(key k)
@@ -360,6 +371,8 @@ std::list<std::pair<key, posting>>::iterator index_part::find(key k)
   for (auto i: *index[hash_key]) {
     if (i->first == k) {
       return i;
+    } else if (i->first.size() > k.size()) {
+      break;
     }
   }
 

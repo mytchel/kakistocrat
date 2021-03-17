@@ -54,7 +54,7 @@ void index_site(crawl::site &site) {
 	tokenizer::token_type token;
   tokenizer::tokenizer tok;
 
-  search::indexer* indexer = new search::indexer();
+  search::indexer indexer;
 
   spdlog::info("process pages for {}", site.host);
   for (auto &page: site.pages) {
@@ -121,7 +121,7 @@ void index_site(crawl::site &site) {
 
         std::string s(str_c(&tok_buffer));
 
-        indexer->words.insert(s, id);
+        indexer.words.insert(s, id);
 
         if (str_length(&tok_buffer_trine) > 0) {
           str_cat(&tok_buffer_trine, " ");
@@ -129,7 +129,7 @@ void index_site(crawl::site &site) {
 
           std::string s(str_c(&tok_buffer_trine));
 
-          indexer->trines.insert(s, id);
+          indexer.trines.insert(s, id);
 
           str_resize(&tok_buffer_trine, 0);
         }
@@ -140,7 +140,7 @@ void index_site(crawl::site &site) {
 
           std::string s(str_c(&tok_buffer_pair));
 
-          indexer->pairs.insert(s, id);
+          indexer.pairs.insert(s, id);
 
           str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
         }
@@ -152,7 +152,7 @@ void index_site(crawl::site &site) {
 
     pfile.close();
 
-    indexer->page_lengths.emplace(id, page_length);
+    indexer.page_lengths.emplace(id, page_length);
   }
 
   free(file_buf);
@@ -161,9 +161,7 @@ void index_site(crawl::site &site) {
 
   std::string path = "meta/sites/" + util::host_hash(site.host) + "/" + site.host;
 
-  indexer->save(path);
-  
-  indexer->destroy();
+  indexer.save(path);
 }
 
 void
