@@ -590,7 +590,7 @@ void index::find_part_matches(
 
 		auto pair = part.find(k);
     if (pair != part.store.end()) {
-      auto &pairs = pair->second.to_pairs();
+      auto pairs = pair->second.decompress();
       spdlog::info("have pair {} with {} docs", pair->first.c_str(), pairs.size());
       auto pairs_ranked = rank(pairs, page_lengths, average_page_length);
 
@@ -631,7 +631,7 @@ void index_part::merge(index_part &other)
 
   size_t added = 0;
 
-  size_t key_buf_size = 1024 * 10;
+  size_t key_buf_size = 1024 * 1024;
 
   while (o_it != other.store.end()) {
     if (start && o_it->first < *start) {
@@ -649,8 +649,6 @@ void index_part::merge(index_part &other)
       auto start = std::chrono::system_clock::now();
 
       it->second.merge(o_it->second);
-
-      o_it->second.unload();
 
       auto end = std::chrono::system_clock::now();
       merge_total += end - start;
@@ -695,5 +693,4 @@ void index_part::merge(index_part &other)
   spdlog::debug("finished, added {} postings", added);
 }
 
-}
-
+} 

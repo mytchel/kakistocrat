@@ -10,7 +10,9 @@
 
 #include "posting.h"
 
-void posting::decompress(const uint8_t *backing)
+
+std::list<std::pair<uint64_t, uint8_t>>
+posting::decompress()
 {
 	size_t id_length = ((uint32_t *) backing)[0];
 	size_t count_length = ((uint32_t *) backing)[1];
@@ -23,8 +25,7 @@ void posting::decompress(const uint8_t *backing)
 	size_t di = 0;
 	size_t ci = 0;
 
-  counts.clear();
-  //counts.reserve(count_length);
+  std::list<std::pair<uint64_t, uint8_t>> counts;
 
 	while (ci < count_length && di < id_length) {
 		di += vbyte_read(&id_store[di], &docI);
@@ -34,6 +35,8 @@ void posting::decompress(const uint8_t *backing)
     counts.emplace_back(docI, count_store[ci]);
 		ci++;
 	}
+
+  return counts;
 }
 
 size_t posting::save_backing(uint8_t *buffer)
@@ -95,13 +98,13 @@ size_t posting::backing_size()
 void posting::merge(posting &other)
 {
   if (backing != NULL && counts.empty()) {
-    decompress(backing);
+    counts = decompress();
   }
 
   // backing is no longer valid
   backing = NULL;
 
-  auto &pairs = other.to_pairs();
+  auto pairs = other.decompress();
 
   //counts.reserve(counts.size() + pairs.size());
 
@@ -113,7 +116,7 @@ void posting::merge(posting &other)
 void posting::append(uint64_t id)
 {
   if (backing != NULL && counts.empty()) {
-    decompress(backing);
+    counts = decompress();
   }
 
   // backing is no longer valid
