@@ -36,8 +36,10 @@ void merge(
     std::string w_p,
     std::string p_p,
     std::string t_p,
-    std::string start,
-    std::string end)
+    std::optional<std::string> start,
+    std::optional<std::string> end,
+    Channel<size_t> &done_channel,
+    size_t id)
 {
   spdlog::info("starting");
 
@@ -64,9 +66,7 @@ void merge(
 
     spdlog::debug("merge word");
     for (auto &p: site_index.word_parts) {
-      spdlog::debug("check part starting {} <= {} / {} < {}", p.start, start, end, p.end);
-      if (start <= p.start && p.end <= end) {
-        spdlog::debug("merging part as {} <= {} <= {}", p.start, start, p.end);
+      if ((!end || p.start <= *end) && (!start || *start <= p.end)) {
         search::index_part in(search::words, p.path, p.start, p.end);
         in.load();
 
@@ -76,9 +76,7 @@ void merge(
 
     spdlog::debug("merge pair");
     for (auto &p: site_index.pair_parts) {
-      spdlog::debug("check part starting {} <= {} / {} < {}", p.start, start, end, p.end);
-      if (start <= p.start && p.end <= end) {
-        spdlog::debug("merging part as {} <= {} <= {}", p.start, start, p.end);
+      if ((!end || p.start <= *end) && (!start || *start <= p.end)) {
         search::index_part in(search::pairs, p.path, p.start, p.end);
         in.load();
 
@@ -88,9 +86,7 @@ void merge(
 
     spdlog::debug("merge trine");
     for (auto &p: site_index.trine_parts) {
-      spdlog::debug("check part starting {} <= {} / {} < {}", p.start, start, end, p.end);
-      if (start <= p.start && p.end <= end) {
-        spdlog::debug("merging part as {} <= {} <= {}", p.start, start, p.end);
+      if ((!end || p.start <= *end) && (!start || *start <= p.end)) {
         search::index_part in(search::trines, p.path, p.start, p.end);
         in.load();
 
@@ -104,6 +100,8 @@ void merge(
   out_pair.save();
   out_trine.save();
   spdlog::info("thread done");
+
+  id >> done_channel;
 }
 
 int main(int argc, char *argv[]) {
@@ -116,41 +114,79 @@ int main(int argc, char *argv[]) {
 
   spdlog::info("starting {} threads", n_threads);
 
-  std::vector<std::thread> threads;
+  std::vector<std::thread> threads(n_threads);
+  Channel<size_t> done_channel;
 
   std::vector<std::string> split_at;
-  split_at.emplace_back("0");
+  split_at.emplace_back("a");
+  split_at.emplace_back("c");
   split_at.emplace_back("f");
+  split_at.emplace_back("j");
   split_at.emplace_back("m");
-  split_at.emplace_back("t");
-  split_at.emplace_back("{");
+  split_at.emplace_back("p");
+  split_at.emplace_back("s");
+  split_at.emplace_back("v");
 
   search::index_info info("meta/index.json");
 
-  for (int i = 0; i < split_at.size() - 1; i++) {
-    auto start = split_at[i];
-    auto end = split_at[i+1];
+  std::optional<std::string> start, end;
+  auto it = split_at.begin();
+  do {
+    if (!done_channel.empty()) {
+      size_t id;
 
-    auto w_p = fmt::format("meta/index.words.{}.dat", start);
-    auto p_p = fmt::format("meta/index.pairs.{}.dat", start);
-    auto t_p = fmt::format("meta/index.trines.{}.dat", start);
+      id << done_channel;
 
-    //auto th = std::thread(merge, w_p, p_p, t_p, start, end);
-    //threads.emplace_back(std::move(th));
-    
-    merge(w_p, p_p, t_p, start, end);
+      threads[id].join();
+    }
+
+    size_t free_thread = n_threads;
+    for (size_t i = 0; i < n_threads; i++) {
+      if (!threads[i].joinable()) {
+        free_thread = i;
+        break;
+      }
+    }
+
+    if (free_thread == n_threads) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      continue;
+    }
+
+    spdlog::info("thread available");
+
+    if (it != split_at.end()) {
+      end = *it;
+      it++;
+    } else {
+      end = {};
+    }
+
+    std::string w_p = "meta/index.words..dat";
+    std::string p_p = "meta/index.pairs..dat";
+    std::string t_p = "meta/index.trines..dat";
+    if (start) {
+      w_p = fmt::format("meta/index.words.{}.dat", *start);
+      p_p = fmt::format("meta/index.pairs.{}.dat", *start);
+      t_p = fmt::format("meta/index.trines.{}.dat", *start);
+    }
+
+    auto th = std::thread(merge, w_p, p_p, t_p, start, end, std::ref(done_channel), free_thread);
+    threads[free_thread] = std::move(th);
+
+    //merge(w_p, p_p, t_p, start, end);
 
     info.word_parts.emplace_back(w_p, start, end);
     info.pair_parts.emplace_back(p_p, start, end);
     info.trine_parts.emplace_back(t_p, start, end);
-  }
+
+    start = end;
+  } while (end);
 
   info.average_page_length = 0;
 
   for (auto &s: crawler.sites) {
     if (s.last_scanned == 0) continue;
-
-    spdlog::info("load {} for merging", s.host);
 
     auto path = fmt::format("meta/sites/{}/{}/index.meta.json", util::host_hash(s.host), s.host);
 

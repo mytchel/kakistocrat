@@ -8,6 +8,7 @@
 #include <list>
 #include <string>
 #include <vector>
+#include <optional>
 
 #include "posting.h"
 #include "hash_table.h"
@@ -104,6 +105,42 @@ struct key {
     return memcmp(c, o.c, len) == 0;
   }
 
+  bool operator<=(const std::string &s) const {
+    size_t l = 0;;
+    size_t ol = s.size();;
+    const char *od = s.data();;
+
+    while (l < len && l < ol) {
+      if (c[l] < od[l]) {
+        return true;
+      } else if (c[l] > od[l]) {
+        return false;
+      } else {
+        l++;
+      }
+    }
+
+    return true;
+  }
+
+  bool operator>=(const std::string &s) const {
+    size_t l = 0;;
+    size_t ol = s.size();;
+    const char *od = s.data();;
+
+    while (l < len && l < ol) {
+      if (c[l] > od[l]) {
+        return true;
+      } else if (c[l] < od[l]) {
+        return false;
+      } else {
+        l++;
+      }
+    }
+
+    return true;
+  }
+
   bool operator<(const key &o) const {
     size_t l = 0;;
     while (l < len && l < o.len) {
@@ -126,8 +163,8 @@ struct index_part {
   index_type type;
   std::string path;
 
-  std::string start;
-  std::string end;
+  std::optional<std::string> start;
+  std::optional<std::string> end;
 
   uint8_t *backing{NULL};
 
@@ -138,7 +175,8 @@ struct index_part {
     >> index;
 
   index_part(index_type t, std::string p,
-      std::string s, std::string e)
+      std::optional<std::string> s,
+      std::optional<std::string> e)
     : index(HTCAP),
       type(t), path(p), start(s), end(e) {}
 
@@ -176,16 +214,17 @@ struct index_part {
 struct index_part_info {
   std::string path;
 
-  std::string start;
-  std::string end;
+  std::optional<std::string> start;
+  std::optional<std::string> end;
 
   index_part_info() {}
 
   index_part_info(std::string p) : path(p) {}
 
   index_part_info(std::string p,
-      std::string s, std::string e) :
-    path(p), start(s), end(e) {}
+      std::optional<std::string> s,
+      std::optional<std::string> e)
+    : path(p), start(s), end(e) {}
 };
 
 void to_json(nlohmann::json &j, const index_part_info &i);

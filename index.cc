@@ -27,17 +27,34 @@ namespace search {
 
 void to_json(nlohmann::json &j, const index_part_info &i)
 {
+  std::string start = "", end = "";
+  if (i.start) start = *i.start;
+  if (i.end) end = *i.end;
   j = json{
     {"path", i.path},
-    {"start", i.start},
-    {"end", i.end}};
+    {"start", start},
+    {"end", end}};
 }
 
 void from_json(const nlohmann::json &j, index_part_info &i)
 {
+  std::string start = "", end = "";
+
   j.at("path").get_to(i.path);
-  j.at("start").get_to(i.start);
-  j.at("end").get_to(i.end);
+  j.at("start").get_to(start);
+  j.at("end").get_to(end);
+
+  if (start != "") {
+    i.start = start;
+  } else {
+    i.start = {};
+  }
+
+  if (end != "") {
+    i.end = end;
+  } else {
+    i.end = {};
+  }
 }
 
 void index_info::save()
@@ -228,9 +245,14 @@ std::vector<index_part_info> index_part_save(hash_table &t, std::string base_pat
   uint8_t *buffer = (uint8_t *) malloc(max_index_part_size);
 
   std::vector<std::string> split_at;
+  split_at.emplace_back("a");
+  split_at.emplace_back("c");
   split_at.emplace_back("f");
+  split_at.emplace_back("j");
   split_at.emplace_back("m");
-  split_at.emplace_back("t");
+  split_at.emplace_back("p");
+  split_at.emplace_back("s");
+  split_at.emplace_back("v");
 
   auto split = split_at.begin();
   auto start = postings.begin();
@@ -616,6 +638,11 @@ void index_part::merge(index_part &other)
   std::chrono::nanoseconds skip_total = 0ms;
 
   while (o_it != other.store.end()) {
+    if (start && o_it->first < *start) {
+      o_it++;
+      continue;
+    }
+    if (end && o_it->first >= *end) break;
 
     auto start = std::chrono::system_clock::now();
     auto it = find(o_it->first);
