@@ -194,6 +194,15 @@ size_t index_part::save_to_buf(uint8_t *buffer)
   size_t offset = sizeof(uint32_t);
 
   for (auto &p: store) {
+    if (p.first.data() == NULL) {
+      spdlog::warn("somehow have null data");
+      continue;
+    }
+    if (buffer + offset == NULL) {
+      spdlog::critical("somewhow have null buffer!");
+      break;
+    }
+
     buffer[offset] = p.first.size();
     offset++;
 
@@ -664,6 +673,11 @@ void index_part::merge(index_part &other)
         }
 
         extra_backing = (char *) malloc(key_buf_size);
+        if (extra_backing == NULL) {
+          spdlog::critical("out of memory");
+          break;
+        }
+
         extra_backing_offset = 0;
       }
 
