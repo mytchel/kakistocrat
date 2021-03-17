@@ -14,13 +14,15 @@
 
 namespace search {
 
+const size_t max_index_part_size = 1024 * 1024 * 200;
+
 struct indexer {
   std::map<uint64_t, size_t> page_lengths;
   hash_table words, pairs, trines;
 
-  indexer() {}
-
   void save(std::string base_path);
+
+  indexer() {}
 };
 
 struct key {
@@ -132,15 +134,19 @@ struct index_part {
   std::list<std::pair<key, posting>> store;
 
   std::vector<
-    std::list<std::pair<key, posting>>::iterator
-    > *index[HTCAP]{NULL};
+    std::vector<
+      std::list<std::pair<key, posting>>::iterator
+    >*
+    > index;
 
   index_part(index_type t, std::string p,
       std::string s, std::string e)
-    : type(t), path(p), start(s), end(e) {}
+    : index(HTCAP, {}), 
+    type(t), path(p), start(s), end(e) {}
 
   index_part(index_part &&p)
-    : type(p.type), path(p.path),
+    : index(HTCAP, {}), 
+    type(p.type), path(p.path),
     start(p.start), end(p.end)
   {
     backing = p.backing;

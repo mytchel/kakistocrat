@@ -36,10 +36,6 @@ namespace scrape {
 
 enum request_type { URL, ROBOTS, SITEMAP };
 
-static int active_malloc = 0;
-
-const size_t max_data = 1024 * 1024 * 10;
-
 struct curl_data {
   bool in_use{false};
 
@@ -98,12 +94,12 @@ size_t curl_cb_buffer_write(void *contents, size_t sz, size_t nmemb, void *ctx)
   curl_data *d = (curl_data *) ctx;
   size_t realsize = sz * nmemb;
 
-  if (max_data < d->size + realsize) {
+  if (max_file_size < d->size + realsize) {
     return 0;
   }
 
   if (d->buf == NULL) {
-    d->buf = (char *) malloc(max_data);
+    d->buf = (char *) malloc(max_file_size);
     if (d->buf == NULL) {
       return 0;
     }

@@ -35,8 +35,7 @@ using nlohmann::json;
 void index_site(crawl::site &s, search::indexer &indexer) {
   spdlog::info("index site {}", s.host);
 
-  size_t max_size = 1024 * 1024 * 10;
-  char *file_buf = (char *) malloc(max_size);
+  char *file_buf = (char *) malloc(scrape::max_file_size);
 
   const size_t buf_len = 512;
 
@@ -69,7 +68,7 @@ void index_site(crawl::site &s, search::indexer &indexer) {
       continue;
     }
 
-    pfile.read(file_buf, max_size);
+    pfile.read(file_buf, scrape::max_file_size);
 
     spdlog::debug("process page {} : {}", id, page.url);
     size_t len = pfile.gcount();

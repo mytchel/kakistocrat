@@ -32,11 +32,10 @@
 
 using nlohmann::json;
 
-void index_site(crawl::site &s) {
-  spdlog::info("index site {}", s.host);
+void index_site(crawl::site &site) {
+  spdlog::info("index site {}", site.host);
 
-  size_t max_size = 1024 * 1024 * 10;
-  char *file_buf = (char *) malloc(max_size);
+  char *file_buf = (char *) malloc(scrape::max_file_size);
 
   const size_t buf_len = 80;
 
@@ -57,10 +56,11 @@ void index_site(crawl::site &s) {
 
   search::indexer indexer;
 
-  for (auto &page: s.pages) {
+  spdlog::info("process pages for {}", site.host);
+  for (auto &page: site.pages) {
     if (!page.valid) continue;
 
-    uint64_t id = crawl::page_id(s.id, page.id).to_value();
+    uint64_t id = crawl::page_id(site.id, page.id).to_value();
 
     std::ifstream pfile;
 
@@ -71,7 +71,7 @@ void index_site(crawl::site &s) {
       continue;
     }
 
-    pfile.read(file_buf, max_size);
+    pfile.read(file_buf, scrape::max_file_size);
 
     spdlog::debug("process page {} : {}", id, page.url);
     size_t len = pfile.gcount();
@@ -157,9 +157,9 @@ void index_site(crawl::site &s) {
 
   free(file_buf);
 
-  spdlog::info("finished indexing site {}", s.host);
+  spdlog::info("finished indexing site {}", site.host);
 
-  std::string path = "meta/sites/" + util::host_hash(s.host) + "/" + s.host;
+  std::string path = "meta/sites/" + util::host_hash(site.host) + "/" + site.host;
 
   indexer.save(path);
 }
@@ -183,13 +183,16 @@ indexer_run(Channel<std::string*> &in, Channel<std::string*> &out, int tid)
 
     spdlog::info("{} start on {}", tid, *name);
 
-    //std::string path = "meta/sites/" + util::host_hash(*name) + "/" + *name;
-
     crawl::site site(*name);
+    spdlog::info("{} load {}", tid, site.host);
     site.load();
 
-    index_site(site);
+    spdlog::info("{} index {}", tid, site.host);
+    spdlog::info("{} site has {} pages", tid, site.pages.size());
 
+    index_site(site);
+    spdlog::info("{} finished {}", tid, site.host);
+    
     name >> out;
   }
 }
@@ -202,7 +205,6 @@ int main(int argc, char *argv[]) {
 
   spdlog::info("starting {} threads", n_threads);
 
-  Channel<std::string*> merger_channel;
   Channel<std::string*> in_channels[n_threads];
   Channel<std::string*> out_channels[n_threads];
 
@@ -226,6 +228,14 @@ int main(int argc, char *argv[]) {
       site++;
       continue;
     }
+
+/*
+    site->load();
+    index_site(*site);
+    site->unload();
+    site++;
+    continue;
+*/
 
     bool found = false;
     for (size_t i = 0; !found && i < n_threads; i++) {

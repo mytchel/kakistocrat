@@ -5,6 +5,8 @@
 
 namespace scrape {
 
+const size_t max_file_size = 1024 * 1024 * 10;
+
 struct index_url {
   std::string url;
   std::string path;
