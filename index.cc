@@ -529,6 +529,7 @@ rank(
 
     auto it = page_lengths.find(page_id);
     if (it == page_lengths.end()) {
+      spdlog::info("didnt find page length for {}", page_id);
       continue;
     }
 
@@ -566,10 +567,10 @@ void index::find_part_matches(
 		auto pair = part.find(k);
     if (pair != part.store.end()) {
       auto &pairs = pair->second.to_pairs();
-      spdlog::info("have pair {} with %i docs", pair->first.c_str(), pairs.size());
+      spdlog::info("have pair {} with {} docs", pair->first.c_str(), pairs.size());
       auto pairs_ranked = rank(pairs, page_lengths, average_page_length);
 
-      spdlog::info("have ranked {} with %i docs", pair->first.c_str(), pairs_ranked.size());
+      spdlog::info("have ranked {} with {} docs", pair->first.c_str(), pairs_ranked.size());
       postings.push_back(pairs_ranked);
 		}
 	}
