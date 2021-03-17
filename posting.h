@@ -17,7 +17,7 @@ struct posting {
 
   posting(const posting &p) {
     if (p.counts.empty()) {
-      counts = decompress();
+      counts = p.decompress();
     } else {
       counts = p.counts;
     }
@@ -33,7 +33,7 @@ struct posting {
 
   size_t backing_size();
 
-  std::list<std::pair<uint64_t, uint8_t>> decompress();
+  std::list<std::pair<uint64_t, uint8_t>> decompress() const;
 
   void append(uint64_t id);
   void merge(posting &other);

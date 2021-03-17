@@ -52,6 +52,10 @@ void merge(
 
   using namespace std::chrono_literals;
 
+  std::chrono::nanoseconds load_total{0ms};
+  std::chrono::nanoseconds merge_total{0ms};
+  std::chrono::nanoseconds save_total{0ms};
+
   for (auto &s: crawler.sites) {
     if (s.last_scanned == 0) continue;
 
@@ -67,39 +71,65 @@ void merge(
     spdlog::debug("merge word");
     for (auto &p: site_index.word_parts) {
       if ((!end || p.start <= *end) && (!start || *start <= p.end)) {
+        auto tstart = std::chrono::system_clock::now();
         search::index_part in(search::words, p.path, p.start, p.end);
         in.load();
+        auto tmid = std::chrono::system_clock::now();
 
         out_word.merge(in);
+        auto tend = std::chrono::system_clock::now();
+
+        load_total += tmid - tstart;
+        merge_total += tend - tmid;
       }
     }
 
     spdlog::debug("merge pair");
     for (auto &p: site_index.pair_parts) {
       if ((!end || p.start <= *end) && (!start || *start <= p.end)) {
+        auto tstart = std::chrono::system_clock::now();
         search::index_part in(search::pairs, p.path, p.start, p.end);
         in.load();
 
+        auto tmid = std::chrono::system_clock::now();
         out_pair.merge(in);
+        auto tend = std::chrono::system_clock::now();
+
+        load_total += tmid - tstart;
+        merge_total += tend - tmid;
       }
     }
 
     spdlog::debug("merge trine");
     for (auto &p: site_index.trine_parts) {
       if ((!end || p.start <= *end) && (!start || *start <= p.end)) {
+        auto tstart = std::chrono::system_clock::now();
         search::index_part in(search::trines, p.path, p.start, p.end);
         in.load();
 
+        auto tmid = std::chrono::system_clock::now();
         out_trine.merge(in);
+        auto tend = std::chrono::system_clock::now();
+
+        load_total += tmid - tstart;
+        merge_total += tend - tmid;
       }
     }
   }
 
+  auto tstart = std::chrono::system_clock::now();
   spdlog::info("saving");
   out_word.save();
   out_pair.save();
   out_trine.save();
   spdlog::info("thread done");
+  auto tend = std::chrono::system_clock::now();
+
+  save_total = tend - tstart;
+
+  spdlog::info("STAT load        took {}", load_total.count() / 1000000);
+  spdlog::info("STAT merge       took {}", merge_total.count() / 1000000);
+  spdlog::info("STAT save        took {}", save_total.count() / 1000000);
 
   spdlog::info("STAT word index  took {}", out_word.index_total.count() / 1000000);
   spdlog::info("STAT word merge  took {}", out_word.merge_total.count() / 1000000);
@@ -190,8 +220,11 @@ int main(int argc, char *argv[]) {
 
     start = end;
 
+    break;
+
   } while (end);
 
+/*
   info.average_page_length = 0;
 
   for (auto &s: crawler.sites) {
@@ -209,6 +242,7 @@ int main(int argc, char *argv[]) {
   }
 
   info.average_page_length /= info.page_lengths.size();
+*/
 
   for (auto &t: threads) {
     if (t.joinable()) {

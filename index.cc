@@ -657,9 +657,8 @@ void index_part::merge(index_part &other)
       auto start = std::chrono::system_clock::now();
 
       size_t c_len = o_it->first.size();
-      size_t p_len = o_it->second.backing_size();
 
-      if (extra_backing == NULL || extra_backing_offset + c_len + p_len >= key_buf_size) {
+      if (extra_backing == NULL || extra_backing_offset + c_len >= key_buf_size) {
         if (extra_backing != NULL) {
           extra_backing_list.push_back(extra_backing);
         }
@@ -668,17 +667,12 @@ void index_part::merge(index_part &other)
         extra_backing_offset = 0;
       }
 
-      char *p_buf = &extra_backing[extra_backing_offset];
-      memcpy(p_buf, o_it->second.backing, p_len);
-
-      extra_backing_offset += p_len;
-
       char *c_buf = &extra_backing[extra_backing_offset];
       memcpy(c_buf, o_it->first.data(), c_len);
 
       extra_backing_offset += c_len;
 
-      store.emplace_back(key(c_buf, c_len), posting((uint8_t *) p_buf));
+      store.emplace_back(key(c_buf, c_len), posting(o_it->second));
 
       update_index(std::prev(store.end()));
       auto end = std::chrono::system_clock::now();

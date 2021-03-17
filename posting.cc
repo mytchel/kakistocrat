@@ -12,7 +12,7 @@
 
 
 std::list<std::pair<uint64_t, uint8_t>>
-posting::decompress()
+posting::decompress() const
 {
 	size_t id_length = ((uint32_t *) backing)[0];
 	size_t count_length = ((uint32_t *) backing)[1];
