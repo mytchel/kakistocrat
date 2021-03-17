@@ -11,7 +11,7 @@
 #include "posting.h"
 
 
-std::list<std::pair<uint64_t, uint8_t>>
+std::vector<std::pair<uint64_t, uint8_t>>
 posting::decompress() const
 {
 	size_t id_length = ((uint32_t *) backing)[0];
@@ -25,7 +25,9 @@ posting::decompress() const
 	size_t di = 0;
 	size_t ci = 0;
 
-  std::list<std::pair<uint64_t, uint8_t>> counts;
+  std::vector<std::pair<uint64_t, uint8_t>> counts;
+
+  counts.reserve(count_length);
 
 	while (ci < count_length && di < id_length) {
 		di += vbyte_read(&id_store[di], &docI);
@@ -53,7 +55,7 @@ size_t posting::save(uint8_t *buffer)
     return save_backing(buffer);
   }
 
-  counts.sort(
+  std::sort(counts.begin(), counts.end(),
       [](auto &a, auto &b) {
         return a.first < b.first;
       }
@@ -106,7 +108,9 @@ void posting::merge(posting &other)
 
   auto pairs = other.decompress();
 
-  //counts.reserve(counts.size() + pairs.size());
+  if (counts.size() + pairs.size() >= counts.capacity()) {
+    counts.reserve((counts.size() + pairs.size()) * 4);
+  }
 
   for (auto &p: pairs) {
     counts.emplace_back(p.first, p.second);
@@ -121,6 +125,10 @@ void posting::append(uint64_t id)
 
   // backing is no longer valid
   backing = NULL;
+
+  if (counts.size() + 1 >= counts.capacity()) {
+    counts.reserve((counts.size() + 1) * 4);
+  }
 
   auto &b = counts.back();
 	if (counts.size() > 0 && b.first == id) {

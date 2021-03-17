@@ -539,7 +539,7 @@ static terms split_terms(char *line)
  */
 static std::vector<std::pair<uint64_t, double>>
 rank(
-    std::list<std::pair<uint64_t, uint8_t>> &postings,
+    std::vector<std::pair<uint64_t, uint8_t>> &postings,
     std::map<uint64_t, size_t> &page_lengths, double avgdl)
 {
   std::vector<std::pair<uint64_t, double>> pairs_ranked;

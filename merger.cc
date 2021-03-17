@@ -220,11 +220,11 @@ int main(int argc, char *argv[]) {
 
     start = end;
 
-    break;
+//    break;
 
   } while (end);
 
-/*
+
   info.average_page_length = 0;
 
   for (auto &s: crawler.sites) {
@@ -242,7 +242,7 @@ int main(int argc, char *argv[]) {
   }
 
   info.average_page_length /= info.page_lengths.size();
-*/
+
 
   for (auto &t: threads) {
     if (t.joinable()) {

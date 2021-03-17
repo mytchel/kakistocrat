@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 struct posting {
-  std::list<std::pair<uint64_t, uint8_t>> counts;
+  std::vector<std::pair<uint64_t, uint8_t>> counts;
   uint8_t *backing{NULL};
 
   posting(uint64_t i) {
@@ -33,7 +33,7 @@ struct posting {
 
   size_t backing_size();
 
-  std::list<std::pair<uint64_t, uint8_t>> decompress() const;
+  std::vector<std::pair<uint64_t, uint8_t>> decompress() const;
 
   void append(uint64_t id);
   void merge(posting &other);
