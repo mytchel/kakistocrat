@@ -133,30 +133,24 @@ struct index_part {
 
   std::list<std::pair<key, posting>> store;
 
-  std::vector<
-    std::vector<
-      std::list<std::pair<key, posting>>::iterator
-    >*
-    > index;
+  std::vector<std::vector<
+      std::pair<size_t, std::list<std::pair<key, posting>>::iterator>
+    >> index;
 
   index_part(index_type t, std::string p,
       std::string s, std::string e)
-    : index(HTCAP, {}), 
-    type(t), path(p), start(s), end(e) {}
+    : index(HTCAP),
+      type(t), path(p), start(s), end(e) {}
 
   index_part(index_part &&p)
-    : index(HTCAP, {}), 
-    type(p.type), path(p.path),
-    start(p.start), end(p.end)
+    : type(p.type), path(p.path),
+      start(p.start), end(p.end)
   {
     backing = p.backing;
 
     store = std::move(p.store);
 
-    for (size_t i = 0; i < HTCAP; i++) {
-      index[i] = p.index[i];
-      p.index[i] = NULL;
-    }
+    index = std::move(p.index);
 
     p.backing = NULL;
   }
@@ -165,12 +159,6 @@ struct index_part {
   {
     if (backing) {
       free(backing);
-    }
-
-    for (size_t i = 0; i < HTCAP; i++) {
-      if (index[i]) {
-        delete index[i];
-      }
     }
   }
 

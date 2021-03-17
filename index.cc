@@ -331,47 +331,37 @@ bool index_part::load_backing()
   return true;
 }
 
-/* == is faster than <. so don't bother ordering.
-  Should store the key size along side the iterator
-  then check that first. Should improve cache hitting. */
-
 void index_part::update_index(std::list<std::pair<key, posting>>::iterator ref)
 {
   uint32_t hash_key = hash(ref->first.data(), ref->first.size());
+  size_t key_len = ref->first.size();
 
-  if (index[hash_key] == NULL) {
-    index[hash_key] = new std::vector<
-        std::list<std::pair<key, posting>>::iterator>();
-
-    index[hash_key]->reserve(5);
-
-  } else if (index[hash_key]->size() + 1 >= index[hash_key]->capacity()) {
-    index[hash_key]->reserve((index[hash_key]->size() + 1) * 2);
+  if (index[hash_key].size() + 1 >= index[hash_key].capacity()) {
+    index[hash_key].reserve((index[hash_key].size() + 1) * 2);
   }
 
-  auto it = index[hash_key]->begin();
-  auto end = index[hash_key]->end();
+  auto it = index[hash_key].begin();
+  auto end = index[hash_key].end();
   while (it != end) {
-    if ((*it)->first.size() > ref->first.size()) {
+    if (it->first >= key_len) {
       break;
     }
     it++;
   }
 
-  index[hash_key]->insert(it, ref);
+  index[hash_key].emplace(it, key_len, ref);
 }
 
 std::list<std::pair<key, posting>>::iterator index_part::find(key k)
 {
   uint32_t hash_key = hash(k.data(), k.size());
-  if (index[hash_key] == NULL) {
-    return store.end();
-  }
 
-  for (auto i: *index[hash_key]) {
-    if (i->first == k) {
-      return i;
-    } else if (i->first.size() > k.size()) {
+  for (auto &i: index[hash_key]) {
+    if (i.first == k.size()) {
+      if (i.second->first == k) {
+        return i.second;
+      }
+    } else if (i.first > k.size()) {
       break;
     }
   }
