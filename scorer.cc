@@ -35,8 +35,7 @@ void to_json(json &j, const page &p) {
       {"s", p.score},
       {"u", p.url},
       {"p", p.path},
-      {"t", p.title},
-      {"links", p.links}};
+      {"t", p.title}};
 }
 
 void from_json(const json &j, page &p) {
@@ -46,7 +45,6 @@ void from_json(const json &j, page &p) {
   j.at("u").get_to(p.url);
   j.at("p").get_to(p.path);
   j.at("t").get_to(p.title);
-  j.at("links").get_to(p.links);
 }
 
 void scores::iteration()
@@ -163,6 +161,8 @@ scores::scores(crawl::crawler &crawler)
 
       pages.emplace(id.to_value(), n);
     }
+
+    s.unload();
   }
 
   for (auto &i: pages) {

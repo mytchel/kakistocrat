@@ -10,6 +10,11 @@
 #include <cstdint>
 #include <chrono>
 
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <fcntl.h>
+
 #include "spdlog/spdlog.h"
 
 #include "util.h"
@@ -253,13 +258,31 @@ std::vector<index_part_info> index_part_save(hash_table &t, std::string base_pat
 
   std::vector<std::string> split_at;
   split_at.emplace_back("a");
+  split_at.emplace_back("b");
   split_at.emplace_back("c");
+  split_at.emplace_back("d");
+  split_at.emplace_back("e");
   split_at.emplace_back("f");
+  split_at.emplace_back("g");
+  split_at.emplace_back("h");
+  split_at.emplace_back("i");
   split_at.emplace_back("j");
+  split_at.emplace_back("k");
+  split_at.emplace_back("l");
   split_at.emplace_back("m");
+  split_at.emplace_back("n");
+  split_at.emplace_back("o");
   split_at.emplace_back("p");
+  split_at.emplace_back("q");
+  split_at.emplace_back("r");
   split_at.emplace_back("s");
+  split_at.emplace_back("t");
+  split_at.emplace_back("u");
   split_at.emplace_back("v");
+  split_at.emplace_back("w");
+  split_at.emplace_back("x");
+  split_at.emplace_back("y");
+  split_at.emplace_back("z");
 
   auto split = split_at.begin();
   auto start = postings.begin();
@@ -341,11 +364,23 @@ void indexer::save(std::string base_path)
 
 bool index_part::load_backing()
 {
-  backing = (uint8_t *) malloc(max_index_part_size);
+  struct stat s;
+  if (stat(path.c_str(), &s) == -1) {
+    spdlog::warn("load backing failed {}, no file", path);
+    return false;
+  }
+
+  size_t part_size = s.st_size;
+
+  backing = (uint8_t *) malloc(part_size);
+  if (backing == NULL) {
+    spdlog::warn("load backing failed {}, malloc failed for {}", path, part_size);
+    return false;
+  }
 
   std::ifstream file;
 
-  spdlog::info("load {}", path);
+  spdlog::info("load {}, {} megabytes", path, part_size / 1024 / 1024);
 
   file.open(path.c_str(), std::ios::in | std::ios::binary);
 
@@ -354,7 +389,7 @@ bool index_part::load_backing()
     return false;
   }
 
-  file.read((char *) backing, max_index_part_size);
+  file.read((char *) backing, part_size);
 
   file.close();
 
@@ -591,6 +626,9 @@ void index::find_part_matches(
     std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
 {
 	for (auto &term: terms) {
+    if ((part.start && term < *part.start || (part.end && term > *part.end)))
+      continue;
+
     spdlog::info("find term {} in {}", term, part.path);
 
     key k(term);

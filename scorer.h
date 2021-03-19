@@ -12,6 +12,8 @@ struct page {
   std::string url;
   std::string path;
   std::string title;
+
+  // For calculations. Not for saving
   std::vector<uint64_t> links;
 
   page() {}

@@ -157,13 +157,31 @@ int main(int argc, char *argv[]) {
 
   std::vector<std::string> split_at;
   split_at.emplace_back("a");
+  split_at.emplace_back("b");
   split_at.emplace_back("c");
+  split_at.emplace_back("d");
+  split_at.emplace_back("e");
   split_at.emplace_back("f");
+  split_at.emplace_back("g");
+  split_at.emplace_back("h");
+  split_at.emplace_back("i");
   split_at.emplace_back("j");
+  split_at.emplace_back("k");
+  split_at.emplace_back("l");
   split_at.emplace_back("m");
+  split_at.emplace_back("n");
+  split_at.emplace_back("o");
   split_at.emplace_back("p");
+  split_at.emplace_back("q");
+  split_at.emplace_back("r");
   split_at.emplace_back("s");
+  split_at.emplace_back("t");
+  split_at.emplace_back("u");
   split_at.emplace_back("v");
+  split_at.emplace_back("w");
+  split_at.emplace_back("x");
+  split_at.emplace_back("y");
+  split_at.emplace_back("z");
 
   search::index_info info("meta/index.json");
 

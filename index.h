@@ -18,7 +18,7 @@ using namespace std::chrono_literals;
 
 namespace search {
 
-const size_t max_index_part_size = 1024 * 1024 * 200;
+const size_t max_index_part_size = 1024 * 1024 * 300;
 
 struct indexer {
   std::map<uint64_t, size_t> page_lengths;
