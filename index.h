@@ -18,6 +18,8 @@ using namespace std::chrono_literals;
 
 namespace search {
 
+std::vector<std::string> get_split_at();
+
 const size_t max_index_part_size = 1024 * 1024 * 300;
 
 struct indexer {

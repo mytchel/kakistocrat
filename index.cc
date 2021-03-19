@@ -30,6 +30,45 @@ using nlohmann::json;
 
 namespace search {
 
+std::vector<std::string> get_split_at() {
+  std::vector<std::string> split_at;
+
+  if (false) {
+  split_at.emplace_back("a");
+  split_at.emplace_back("b");
+  split_at.emplace_back("c");
+  split_at.emplace_back("d");
+  split_at.emplace_back("e");
+  split_at.emplace_back("f");
+  split_at.emplace_back("g");
+  split_at.emplace_back("h");
+  split_at.emplace_back("i");
+  split_at.emplace_back("j");
+  split_at.emplace_back("k");
+  split_at.emplace_back("l");
+  split_at.emplace_back("m");
+  split_at.emplace_back("n");
+  split_at.emplace_back("o");
+  split_at.emplace_back("p");
+  split_at.emplace_back("q");
+  split_at.emplace_back("r");
+  split_at.emplace_back("s");
+  split_at.emplace_back("t");
+  split_at.emplace_back("u");
+  split_at.emplace_back("v");
+  split_at.emplace_back("w");
+  split_at.emplace_back("x");
+  split_at.emplace_back("y");
+  split_at.emplace_back("z");
+  } else {
+  split_at.emplace_back("f");
+  split_at.emplace_back("m");
+  split_at.emplace_back("s");
+  }
+
+  return split_at;
+}
+
 void to_json(nlohmann::json &j, const index_part_info &i)
 {
   std::string start = "", end = "";
@@ -256,33 +295,7 @@ std::vector<index_part_info> index_part_save(hash_table &t, std::string base_pat
 
   uint8_t *buffer = (uint8_t *) malloc(max_index_part_size);
 
-  std::vector<std::string> split_at;
-  split_at.emplace_back("a");
-  split_at.emplace_back("b");
-  split_at.emplace_back("c");
-  split_at.emplace_back("d");
-  split_at.emplace_back("e");
-  split_at.emplace_back("f");
-  split_at.emplace_back("g");
-  split_at.emplace_back("h");
-  split_at.emplace_back("i");
-  split_at.emplace_back("j");
-  split_at.emplace_back("k");
-  split_at.emplace_back("l");
-  split_at.emplace_back("m");
-  split_at.emplace_back("n");
-  split_at.emplace_back("o");
-  split_at.emplace_back("p");
-  split_at.emplace_back("q");
-  split_at.emplace_back("r");
-  split_at.emplace_back("s");
-  split_at.emplace_back("t");
-  split_at.emplace_back("u");
-  split_at.emplace_back("v");
-  split_at.emplace_back("w");
-  split_at.emplace_back("x");
-  split_at.emplace_back("y");
-  split_at.emplace_back("z");
+  auto split_at = get_split_at();
 
   auto split = split_at.begin();
   auto start = postings.begin();
