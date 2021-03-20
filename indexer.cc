@@ -190,7 +190,7 @@ indexer_run(Channel<std::string*> &in,
 
     if (n_pages + site.pages.size() > 100) {
       spdlog::info("{} save with  {} pages", tid, n_pages);
-      std::string base_path = fmt::format("meta/part_index.{}.{}", tid, part_n++);
+      std::string base_path = fmt::format("meta/index_parts/index.{}.{}", tid, part_n++);
       auto p = indexer.save(base_path);
       spdlog::info("{} saved to {}", tid, p);
       paths.emplace_back(p);
@@ -206,7 +206,7 @@ indexer_run(Channel<std::string*> &in,
     spdlog::info("{} done  {}", tid, site.host);
   }
 
-  std::string base_path = fmt::format("meta/part_index.{}.{}", tid, part_n++);
+  std::string base_path = fmt::format("meta/index_parts/index.{}.{}", tid, part_n++);
   auto p = indexer.save(base_path);
   spdlog::info("{} saved to {}", tid, p);
   paths.emplace_back(p);
@@ -227,6 +227,8 @@ indexer_run(Channel<std::string*> &in,
 int main(int argc, char *argv[]) {
   crawl::crawler crawler;
   crawler.load();
+
+  util::make_path("meta/index_parts");
 
   auto n_threads = std::thread::hardware_concurrency();
   if (n_threads > 1) n_threads--;
@@ -299,7 +301,7 @@ int main(int argc, char *argv[]) {
 
   spdlog::info("wait for threads");
 
-  search::save_parts("meta/part_index.json", index_parts);
+  search::save_parts("meta/index_parts.json", index_parts);
 
   for (auto &t: threads) {
     t.join();

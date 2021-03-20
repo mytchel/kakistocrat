@@ -147,7 +147,7 @@ int main(int argc, char *argv[]) {
 
   auto split_at = search::get_split_at();
 
-  auto part_paths = search::load_parts("meta/part_index.json");
+  auto part_paths = search::load_parts("meta/index_parts.json");
 
   search::index_info info("meta/index.json");
 
