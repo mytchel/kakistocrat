@@ -33,7 +33,7 @@ namespace search {
 std::vector<std::string> get_split_at() {
   std::vector<std::string> split_at;
 
-  if (false) {
+  if (true) {
     split_at.emplace_back("a");
     split_at.emplace_back("b");
     split_at.emplace_back("c");
@@ -693,6 +693,11 @@ rank(
 
     pairs_ranked.emplace_back(page_id, rsv);
 	}
+
+  std::sort(pairs_ranked.begin(), pairs_ranked.end(),
+    [](auto &a, auto &b) {
+        return a.first < b.first;
+      });
 
   return pairs_ranked;
 }
