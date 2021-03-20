@@ -394,3 +394,33 @@ cleaning up excess now
 4.8M    meta/index.words.m.dat
 5.0M    meta/index.words.s.dat
 
+my other way of doing it was broken anyway...
+
+with both:
+./indexer  84.25s user 2.00s system 271% cpu 31.763 total
+
+[2021-03-20 19:53:51.374] [info] STAT load        took 1621
+[2021-03-20 19:53:51.374] [info] STAT merge       took 4856
+[2021-03-20 19:53:51.374] [info] STAT save        took 392
+[2021-03-20 19:53:51.374] [info] STAT word index  took 40
+[2021-03-20 19:53:51.374] [info] STAT word merge  took 52
+[2021-03-20 19:53:51.374] [info] STAT word find   took 72
+[2021-03-20 19:53:51.374] [info] STAT trine index took 1226
+[2021-03-20 19:53:51.374] [info] STAT trine merge took 139
+[2021-03-20 19:53:51.374] [info] STAT trine find  took 1555
+[2021-03-20 19:53:52.156] [info] done
+./merger  34.40s user 2.45s system 222% cpu 16.538 total
+
+44M     meta/index.pairs..dat
+23M     meta/index.pairs.f.dat
+26M     meta/index.pairs.m.dat
+30M     meta/index.pairs.s.dat
+96M     meta/index.trines..dat
+53M     meta/index.trines.f.dat
+57M     meta/index.trines.m.dat
+76M     meta/index.trines.s.dat
+8.5M    meta/index.words..dat
+4.9M    meta/index.words.f.dat
+5.3M    meta/index.words.m.dat
+5.7M    meta/index.words.s.dat
+

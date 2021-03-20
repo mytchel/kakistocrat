@@ -13,9 +13,9 @@ struct bst {
     if (right) delete right;
   }
 
-  bst(std::string &key, uint64_t val);
+  bst(std::string &key, uint32_t val);
 
-  bool insert(std::string &key, uint64_t val);
+  bool insert(std::string &key, uint32_t val);
 
   void get_postings(std::list<std::pair<std::string, posting>> &postings);
 };

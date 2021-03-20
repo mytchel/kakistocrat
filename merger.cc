@@ -213,7 +213,7 @@ int main(int argc, char *argv[]) {
 
     for (auto &p: index.page_lengths) {
       info.average_page_length += p.second;
-      info.page_lengths.emplace(p);
+      info.page_lengths.emplace(p.first, p.second);
     }
   }
 

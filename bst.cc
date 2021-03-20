@@ -5,12 +5,12 @@
 
 #include "bst.h"
 
-bst::bst(std::string &k, uint64_t val) : store(val) {
+bst::bst(std::string &k, uint32_t val) : store(val) {
 	left = right = {};
 	key = k;
 }
 
-bool bst::insert(std::string &k, uint64_t val)
+bool bst::insert(std::string &k, uint32_t val)
 {
   bst *b = this;
 	for (;;) {

@@ -25,15 +25,15 @@ size_t posting::size()
   return sizeof(uint32_t) * 2 + ids_len + counts_len;
 }
 
-std::vector<std::pair<uint64_t, uint8_t>>
+std::vector<std::pair<uint32_t, uint8_t>>
 posting::decompress() const
 {
-	uint64_t prevI = 0;
-	uint64_t docI = 0;
+	uint32_t prevI = 0;
+	uint32_t docI = 0;
 	size_t di = 0;
 	size_t ci = 0;
 
-  std::vector<std::pair<uint64_t, uint8_t>> pairs;
+  std::vector<std::pair<uint32_t, uint8_t>> pairs;
 
   pairs.reserve(counts_len);
 
@@ -99,17 +99,17 @@ void posting::merge(posting &other)
   counts_len += other.counts_len;
 }
 
-void posting::append(uint64_t id)
+void posting::append(uint32_t id, uint8_t count)
 {
-  if (id == last_id) {
-    counts[counts_len-1]++;
+  if (counts_len > 0 && id == last_id) {
+    counts[counts_len-1] += count;
     return;
   }
 
   reserve(9, 1);
 
   ids_len += vbyte_store(ids + ids_len, id - last_id);
-  counts[counts_len++] = 1;
+  counts[counts_len++] = count;
   last_id = id;
 }
 

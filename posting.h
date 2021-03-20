@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 struct posting {
-  uint64_t last_id{0};
+  uint32_t last_id{0};
 
   uint8_t *ids{NULL};
   size_t ids_len{0}, ids_max{0};
@@ -14,7 +14,9 @@ struct posting {
   uint8_t *counts{NULL};
   size_t counts_len{0}, counts_max{0};
 
-  posting(uint64_t i) {
+  posting() {}
+
+  posting(uint32_t i) {
     append(i);
   }
 
@@ -65,11 +67,11 @@ struct posting {
 
   size_t size();
 
-  std::vector<std::pair<uint64_t, uint8_t>> decompress() const;
+  std::vector<std::pair<uint32_t, uint8_t>> decompress() const;
 
   void reserve(size_t id, size_t cnt);
 
-  void append(uint64_t id);
+  void append(uint32_t id, uint8_t count = 1);
   void merge(posting &other);
 
   bool only_one() {

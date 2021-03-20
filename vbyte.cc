@@ -17,6 +17,25 @@
 #include <stdint.h>
 #include "vbyte.h"
 
+int vbyte_read(const uint8_t *in, uint32_t *out)
+{
+	*out = in[0] & 0x7Flu;
+	if (in[0] < 128)
+		return 1;
+	*out = ((in[1] & 0x7Flu) << 7) | *out;
+	if (in[1] < 128)
+		return 2;
+	*out = ((in[2] & 0x7Flu) << 14) | *out;
+	if (in[2] < 128)
+		return 3;
+	*out = ((in[3] & 0x7Flu) << 21) | *out;
+	if (in[3] < 128)
+		return 4;
+	*out = ((in[4] & 0x7Flu) << 28) | *out;
+//	if (in[4] < 128)
+		return 5;
+}
+
 int vbyte_read(const uint8_t *in, uint64_t *out)
 {
 	*out = in[0] & 0x7Flu;
@@ -45,6 +64,46 @@ int vbyte_read(const uint8_t *in, uint64_t *out)
 		return 8;
 	*out = ((in[8] & 0x7Flu) << 56) | *out;
 		return 9;
+}
+
+int vbyte_store(uint8_t *p, uint32_t value)
+{
+	if (value < (1lu << 7)) {
+    *p = value & 0x7Fu;
+		return 1;
+  }
+
+	*p = (value & 0x7Fu) | (1u << 7);
+  ++p;
+
+  if (value < (1lu << 14)) {
+		*p = value >> 7;
+		return 2;
+  }
+
+  *p = ((value >> 7) & 0x7Fu) | (1u << 7);
+  ++p;
+
+  if (value < (1lu << 21)) {
+		*p = value >> 14;
+		return 3;
+  }
+
+  *p = ((value >> 14) & 0x7Fu) | (1u << 7);
+  ++p;
+
+  if (value < (1lu << 28)) {
+		*p = value >> 21;
+		return 4;
+  }
+
+  *p = ((value >> 21) & 0x7Fu) | (1u << 7);
+	++p;
+
+//  if (value < (1lu << 35)) {
+		*p = value >> 28;
+		return 5;
+//	}
 }
 
 int vbyte_store(uint8_t *p, uint64_t value)

@@ -37,7 +37,7 @@ uint32_t hash(std::string key)
 	return result & (HTCAP - 1);
 }
 
-void hash_table::insert(std::string key, uint64_t val)
+void hash_table::insert(std::string key, uint32_t val)
 {
   if (key.size() > 255) return;
 

@@ -29,7 +29,7 @@ struct hash_table {
     }
   }
 
-  void insert(std::string key, uint64_t val);
+  void insert(std::string key, uint32_t val);
 
   std::list<std::pair<std::string, posting>> get_postings();
 };
