@@ -58,7 +58,8 @@ void index_site(search::indexer &indexer, crawl::site &site) {
   for (auto &page: site.pages) {
     if (!page.valid) continue;
 
-    uint64_t id = crawl::page_id(site.id, page.id).to_value();
+    uint64_t page_id = crawl::page_id(site.id, page.id).to_value();
+    uint32_t index_id = indexer.pages.size();
 
     std::ifstream pfile;
 
@@ -71,7 +72,7 @@ void index_site(search::indexer &indexer, crawl::site &site) {
 
     pfile.read(file_buf, scrape::max_file_size);
 
-    spdlog::debug("process page {} : {}", id, page.url);
+    spdlog::debug("process page {} / {} : {}", page_id, index_id, page.url);
     size_t len = pfile.gcount();
 
     tok.init(file_buf, len);
@@ -119,7 +120,7 @@ void index_site(search::indexer &indexer, crawl::site &site) {
 
         std::string s(str_c(&tok_buffer));
 
-        indexer.words.insert(s, id);
+        indexer.words.insert(s, index_id);
 
         if (str_length(&tok_buffer_trine) > 0) {
           str_cat(&tok_buffer_trine, " ");
@@ -127,7 +128,7 @@ void index_site(search::indexer &indexer, crawl::site &site) {
 
           std::string s(str_c(&tok_buffer_trine));
 
-          indexer.trines.insert(s, id);
+          indexer.trines.insert(s, index_id);
 
           str_resize(&tok_buffer_trine, 0);
         }
@@ -138,7 +139,7 @@ void index_site(search::indexer &indexer, crawl::site &site) {
 
           std::string s(str_c(&tok_buffer_pair));
 
-          indexer.pairs.insert(s, id);
+          indexer.pairs.insert(s, index_id);
 
           str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
         }
@@ -150,7 +151,7 @@ void index_site(search::indexer &indexer, crawl::site &site) {
 
     pfile.close();
 
-    indexer.page_lengths.emplace(id, page_length);
+    indexer.pages.emplace_back(page_id, page_length);
   }
 
   free(file_buf);
@@ -188,7 +189,7 @@ indexer_run(Channel<std::string*> &in,
     spdlog::info("{} load  {}", tid, site.host);
     site.load();
 
-    if (n_pages + site.pages.size() > 100) {
+    if (n_pages > 50 && n_pages + site.pages.size() > 100) {
       spdlog::info("{} save with  {} pages", tid, n_pages);
       std::string base_path = fmt::format("meta/index_parts/index.{}.{}", tid, part_n++);
       auto p = indexer.save(base_path);

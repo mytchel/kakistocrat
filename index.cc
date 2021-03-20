@@ -34,36 +34,36 @@ std::vector<std::string> get_split_at() {
   std::vector<std::string> split_at;
 
   if (false) {
-  split_at.emplace_back("a");
-  split_at.emplace_back("b");
-  split_at.emplace_back("c");
-  split_at.emplace_back("d");
-  split_at.emplace_back("e");
-  split_at.emplace_back("f");
-  split_at.emplace_back("g");
-  split_at.emplace_back("h");
-  split_at.emplace_back("i");
-  split_at.emplace_back("j");
-  split_at.emplace_back("k");
-  split_at.emplace_back("l");
-  split_at.emplace_back("m");
-  split_at.emplace_back("n");
-  split_at.emplace_back("o");
-  split_at.emplace_back("p");
-  split_at.emplace_back("q");
-  split_at.emplace_back("r");
-  split_at.emplace_back("s");
-  split_at.emplace_back("t");
-  split_at.emplace_back("u");
-  split_at.emplace_back("v");
-  split_at.emplace_back("w");
-  split_at.emplace_back("x");
-  split_at.emplace_back("y");
-  split_at.emplace_back("z");
+    split_at.emplace_back("a");
+    split_at.emplace_back("b");
+    split_at.emplace_back("c");
+    split_at.emplace_back("d");
+    split_at.emplace_back("e");
+    split_at.emplace_back("f");
+    split_at.emplace_back("g");
+    split_at.emplace_back("h");
+    split_at.emplace_back("i");
+    split_at.emplace_back("j");
+    split_at.emplace_back("k");
+    split_at.emplace_back("l");
+    split_at.emplace_back("m");
+    split_at.emplace_back("n");
+    split_at.emplace_back("o");
+    split_at.emplace_back("p");
+    split_at.emplace_back("q");
+    split_at.emplace_back("r");
+    split_at.emplace_back("s");
+    split_at.emplace_back("t");
+    split_at.emplace_back("u");
+    split_at.emplace_back("v");
+    split_at.emplace_back("w");
+    split_at.emplace_back("x");
+    split_at.emplace_back("y");
+    split_at.emplace_back("z");
   } else if (true) {
-  split_at.emplace_back("f");
-  split_at.emplace_back("m");
-  split_at.emplace_back("s");
+    split_at.emplace_back("f");
+    split_at.emplace_back("m");
+    split_at.emplace_back("s");
   }
 
   return split_at;
@@ -192,11 +192,20 @@ void index_part::load()
     return;
   }
 
-  uint32_t count = ((uint32_t *)backing)[0];
+  uint32_t page_count = ((uint32_t *)backing)[0];
+  uint32_t posting_count = ((uint32_t *)backing)[1];
 
-  size_t offset = sizeof(uint32_t);
+  size_t offset = sizeof(uint32_t) * 2;
 
-  for (size_t i = 0; i < count; i++) {
+  page_ids.reserve(page_count);
+
+  offset += sizeof(uint32_t) * 2;
+  for (size_t i = 0; i < page_count; i++) {
+    page_ids.push_back(((uint64_t *) backing)[offset]);
+    offset += sizeof(uint64_t);
+  }
+
+  for (size_t i = 0; i < posting_count; i++) {
     uint8_t key_len = backing[offset];
     offset++;
 
@@ -231,13 +240,21 @@ void write_buf(std::string path, uint8_t *buf, size_t len)
 }
 
 static size_t hash_to_buf(
+    std::vector<std::pair<uint64_t, uint32_t>> &pages,
     std::list<std::pair<std::string, posting>>::iterator &start,
     std::list<std::pair<std::string, posting>>::iterator &end,
     size_t count,
     uint8_t *buffer)
 {
-  ((uint32_t *) buffer)[0] = count;
-  size_t offset = sizeof(uint32_t);
+  ((uint32_t *) buffer)[0] = pages.size();
+  ((uint32_t *) buffer)[1] = count;
+  size_t offset = sizeof(uint32_t) * 2;
+
+  offset += sizeof(uint32_t) * 2;
+  for (auto &p: pages) {
+    ((uint64_t *) buffer)[offset] = p.first;
+    offset += sizeof(uint64_t);
+  }
 
   for (auto p = start; p != end; p++) {
     uint8_t len = p->first.size();
@@ -293,7 +310,9 @@ void index_part::save()
   free(buffer);
 }
 
-std::vector<index_part_info> index_part_save(hash_table &t, std::string base_path)
+std::vector<index_part_info> index_part_save(
+    std::vector<std::pair<uint64_t, uint32_t>> &pages,
+    hash_table &t, std::string base_path)
 {
   std::vector<index_part_info> parts;
 
@@ -321,7 +340,7 @@ std::vector<index_part_info> index_part_save(hash_table &t, std::string base_pat
   while (true) {
     if (end == postings.end() || (split != split_at.end() && *split < end->first)) {
       if (start != end) {
-        size_t len = hash_to_buf(start, end, count, buffer);
+        size_t len = hash_to_buf(pages, start, end, count, buffer);
 
         auto path = fmt::format("{}.{}.dat", base_path, start->first);
 
@@ -355,24 +374,24 @@ std::string indexer::save(std::string base_path)
   auto trines_path = base_path + ".trines";
   auto meta_path = base_path + ".meta.json";
 
-  auto word_parts = index_part_save(words, words_path);
-  auto pair_parts = index_part_save(pairs, pairs_path);
-  auto trine_parts = index_part_save(trines, trines_path);
+  auto word_parts = index_part_save(pages, words, words_path);
+  auto pair_parts = index_part_save(pages, pairs, pairs_path);
+  auto trine_parts = index_part_save(pages, trines, trines_path);
 
   index_info info(meta_path);
 
   size_t average_page_length = 0;
 
-  if (page_lengths.size() > 0) {
-    for (auto &p: page_lengths) {
+  if (pages.size() > 0) {
+    for (auto &p: pages) {
       average_page_length += p.second;
+      info.page_lengths.emplace(p.first, p.second);
     }
 
-    average_page_length /= page_lengths.size();
+    average_page_length /= pages.size();
   }
 
   info.average_page_length = average_page_length;
-  info.page_lengths = page_lengths;
 
   info.word_parts = word_parts;
   info.pair_parts = pair_parts;
@@ -493,7 +512,6 @@ void index::save()
 {
   index_info info(path);
 
-  // TODO: already have this if it hasn't changed
   size_t average_page_length = 0;
 
   if (page_lengths.size() > 0) {
@@ -605,7 +623,7 @@ static terms split_terms(char *line)
 static std::vector<std::pair<uint64_t, double>>
 rank(
     std::vector<std::pair<uint64_t, uint8_t>> &postings,
-    std::map<uint64_t, size_t> &page_lengths, double avgdl)
+    std::map<uint64_t, uint32_t> &page_lengths, double avgdl)
 {
   std::vector<std::pair<uint64_t, double>> pairs_ranked;
 
@@ -697,6 +715,13 @@ void index_part::merge(index_part &other)
 
   size_t key_buf_size = 1024 * 1024;
 
+  page_ids.reserve(page_ids.size() + other.page_ids.size());
+  uint32_t page_id_offset = page_ids.size();
+
+  for (auto p: other.page_ids) {
+    page_ids.push_back(p);
+  }
+
   while (o_it != other.store.end()) {
     if (start && o_it->first < *start) {
       o_it++;
@@ -712,7 +737,14 @@ void index_part::merge(index_part &other)
     if (it != store.end()) {
       auto start = std::chrono::system_clock::now();
 
-      it->second.merge(o_it->second);
+      auto pairs = o_it->second.decompress();
+      std::vector<std::pair<uint32_t, uint8_t>> pairs_small;
+      pairs_small.reserve(pairs.size());
+      for (auto &p: pairs) {
+        it->second.append(p.first + page_id_offset, p.second);
+      }
+
+      //it->second.merge(pairs_small);
 
       auto end = std::chrono::system_clock::now();
       merge_total += end - start;
@@ -742,6 +774,13 @@ void index_part::merge(index_part &other)
       extra_backing_offset += c_len;
 
       store.emplace_back(key(c_buf, c_len), posting(o_it->second));
+
+      auto pairs = o_it->second.decompress();
+      std::vector<std::pair<uint32_t, uint8_t>> pairs_small;
+      pairs_small.reserve(pairs.size());
+      for (auto &p: pairs) {
+        store.back().second.append(p.first + page_id_offset, p.second);
+      }
 
       update_index(std::prev(store.end()));
       auto end = std::chrono::system_clock::now();

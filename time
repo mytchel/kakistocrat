@@ -312,3 +312,98 @@ not much help at all.
 No harm though. And it makes it easier to manage.
 
 Will need to sort out ordering now though. ordering or aliasing.
+
+comparing storeing id's in dicts
+
+with dict:
+indexer, virt 1.1G, res 0.9g
+./indexer  84.48s user 1.97s system 270% cpu 31.922 total
+merger, virt 2.5G, rese 1.5g
+./merger  41.46s user 2.43s system 225% cpu 19.453 total
+
+43M     meta/index.pairs..dat
+48M     meta/index.pairs.0.dat
+12M     meta/index.pairs.a.dat
+6.1M    meta/index.pairs.b.dat
+8.7M    meta/index.pairs.c.dat
+5.9M    meta/index.pairs.d.dat
+5.4M    meta/index.pairs.e.dat
+23M     meta/index.pairs.f.dat
+3.0M    meta/index.pairs.g.dat
+4.0M    meta/index.pairs.h.dat
+6.4M    meta/index.pairs.i.dat
+1.3M    meta/index.pairs.j.dat
+1.3M    meta/index.pairs.k.dat
+4.2M    meta/index.pairs.l.dat
+26M     meta/index.pairs.m.dat
+3.7M    meta/index.pairs.n.dat
+5.6M    meta/index.pairs.o.dat
+6.9M    meta/index.pairs.p.dat
+852K    meta/index.pairs.q.dat
+4.9M    meta/index.pairs.r.dat
+30M     meta/index.pairs.s.dat
+12M     meta/index.pairs.t.dat
+2.5M    meta/index.pairs.u.dat
+2.0M    meta/index.pairs.v.dat
+5.2M    meta/index.pairs.w.dat
+356K    meta/index.pairs.x.dat
+1.4M    meta/index.pairs.y.dat
+536K    meta/index.pairs.z.dat
+96M     meta/index.trines..dat
+101M    meta/index.trines.0.dat
+29M     meta/index.trines.a.dat
+13M     meta/index.trines.b.dat
+18M     meta/index.trines.c.dat
+12M     meta/index.trines.d.dat
+11M     meta/index.trines.e.dat
+53M     meta/index.trines.f.dat
+5.8M    meta/index.trines.g.dat
+8.8M    meta/index.trines.h.dat
+17M     meta/index.trines.i.dat
+2.3M    meta/index.trines.j.dat
+2.4M    meta/index.trines.k.dat
+8.6M    meta/index.trines.l.dat
+57M     meta/index.trines.m.dat
+7.6M    meta/index.trines.n.dat
+15M     meta/index.trines.o.dat
+14M     meta/index.trines.p.dat
+1.9M    meta/index.trines.q.dat
+9.5M    meta/index.trines.r.dat
+76M     meta/index.trines.s.dat
+32M     meta/index.trines.t.dat
+5.1M    meta/index.trines.u.dat
+3.7M    meta/index.trines.v.dat
+13M     meta/index.trines.w.dat
+688K    meta/index.trines.x.dat
+3.5M    meta/index.trines.y.dat
+964K    meta/index.trines.z.dat
+8.3M    meta/index.words..dat
+9.7M    meta/index.words.0.dat
+1.7M    meta/index.words.a.dat
+1.2M    meta/index.words.b.dat
+1.9M    meta/index.words.c.dat
+1.3M    meta/index.words.d.dat
+1.1M    meta/index.words.e.dat
+4.7M    meta/index.words.f.dat
+740K    meta/index.words.g.dat
+852K    meta/index.words.h.dat
+980K    meta/index.words.i.dat
+340K    meta/index.words.j.dat
+424K    meta/index.words.k.dat
+888K    meta/index.words.l.dat
+5.1M    meta/index.words.m.dat
+760K    meta/index.words.n.dat
+772K    meta/index.words.o.dat
+1.6M    meta/index.words.p.dat
+176K    meta/index.words.q.dat
+1.2M    meta/index.words.r.dat
+5.5M    meta/index.words.s.dat
+1.4M    meta/index.words.t.dat
+544K    meta/index.words.u.dat
+556K    meta/index.words.v.dat
+908K    meta/index.words.w.dat
+128K    meta/index.words.x.dat
+236K    meta/index.words.y.dat
+200K    meta/index.words.z.dat
+
+

@@ -14,6 +14,8 @@ struct posting {
   uint8_t *counts{NULL};
   size_t counts_len{0}, counts_max{0};
 
+  posting() {}
+
   posting(uint64_t i) {
     append(i);
   }
@@ -69,7 +71,7 @@ struct posting {
 
   void reserve(size_t id, size_t cnt);
 
-  void append(uint64_t id);
+  void append(uint64_t id, uint8_t count = 1);
   void merge(posting &other);
 };
 

@@ -99,17 +99,17 @@ void posting::merge(posting &other)
   counts_len += other.counts_len;
 }
 
-void posting::append(uint64_t id)
+void posting::append(uint64_t id, uint8_t count)
 {
-  if (id == last_id) {
-    counts[counts_len-1]++;
+  if (counts_len > 0 && id == last_id) {
+    counts[counts_len-1] += count;
     return;
   }
 
   reserve(9, 1);
 
   ids_len += vbyte_store(ids + ids_len, id - last_id);
-  counts[counts_len++] = 1;
+  counts[counts_len++] = count;
   last_id = id;
 }
 

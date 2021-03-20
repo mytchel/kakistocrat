@@ -26,13 +26,13 @@ std::list<std::string> load_parts(std::string path);
 void save_parts(std::string path, std::list<std::string>);
 
 struct indexer {
-  std::map<uint64_t, size_t> page_lengths;
+  std::vector<std::pair<uint64_t, uint32_t>> pages;
   hash_table words, pairs, trines;
 
   std::string save(std::string base_path);
 
   void clear() {
-    page_lengths.clear();
+    pages.clear();
     words.clear();
     pairs.clear();
     trines.clear();
@@ -61,7 +61,7 @@ struct key {
     c = o.c;
   }
 
-  size_t size() {
+  uint8_t size() {
     return len;
   }
 
@@ -84,8 +84,8 @@ struct key {
   }
 
   bool operator<=(const std::string &s) const {
-    size_t l = 0;;
-    size_t ol = s.size();;
+    uint8_t l = 0;;
+    uint8_t ol = s.size();;
     const char *od = s.data();;
 
     while (l < len && l < ol) {
@@ -102,8 +102,8 @@ struct key {
   }
 
   bool operator>=(const std::string &s) const {
-    size_t l = 0;;
-    size_t ol = s.size();;
+    uint8_t l = 0;;
+    uint8_t ol = s.size();;
     const char *od = s.data();;
 
     while (l < len && l < ol) {
@@ -120,7 +120,7 @@ struct key {
   }
 
   bool operator<(const key &o) const {
-    size_t l = 0;;
+    uint8_t l = 0;;
     while (l < len && l < o.len) {
       if (c[l] < o.c[l]) {
         return true;
@@ -141,9 +141,6 @@ struct index_part {
   index_type type;
   std::string path;
 
-  uint32_t next_id{0};
-  std::map<uint64_t, uint32_t> id_map;
-
   std::optional<std::string> start;
   std::optional<std::string> end;
 
@@ -156,9 +153,10 @@ struct index_part {
   std::list<std::pair<key, posting>> store;
 
   std::vector<std::vector<
-      std::pair<size_t, std::list<std::pair<key, posting>>::iterator>
+      std::pair<uint8_t, std::list<std::pair<key, posting>>::iterator>
     >> index;
 
+  std::vector<uint64_t> page_ids;
 
   std::chrono::nanoseconds index_total{0ms};
   std::chrono::nanoseconds merge_total{0ms};
@@ -230,8 +228,9 @@ void from_json(const nlohmann::json &j, index_part_info &i);
 
 struct index_info {
   std::string path;
-  size_t average_page_length;
-  std::map<uint64_t, size_t> page_lengths;
+
+  uint32_t average_page_length;
+  std::map<uint64_t, uint32_t> page_lengths;
 
   std::vector<index_part_info> word_parts;
   std::vector<index_part_info> pair_parts;
@@ -244,9 +243,9 @@ struct index_info {
 };
 
 struct index {
-  size_t average_page_length{0};
+  uint32_t average_page_length{0};
 
-  std::map<uint64_t, size_t> page_lengths;
+  std::map<uint64_t, uint32_t> page_lengths;
 
   std::vector<index_part> word_parts;
   std::vector<index_part> pair_parts;

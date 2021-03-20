@@ -57,7 +57,8 @@ void index_site(crawl::site &s, search::indexer &indexer) {
   for (auto &page: s.pages) {
     if (!page.valid) continue;
 
-    uint64_t id = crawl::page_id(s.id, page.id).to_value();
+    uint64_t page_id = crawl::page_id(s.id, page.id).to_value();
+    uint32_t index_id = indexer.pages.size();
 
     std::ifstream pfile;
 
@@ -70,7 +71,7 @@ void index_site(crawl::site &s, search::indexer &indexer) {
 
     pfile.read(file_buf, scrape::max_file_size);
 
-    spdlog::debug("process page {} : {}", id, page.url);
+    spdlog::debug("process page {} : {}", page_id, page.url);
     size_t len = pfile.gcount();
 
     tok.init(file_buf, len);
@@ -118,7 +119,7 @@ void index_site(crawl::site &s, search::indexer &indexer) {
 
         std::string s(str_c(&tok_buffer));
 
-        indexer.words.insert(s, id);
+        indexer.words.insert(s, index_id);
 
         if (str_length(&tok_buffer_trine) > 0) {
           str_cat(&tok_buffer_trine, " ");
@@ -126,7 +127,7 @@ void index_site(crawl::site &s, search::indexer &indexer) {
 
           std::string s(str_c(&tok_buffer_trine));
 
-          indexer.trines.insert(s, id);
+          indexer.trines.insert(s, index_id);
 
           str_resize(&tok_buffer_trine, 0);
         }
@@ -137,7 +138,7 @@ void index_site(crawl::site &s, search::indexer &indexer) {
 
           std::string s(str_c(&tok_buffer_pair));
 
-          indexer.pairs.insert(s, id);
+          indexer.pairs.insert(s, index_id);
 
           str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
         }
@@ -149,7 +150,7 @@ void index_site(crawl::site &s, search::indexer &indexer) {
 
     pfile.close();
 
-    indexer.page_lengths.emplace(id, page_length);
+    indexer.pages.emplace_back(page_id, page_length);
   }
 
   free(file_buf);
