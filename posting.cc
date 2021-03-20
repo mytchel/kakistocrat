@@ -6,138 +6,110 @@
 #include <vector>
 #include <algorithm>
 
-#include "vbyte.h"
+#include "spdlog/spdlog.h"
 
+#include "vbyte.h"
 #include "posting.h"
 
+posting::posting(uint8_t *backing)
+{
+	ids_len = ((uint32_t *) backing)[0];
+	counts_len = ((uint32_t *) backing)[1];
+
+  ids = backing + 2 * sizeof(uint32_t);
+  counts = ids + ids_len;
+}
+
+size_t posting::size()
+{
+  return sizeof(uint32_t) * 2 + ids_len + counts_len;
+}
 
 std::vector<std::pair<uint64_t, uint8_t>>
 posting::decompress() const
 {
-	size_t id_length = ((uint32_t *) backing)[0];
-	size_t count_length = ((uint32_t *) backing)[1];
-
-  const uint8_t *id_store = backing + 2 * sizeof(uint32_t);
-	const uint8_t *count_store = id_store + id_length;
-
 	uint64_t prevI = 0;
 	uint64_t docI = 0;
 	size_t di = 0;
 	size_t ci = 0;
 
-  std::vector<std::pair<uint64_t, uint8_t>> counts;
+  std::vector<std::pair<uint64_t, uint8_t>> pairs;
 
-  counts.reserve(count_length);
+  pairs.reserve(counts_len);
 
-	while (ci < count_length && di < id_length) {
-		di += vbyte_read(&id_store[di], &docI);
+	while (ci < counts_len && di < ids_len) {
+		di += vbyte_read(&ids[di], &docI);
 		docI += prevI;
 		prevI = docI;
 
-    counts.emplace_back(docI, count_store[ci]);
-		ci++;
+    pairs.emplace_back(docI, counts[ci++]);
 	}
 
-  return counts;
-}
-
-size_t posting::save_backing(uint8_t *buffer)
-{
-  size_t s = backing_size();
-
-  memcpy(buffer, backing, s);
-  return s;
+  return pairs;
 }
 
 size_t posting::save(uint8_t *buffer)
 {
-  if (backing != NULL) {
-    return save_backing(buffer);
-  }
-
+  /*
   std::sort(counts.begin(), counts.end(),
       [](auto &a, auto &b) {
         return a.first < b.first;
       }
   );
+*/
 
-	size_t offset = 2 * sizeof(uint32_t);
+  ((uint32_t *)buffer)[0] = ids_len;
+	((uint32_t *)buffer)[1] = counts_len;
 
-  uint8_t *id_store = buffer + offset;
-  size_t id_length = 0;
+  uint8_t *buf_ids = buffer + sizeof(uint32_t) * 2;
+  uint8_t *buf_cnt = buf_ids + ids_len;
 
-  uint64_t o = 0;
-  for (auto &c: counts) {
-    id_length += vbyte_store(id_store + id_length, c.first - o);
-    o = c.first;
-  }
+  memcpy(buf_ids, ids, ids_len);
+  memcpy(buf_cnt, counts, counts_len);
 
-  offset += id_length;
-
-  for (auto &c: counts) {
-    buffer[offset] = c.second;
-    offset += sizeof(uint8_t);
-  }
-
-	((uint32_t *)buffer)[0] = id_length;
-	((uint32_t *)buffer)[1] = counts.size();
-
-	return offset;
+	return size();
 }
 
-size_t posting::backing_size()
-{
-  if (backing == NULL) {
-    return 0;
+void posting::reserve(size_t id, size_t cnt) {
+  if (ids_len + id > ids_max) {
+    ids_max = (ids_len + id) * 2;
+    ids = (uint8_t *) realloc(ids, ids_max);
+    if (ids == NULL) {
+      throw std::bad_alloc();
+    }
   }
 
-  size_t id_length = ((uint32_t *) backing)[0];
-	size_t count_length = ((uint32_t *) backing)[1];
-
-  return sizeof(uint32_t) * 2 + id_length + count_length;
+  if (counts_len + cnt > counts_max) {
+    counts_max = (counts_len + cnt) * 2;
+    counts = (uint8_t *) realloc(counts, counts_max);
+    if (counts == NULL) {
+      throw std::bad_alloc();
+    }
+  }
 }
 
 void posting::merge(posting &other)
 {
-  if (backing != NULL && counts.empty()) {
-    counts = decompress();
-  }
+  reserve(other.ids_len, other.counts_len);
 
-  // backing is no longer valid
-  backing = NULL;
+  memcpy(ids + ids_len, other.ids, other.ids_len);
+  ids_len += other.ids_len;
 
-  auto pairs = other.decompress();
-
-  if (counts.size() + pairs.size() >= counts.capacity()) {
-    counts.reserve((counts.size() + pairs.size()) * 4);
-  }
-
-  for (auto &p: pairs) {
-    counts.emplace_back(p.first, p.second);
-  }
+  memcpy(counts + counts_len, other.counts, other.counts_len);
+  counts_len += other.counts_len;
 }
 
 void posting::append(uint64_t id)
 {
-  if (backing != NULL && counts.empty()) {
-    counts = decompress();
+  if (id == last_id) {
+    counts[counts_len-1]++;
+    return;
   }
 
-  // backing is no longer valid
-  backing = NULL;
+  reserve(9, 1);
 
-  if (counts.size() + 1 >= counts.capacity()) {
-    counts.reserve((counts.size() + 1) * 4);
-  }
-
-  auto &b = counts.back();
-	if (counts.size() > 0 && b.first == id) {
-    if (b.second < 255)
-      b.second++;
-
-  } else {
-    counts.emplace_back(id, 1);
-	}
+  ids_len += vbyte_store(ids + ids_len, id - last_id);
+  counts[counts_len++] = 1;
+  last_id = id;
 }
-
 

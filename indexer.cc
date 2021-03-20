@@ -192,7 +192,7 @@ indexer_run(Channel<std::string*> &in, Channel<std::string*> &out, int tid)
 
     index_site(site);
     spdlog::info("{} finished {}", tid, site.host);
-    
+
     name >> out;
   }
 }
@@ -202,6 +202,7 @@ int main(int argc, char *argv[]) {
   crawler.load();
 
   auto n_threads = std::thread::hardware_concurrency();
+  if (n_threads > 1) n_threads--;
 
   spdlog::info("starting {} threads", n_threads);
 

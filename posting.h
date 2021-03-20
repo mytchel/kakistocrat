@@ -6,34 +6,68 @@
 #include <stdint.h>
 
 struct posting {
-  std::vector<std::pair<uint64_t, uint8_t>> counts;
-  uint8_t *backing{NULL};
+  uint64_t last_id{0};
+
+  uint8_t *ids{NULL};
+  size_t ids_len{0}, ids_max{0};
+
+  uint8_t *counts{NULL};
+  size_t counts_len{0}, counts_max{0};
 
   posting(uint64_t i) {
     append(i);
   }
 
-  posting(uint8_t *b) : backing{b} {}
-
-  posting(const posting &p) {
-    if (p.counts.empty()) {
-      counts = p.decompress();
-    } else {
-      counts = p.counts;
+  ~posting() {
+    if (ids_max > 0) {
+      free(ids);
+      free(counts);
     }
   }
 
-  posting(posting &&p) {
-    counts = std::move(p.counts);
-    backing = p.backing;
+  posting(uint8_t *b);
+
+  posting(const posting &p) {
+    ids_max = p.ids_len;
+    ids_len = p.ids_len;
+    ids = (uint8_t *) malloc(ids_max);
+    if (ids == NULL) {
+      throw std::bad_alloc();
+    }
+
+    memcpy(ids, p.ids, ids_len);
+
+    counts_max = p.counts_len;
+    counts_len = p.counts_len;
+    counts = (uint8_t *) malloc(counts_max);
+    if (counts == NULL) {
+      throw std::bad_alloc();
+    }
+
+    memcpy(counts, p.counts, counts_len);
   }
 
-  size_t save_backing(uint8_t *buffer);
+  posting(posting &&p) {
+    ids = p.ids;
+    ids_len = p.ids_len;
+    ids_max = p.ids_max;
+
+    p.ids_max = 0;
+
+    counts = p.counts;
+    counts_len = p.counts_len;
+    counts_max = p.counts_max;
+
+    p.counts_max = 0;
+  }
+
   size_t save(uint8_t *buffer);
 
-  size_t backing_size();
+  size_t size();
 
   std::vector<std::pair<uint64_t, uint8_t>> decompress() const;
+
+  void reserve(size_t id, size_t cnt);
 
   void append(uint64_t id);
   void merge(posting &other);

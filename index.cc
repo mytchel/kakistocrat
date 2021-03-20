@@ -60,7 +60,7 @@ std::vector<std::string> get_split_at() {
   split_at.emplace_back("x");
   split_at.emplace_back("y");
   split_at.emplace_back("z");
-  } else {
+  } else if (true) {
   split_at.emplace_back("f");
   split_at.emplace_back("m");
   split_at.emplace_back("s");
@@ -169,7 +169,7 @@ void index_part::load()
 
     posting p(backing + offset);
 
-    offset += p.backing_size();
+    offset += p.size();
 
     store.emplace_back(key(c_key, key_len), std::move(p));
 
@@ -752,4 +752,4 @@ void index_part::merge(index_part &other)
   spdlog::debug("finished, added {} postings", added);
 }
 
-} 
+}

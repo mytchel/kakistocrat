@@ -135,6 +135,9 @@ struct index_part {
   index_type type;
   std::string path;
 
+  uint32_t next_id{0};
+  std::map<uint64_t, uint32_t> id_map;
+
   std::optional<std::string> start;
   std::optional<std::string> end;
 
