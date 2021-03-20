@@ -261,15 +261,22 @@ static size_t hash_to_buf(
 
 size_t index_part::save_to_buf(uint8_t *buffer)
 {
+  /*
   store.sort(
       [](auto &a, auto &b) {
         return a.first < b.first;
       });
+*/
 
-  ((uint32_t *) buffer)[0] = store.size();
   size_t offset = sizeof(uint32_t);
 
+  size_t count = 0;
+
   for (auto &p: store) {
+    if (p.second.only_one()) continue;
+
+    count++;
+
     buffer[offset] = p.first.size();
     offset++;
 
@@ -278,6 +285,8 @@ size_t index_part::save_to_buf(uint8_t *buffer)
 
     offset += p.second.save(buffer + offset);
   }
+
+  ((uint32_t *) buffer)[0] = count;
 
   return offset;
 }

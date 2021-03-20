@@ -312,3 +312,85 @@ not much help at all.
 No harm though. And it makes it easier to manage.
 
 Will need to sort out ordering now though. ordering or aliasing.
+
+comparing storeing id's in dicts
+
+with dict:
+indexer, virt 1.1G, res 0.9g
+./indexer  84.48s user 1.97s system 270% cpu 31.922 total
+merger, virt 2.5G, rese 1.5g
+./merger  41.46s user 2.43s system 225% cpu 19.453 total
+
+43M     meta/index.pairs..dat
+23M     meta/index.pairs.f.dat
+26M     meta/index.pairs.m.dat
+30M     meta/index.pairs.s.dat
+96M     meta/index.trines..dat
+53M     meta/index.trines.f.dat
+57M     meta/index.trines.m.dat
+76M     meta/index.trines.s.dat
+8.3M    meta/index.words..dat
+4.7M    meta/index.words.f.dat
+5.1M    meta/index.words.m.dat
+5.5M    meta/index.words.s.dat
+
+without dict:
+indexer 1.2g virt, 0.97g res, possibly less than with dict
+./indexer  83.99s user 2.17s system 270% cpu 31.807 total
+merger 2.3g virt, 1.5g res
+./merger  38.71s user 2.62s system 232% cpu 17.744 total
+
+[2021-03-20 19:19:11.374] [info] STAT load        took 1673
+[2021-03-20 19:19:11.374] [info] STAT merge       took 4387
+[2021-03-20 19:19:11.374] [info] STAT save        took 1657
+[2021-03-20 19:19:11.374] [info] STAT word index  took 26
+[2021-03-20 19:19:11.374] [info] STAT word merge  took 25
+[2021-03-20 19:19:11.374] [info] STAT word find   took 75
+[2021-03-20 19:19:11.374] [info] STAT trine index took 931
+[2021-03-20 19:19:11.374] [info] STAT trine merge took 143
+[2021-03-20 19:19:11.374] [info] STAT trine find  took 1640
+
+
+48M     meta/index.pairs..dat
+26M     meta/index.pairs.f.dat
+28M     meta/index.pairs.m.dat
+34M     meta/index.pairs.s.dat
+101M    meta/index.trines..dat
+56M     meta/index.trines.f.dat
+60M     meta/index.trines.m.dat
+81M     meta/index.trines.s.dat
+9.8M    meta/index.words..dat
+5.3M    meta/index.words.f.dat
+5.8M    meta/index.words.m.dat
+6.3M    meta/index.words.s.dat
+
+what if I skip mostly empty postings.
+[2021-03-20 19:30:21.594] [info] STAT load        took 1761
+[2021-03-20 19:30:21.594] [info] STAT merge       took 4323
+[2021-03-20 19:30:21.594] [info] STAT save        took 272
+[2021-03-20 19:30:21.594] [info] STAT word index  took 27
+[2021-03-20 19:30:21.594] [info] STAT word merge  took 26
+[2021-03-20 19:30:21.594] [info] STAT word find   took 75
+[2021-03-20 19:30:21.594] [info] STAT trine index took 873
+[2021-03-20 19:30:21.594] [info] STAT trine merge took 144
+[2021-03-20 19:30:21.594] [info] STAT trine find  took 1615
+[2021-03-20 19:30:22.451] [info] done
+./merger  32.93s user 2.36s system 221% cpu 15.942 total
+
+
+these have all been invalid...
+cleaning up excess now
+
+28M     meta/index.pairs..dat
+15M     meta/index.pairs.f.dat
+16M     meta/index.pairs.m.dat
+21M     meta/index.pairs.s.dat
+38M     meta/index.trines..dat
+20M     meta/index.trines.f.dat
+20M     meta/index.trines.m.dat
+30M     meta/index.trines.s.dat
+8.3M    meta/index.words..dat
+4.3M    meta/index.words.f.dat
+4.8M    meta/index.words.m.dat
+5.0M    meta/index.words.s.dat
+

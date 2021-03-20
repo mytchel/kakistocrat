@@ -71,6 +71,13 @@ struct posting {
 
   void append(uint64_t id);
   void merge(posting &other);
+
+  bool only_one() {
+    if (counts_len == 0) return true;
+    if (counts_len > 1) return false;
+    return counts[0] == 1;
+
+  }
 };
 
 #endif
