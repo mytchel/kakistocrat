@@ -18,6 +18,17 @@ struct hash_table {
     }
   }
 
+  void clear()
+  {
+    n_postings = 0;
+    for (size_t i = 0; i < HTCAP; i++) {
+      if (store[i] != NULL) {
+        delete store[i];
+        store[i] = NULL;
+      }
+    }
+  }
+
   void insert(std::string key, uint64_t val);
 
   std::list<std::pair<std::string, posting>> get_postings();

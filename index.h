@@ -22,11 +22,21 @@ std::vector<std::string> get_split_at();
 
 const size_t max_index_part_size = 1024 * 1024 * 300;
 
+std::list<std::string> load_parts(std::string path);
+void save_parts(std::string path, std::list<std::string>);
+
 struct indexer {
   std::map<uint64_t, size_t> page_lengths;
   hash_table words, pairs, trines;
 
-  void save(std::string base_path);
+  std::string save(std::string base_path);
+
+  void clear() {
+    page_lengths.clear();
+    words.clear();
+    pairs.clear();
+    trines.clear();
+  }
 
   indexer() {}
 };
@@ -59,12 +69,8 @@ struct key {
     return c;
   }
 
-  const char *c_str() {
-    char *c_str_buf = (char *) malloc(len + 1);
-    memcpy(c_str_buf, c, len);
-    c_str_buf[len] = 0;
-
-    return c_str_buf;
+  std::string str() {
+    return std::string(c, c + len);
   }
 
   bool operator==(std::string &s) const {

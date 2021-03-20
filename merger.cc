@@ -25,7 +25,6 @@
 #include "channel.h"
 #include "util.h"
 #include "scrape.h"
-#include "crawl.h"
 #include "tokenizer.h"
 
 #include "index.h"
@@ -33,6 +32,7 @@
 using nlohmann::json;
 
 void merge(
+    std::list<std::string> part_paths,
     std::string w_p,
     std::string p_p,
     std::string t_p,
@@ -42,9 +42,6 @@ void merge(
     size_t id)
 {
   spdlog::info("starting");
-
-  crawl::crawler crawler;
-  crawler.load();
 
   search::index_part out_word(search::words, w_p, start, end);
   search::index_part out_pair(search::pairs, p_p, start, end);
@@ -56,20 +53,15 @@ void merge(
   std::chrono::nanoseconds merge_total{0ms};
   std::chrono::nanoseconds save_total{0ms};
 
-  for (auto &s: crawler.sites) {
-    if (s.last_scanned == 0) continue;
+  for (auto &index_path: part_paths) {
+    spdlog::info("load {} for merging", index_path);
 
-    spdlog::info("load {} for merging", s.host);
+    search::index_info index(index_path);
+    index.load();
 
-    auto path = fmt::format("meta/sites/{}/{}/index.meta.json", util::host_hash(s.host), s.host);
+    spdlog::info("merge {} index", index_path);
 
-    search::index_info site_index(path);
-    site_index.load();
-
-    spdlog::info("merge {} index", s.host);
-
-    spdlog::debug("merge word");
-    for (auto &p: site_index.word_parts) {
+    for (auto &p: index.word_parts) {
       if ((!end || p.start <= *end) && (!start || *start <= p.end)) {
         auto tstart = std::chrono::system_clock::now();
         search::index_part in(search::words, p.path, p.start, p.end);
@@ -84,8 +76,7 @@ void merge(
       }
     }
 
-    spdlog::debug("merge pair");
-    for (auto &p: site_index.pair_parts) {
+    for (auto &p: index.pair_parts) {
       if ((!end || p.start <= *end) && (!start || *start <= p.end)) {
         auto tstart = std::chrono::system_clock::now();
         search::index_part in(search::pairs, p.path, p.start, p.end);
@@ -100,8 +91,7 @@ void merge(
       }
     }
 
-    spdlog::debug("merge trine");
-    for (auto &p: site_index.trine_parts) {
+    for (auto &p: index.trine_parts) {
       if ((!end || p.start <= *end) && (!start || *start <= p.end)) {
         auto tstart = std::chrono::system_clock::now();
         search::index_part in(search::trines, p.path, p.start, p.end);
@@ -117,13 +107,15 @@ void merge(
     }
   }
 
-  auto tstart = std::chrono::system_clock::now();
   spdlog::info("saving");
+  auto tstart = std::chrono::system_clock::now();
+
   out_word.save();
   out_pair.save();
   out_trine.save();
-  spdlog::info("thread done");
+
   auto tend = std::chrono::system_clock::now();
+  spdlog::info("saved");
 
   save_total = tend - tstart;
 
@@ -145,9 +137,6 @@ void merge(
 int main(int argc, char *argv[]) {
   spdlog::set_level(spdlog::level::debug);
 
-  crawl::crawler crawler;
-  crawler.load();
-
   auto n_threads = std::thread::hardware_concurrency();
   if (n_threads > 1) n_threads--;
 
@@ -156,7 +145,9 @@ int main(int argc, char *argv[]) {
   std::vector<std::thread> threads(n_threads);
   Channel<size_t> done_channel;
 
-  std::vector<std::string> split_at = search::get_split_at();
+  auto split_at = search::get_split_at();
+
+  auto part_paths = search::load_parts("meta/part_index.json");
 
   search::index_info info("meta/index.json");
 
@@ -184,8 +175,6 @@ int main(int argc, char *argv[]) {
       continue;
     }
 
-    spdlog::info("thread available");
-
     if (it != split_at.end()) {
       end = *it;
       it++;
@@ -202,40 +191,33 @@ int main(int argc, char *argv[]) {
       t_p = fmt::format("meta/index.trines.{}.dat", *start);
     }
 
-    auto th = std::thread(merge, w_p, p_p, t_p, start, end, std::ref(done_channel), free_thread);
-    threads[free_thread] = std::move(th);
+    auto th = std::thread(merge, part_paths,
+          w_p, p_p, t_p,
+          start, end,
+          std::ref(done_channel), free_thread);
 
-    //merge(w_p, p_p, t_p, start, end);
+    threads[free_thread] = std::move(th);
 
     info.word_parts.emplace_back(w_p, start, end);
     info.pair_parts.emplace_back(p_p, start, end);
     info.trine_parts.emplace_back(t_p, start, end);
 
     start = end;
-
-//    break;
-
   } while (end);
-
 
   info.average_page_length = 0;
 
-  for (auto &s: crawler.sites) {
-    if (s.last_scanned == 0) continue;
+  for (auto &path: part_paths) {
+    search::index_info index(path);
+    index.load();
 
-    auto path = fmt::format("meta/sites/{}/{}/index.meta.json", util::host_hash(s.host), s.host);
-
-    search::index_info site_index(path);
-    site_index.load();
-
-    for (auto &p: site_index.page_lengths) {
+    for (auto &p: index.page_lengths) {
       info.average_page_length += p.second;
       info.page_lengths.emplace(p);
     }
   }
 
   info.average_page_length /= info.page_lengths.size();
-
 
   for (auto &t: threads) {
     if (t.joinable()) {

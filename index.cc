@@ -69,6 +69,46 @@ std::vector<std::string> get_split_at() {
   return split_at;
 }
 
+std::list<std::string> load_parts(std::string path)
+{
+  std::list<std::string> parts;
+
+  std::ifstream file;
+
+  file.open(path, std::ios::in);
+
+  if (!file.is_open()) {
+    spdlog::warn("error opening file {}", path);
+    return parts;
+  }
+
+  json j = json::parse(file);
+
+  file.close();
+
+  j.at("parts").get_to(parts);
+
+  return parts;
+}
+
+void save_parts(std::string path, std::list<std::string> parts)
+{
+  json j = json{{"parts", parts}};
+
+  std::ofstream file;
+
+  file.open(path, std::ios::out | std::ios::trunc);
+
+  if (!file.is_open()) {
+    spdlog::warn("error opening file {}", path);
+    return;
+  }
+
+  file << j;
+
+  file.close();
+}
+
 void to_json(nlohmann::json &j, const index_part_info &i)
 {
   std::string start = "", end = "";
@@ -126,8 +166,6 @@ void index_info::save()
 
 void index_info::load()
 {
-  spdlog::info("load index info {}", path);
-
   std::ifstream file;
 
   file.open(path, std::ios::in);
@@ -156,8 +194,6 @@ void index_part::load()
 
   uint32_t count = ((uint32_t *)backing)[0];
 
-  spdlog::info("loading {} postings", count);
-
   size_t offset = sizeof(uint32_t);
 
   for (size_t i = 0; i < count; i++) {
@@ -175,14 +211,10 @@ void index_part::load()
 
     update_index(std::prev(store.end()));
   }
-
-  spdlog::info("loaded {}", store.size());
 }
 
 void write_buf(std::string path, uint8_t *buf, size_t len)
 {
-  spdlog::info("write {}", path);
-
   std::ofstream file;
 
   file.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
@@ -192,7 +224,7 @@ void write_buf(std::string path, uint8_t *buf, size_t len)
     return;
   }
 
-  spdlog::info("writing {} bytes", len);
+  spdlog::info("writing {:4} mb to {}", len / 1024 / 1024, path);
   file.write((const char *) buf, len);
 
   file.close();
@@ -208,11 +240,11 @@ static size_t hash_to_buf(
   size_t offset = sizeof(uint32_t);
 
   for (auto p = start; p != end; p++) {
-    if (p->first.size() > 255) {
-      spdlog::warn("what the hell: {} : '{}'", p->first.size(), p->first);
-    }
-
     uint8_t len = p->first.size();
+    if (len > 255) {
+      spdlog::warn("what the hell: {} : '{}'", len, p->first.c_str());
+      len = 255;
+    }
 
     buffer[offset] = len;
 
@@ -238,15 +270,6 @@ size_t index_part::save_to_buf(uint8_t *buffer)
   size_t offset = sizeof(uint32_t);
 
   for (auto &p: store) {
-    if (p.first.data() == NULL) {
-      spdlog::warn("somehow have null data");
-      continue;
-    }
-    if (buffer + offset == NULL) {
-      spdlog::critical("somewhow have null buffer!");
-      break;
-    }
-
     buffer[offset] = p.first.size();
     offset++;
 
@@ -261,8 +284,6 @@ size_t index_part::save_to_buf(uint8_t *buffer)
 
 void index_part::save()
 {
-  spdlog::info("write {}", path);
-
   uint8_t *buffer = (uint8_t *) malloc(max_index_part_size);
 
   size_t len = save_to_buf(buffer);
@@ -276,11 +297,7 @@ std::vector<index_part_info> index_part_save(hash_table &t, std::string base_pat
 {
   std::vector<index_part_info> parts;
 
-  spdlog::info("get postings");
-
   auto postings = t.get_postings();
-
-  spdlog::info("got {} postings", postings.size());
 
   if (postings.empty()) {
     return parts;
@@ -290,8 +307,6 @@ std::vector<index_part_info> index_part_save(hash_table &t, std::string base_pat
       [](auto &a, auto &b) {
         return a.first < b.first;
       });
-
-  spdlog::info("posings sorted, start saving");
 
   uint8_t *buffer = (uint8_t *) malloc(max_index_part_size);
 
@@ -309,7 +324,6 @@ std::vector<index_part_info> index_part_save(hash_table &t, std::string base_pat
         size_t len = hash_to_buf(start, end, count, buffer);
 
         auto path = fmt::format("{}.{}.dat", base_path, start->first);
-        spdlog::info("write {}", path);
 
         write_buf(path, buffer, len);
 
@@ -334,22 +348,16 @@ std::vector<index_part_info> index_part_save(hash_table &t, std::string base_pat
   return parts;
 }
 
-void indexer::save(std::string base_path)
+std::string indexer::save(std::string base_path)
 {
-  spdlog::info("indexer save {}", base_path);
-
-  util::make_path(base_path);
-
-  auto words_path = base_path + "/index.words";
-  auto pairs_path = base_path + "/index.pairs";
-  auto trines_path = base_path + "/index.trines";
-  auto meta_path = base_path + "/index.meta.json";
+  auto words_path = base_path + ".words";
+  auto pairs_path = base_path + ".pairs";
+  auto trines_path = base_path + ".trines";
+  auto meta_path = base_path + ".meta.json";
 
   auto word_parts = index_part_save(words, words_path);
   auto pair_parts = index_part_save(pairs, pairs_path);
   auto trine_parts = index_part_save(trines, trines_path);
-
-  spdlog::info("indexer save meta data {}", meta_path);
 
   index_info info(meta_path);
 
@@ -372,7 +380,7 @@ void indexer::save(std::string base_path)
 
   info.save();
 
-  spdlog::info("done");
+  return meta_path;
 }
 
 bool index_part::load_backing()
@@ -393,9 +401,9 @@ bool index_part::load_backing()
 
   std::ifstream file;
 
-  spdlog::info("load {}, {} megabytes", path, part_size / 1024 / 1024);
+  spdlog::info("load {:4} mb from {}", part_size / 1024 / 1024, path);
 
-  file.open(path.c_str(), std::ios::in | std::ios::binary);
+  file.open(path, std::ios::in | std::ios::binary);
 
   if (!file.is_open() || file.fail() || !file.good() || file.bad()) {
     spdlog::warn("error opening file {}",  path);
@@ -646,15 +654,15 @@ void index::find_part_matches(
 
     key k(term);
 
-    spdlog::info("find term {}", k.c_str());
+    spdlog::info("find term {}", k.str());
 
 		auto pair = part.find(k);
     if (pair != part.store.end()) {
       auto pairs = pair->second.decompress();
-      spdlog::info("have pair {} with {} docs", pair->first.c_str(), pairs.size());
+      spdlog::info("have pair {} with {} docs", pair->first.str(), pairs.size());
       auto pairs_ranked = rank(pairs, page_lengths, average_page_length);
 
-      spdlog::info("have ranked {} with {} docs", pair->first.c_str(), pairs_ranked.size());
+      spdlog::info("have ranked {} with {} docs", pair->first.str(), pairs_ranked.size());
       postings.push_back(pairs_ranked);
 		}
 	}
@@ -683,10 +691,6 @@ std::vector<std::vector<std::pair<uint64_t, double>>> index::find_matches(char *
 
 void index_part::merge(index_part &other)
 {
-  spdlog::info("merge part '{}' into '{}'", other.path, path);
-
-  spdlog::debug("need {} + {}", store.size(), other.store.size());
-
   auto o_it = other.store.begin();
 
   size_t added = 0;
@@ -748,8 +752,6 @@ void index_part::merge(index_part &other)
 
     o_it++;
   }
-
-  spdlog::debug("finished, added {} postings", added);
 }
 
 }

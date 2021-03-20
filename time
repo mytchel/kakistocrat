@@ -1,0 +1,313 @@
+before changing key storage
+./merger  49.55s user 4.05s system 178% cpu 29.984 total
+moving malloc somehow made it worse?
+./merger  93.18s user 3.25s system 183% cpu 52.502 total
+
+
+without move
+[2021-03-17 20:55:57.089] [info] STAT word index  took 17
+[2021-03-17 20:55:57.089] [info] STAT word merge  took 20
+[2021-03-17 20:55:57.089] [info] STAT word find   took 26
+[2021-03-17 20:55:57.089] [info] STAT trine index took 213
+[2021-03-17 20:55:57.089] [info] STAT trine merge took 11
+[2021-03-17 20:55:57.089] [info] STAT trine find  took 256
+
+
+with move
+[2021-03-17 20:59:07.719] [info] STAT word index  took 13
+[2021-03-17 20:59:07.719] [info] STAT word merge  took 35
+[2021-03-17 20:59:07.719] [info] STAT word find   took 25
+[2021-03-17 20:59:07.719] [info] STAT trine index took 169
+[2021-03-17 20:59:07.719] [info] STAT trine merge took 18
+[2021-03-17 20:59:07.719] [info] STAT trine find  took 255
+
+with move and make key
+[2021-03-17 21:00:11.940] [info] STAT word index  took 13
+[2021-03-17 21:00:11.940] [info] STAT word merge  took 35
+[2021-03-17 21:00:11.940] [info] STAT word find   took 26
+[2021-03-17 21:00:11.940] [info] STAT trine index took 169
+[2021-03-17 21:00:11.940] [info] STAT trine merge took 19
+[2021-03-17 21:00:11.940] [info] STAT trine find  took 256
+[2021-03-17 21:00:12.554] [info] done
+./merger  3.44s user 0.28s system 99% cpu 3.744 total
+
+
+without move and with make key
+[2021-03-17 21:00:55.115] [info] STAT word index  took 18
+[2021-03-17 21:00:55.115] [info] STAT word merge  took 23
+[2021-03-17 21:00:55.115] [info] STAT word find   took 27
+[2021-03-17 21:00:55.115] [info] STAT trine index took 221
+[2021-03-17 21:00:55.115] [info] STAT trine merge took 13
+[2021-03-17 21:00:55.115] [info] STAT trine find  took 259
+[2021-03-17 21:00:55.440] [info] done
+./merger  2.86s user 0.23s system 99% cpu 3.113 total
+
+with move and make key
+[2021-03-17 21:02:08.579] [info] STAT word index  took 13
+[2021-03-17 21:02:08.579] [info] STAT word merge  took 35
+[2021-03-17 21:02:08.579] [info] STAT word find   took 26
+[2021-03-17 21:02:08.579] [info] STAT trine index took 166
+[2021-03-17 21:02:08.579] [info] STAT trine merge took 18
+[2021-03-17 21:02:08.579] [info] STAT trine find  took 253
+[2021-03-17 21:02:09.190] [info] done
+./merger  3.44s user 0.28s system 99% cpu 3.751 total
+
+fixed moving postings and copy them now. Not much change to anything but load time.
+[2021-03-17 21:40:26.436] [info] STAT word index  took 14
+[2021-03-17 21:40:26.436] [info] STAT word merge  took 52
+[2021-03-17 21:40:26.436] [info] STAT word find   took 27
+[2021-03-17 21:40:26.436] [info] STAT trine index took 162
+[2021-03-17 21:40:26.436] [info] STAT trine merge took 30
+[2021-03-17 21:40:26.436] [info] STAT trine find  took 247
+[2021-03-17 21:40:26.728] [info] done
+./merger  2.62s user 0.25s system 99% cpu 2.889 total
+%
+
+was better before...
+[2021-03-17 22:09:15.376] [info] STAT word index  took 11
+[2021-03-17 22:09:15.376] [info] STAT word merge  took 157
+[2021-03-17 22:09:15.376] [info] STAT word find   took 67
+[2021-03-17 22:09:15.376] [info] STAT trine index took 547
+[2021-03-17 22:09:15.376] [info] STAT trine merge took 272
+[2021-03-17 22:09:15.376] [info] STAT trine find  took 1172
+[2021-03-17 22:09:16.114] [info] done
+./merger  44.26s user 4.35s system 168% cpu 28.802 total
+
+yeah..
+[2021-03-18 07:49:51.090] [info] STAT word index  took 8
+[2021-03-18 07:49:51.090] [info] STAT word merge  took 127
+[2021-03-18 07:49:51.090] [info] STAT word find   took 60
+[2021-03-18 07:49:51.090] [info] STAT trine index took 423
+[2021-03-18 07:49:51.090] [info] STAT trine merge took 217
+[2021-03-18 07:49:51.090] [info] STAT trine find  took 1040
+[2021-03-18 07:49:51.782] [info] done
+./merger  39.29s user 3.52s system 172% cpu 24.754 total
+
+decompress posting on insert
+[2021-03-18 07:57:57.057] [info] STAT word index  took 13
+[2021-03-18 07:57:57.057] [info] STAT word merge  took 120
+[2021-03-18 07:57:57.057] [info] STAT word find   took 55
+[2021-03-18 07:57:57.057] [info] STAT trine index took 570
+[2021-03-18 07:57:57.057] [info] STAT trine merge took 199
+[2021-03-18 07:57:57.057] [info] STAT trine find  took 999
+[2021-03-18 07:57:57.979] [info] done
+./merger  40.81s user 3.67s system 176% cpu 25.242 total
+
+malloc copy positng on insert
+[2021-03-18 08:01:29.757] [info] STAT word index  took 15
+[2021-03-18 08:01:29.757] [info] STAT word merge  took 180
+[2021-03-18 08:01:29.757] [info] STAT word find   took 81
+[2021-03-18 08:01:29.757] [info] STAT trine index took 613
+[2021-03-18 08:01:29.757] [info] STAT trine merge took 286
+[2021-03-18 08:01:29.757] [info] STAT trine find  took 1164
+[2021-03-18 08:01:30.767] [info] done
+./merger  56.96s user 2.74s system 187% cpu 31.822 total
+
+[2021-03-18 08:09:29.174] [info] STAT word index  took 18
+[2021-03-18 08:09:29.174] [info] STAT word merge  took 41
+[2021-03-18 08:09:29.174] [info] STAT word find   took 26
+[2021-03-18 08:09:29.174] [info] STAT trine index took 209
+[2021-03-18 08:09:29.174] [info] STAT trine merge took 21
+[2021-03-18 08:09:29.174] [info] STAT trine find  took 247
+[2021-03-18 08:09:29.556] [info] done
+./merger  2.59s user 0.24s system 99% cpu 2.854 total
+
+[2021-03-18 08:15:46.332] [info] STAT load        took 481
+[2021-03-18 08:15:46.332] [info] STAT merge       took 953
+[2021-03-18 08:15:46.332] [info] STAT save        took 670
+[2021-03-18 08:15:46.332] [info] STAT word index  took 17
+[2021-03-18 08:15:46.332] [info] STAT word merge  took 40
+[2021-03-18 08:15:46.332] [info] STAT word find   took 26
+[2021-03-18 08:15:46.332] [info] STAT trine index took 211
+[2021-03-18 08:15:46.332] [info] STAT trine merge took 21
+[2021-03-18 08:15:46.332] [info] STAT trine find  took 253
+[2021-03-18 08:15:46.737] [info] done
+./merger  2.75s user 0.24s system 99% cpu 3.011 total
+
+postings in vector
+[2021-03-18 08:21:21.463] [info] STAT load        took 525
+[2021-03-18 08:21:21.463] [info] STAT merge       took 1050
+[2021-03-18 08:21:21.463] [info] STAT save        took 499
+[2021-03-18 08:21:21.463] [info] STAT word index  took 16
+[2021-03-18 08:21:21.463] [info] STAT word merge  took 121
+[2021-03-18 08:21:21.463] [info] STAT word find   took 28
+[2021-03-18 08:21:21.463] [info] STAT trine index took 206
+[2021-03-18 08:21:21.463] [info] STAT trine merge took 22
+[2021-03-18 08:21:21.463] [info] STAT trine find  took 254
+[2021-03-18 08:21:21.746] [info] done
+./merger  2.67s user 0.24s system 99% cpu 2.922 total
+
+vs list
+[2021-03-18 08:23:40.630] [info] STAT load        took 477
+[2021-03-18 08:23:40.631] [info] STAT merge       took 957
+[2021-03-18 08:23:40.631] [info] STAT save        took 587
+[2021-03-18 08:23:40.631] [info] STAT word index  took 17
+[2021-03-18 08:23:40.631] [info] STAT word merge  took 40
+[2021-03-18 08:23:40.631] [info] STAT word find   took 26
+[2021-03-18 08:23:40.631] [info] STAT trine index took 213
+[2021-03-18 08:23:40.631] [info] STAT trine merge took 21
+[2021-03-18 08:23:40.631] [info] STAT trine find  took 253
+[2021-03-18 08:23:41.005] [info] done
+./merger  2.62s user 0.27s system 99% cpu 2.908 total
+
+vector
+[2021-03-18 08:33:13.844] [info] STAT load        took 1307
+[2021-03-18 08:33:13.844] [info] STAT merge       took 2944
+[2021-03-18 08:33:13.844] [info] STAT save        took 1255
+[2021-03-18 08:33:13.844] [info] STAT word index  took 13
+[2021-03-18 08:33:13.844] [info] STAT word merge  took 38
+[2021-03-18 08:33:13.844] [info] STAT word find   took 53
+[2021-03-18 08:33:13.844] [info] STAT trine index took 579
+[2021-03-18 08:33:13.844] [info] STAT trine merge took 153
+[2021-03-18 08:33:13.844] [info] STAT trine find  took 1016
+[2021-03-18 08:33:14.289] [info] done
+./merger  37.04s user 3.48s system 175% cpu 23.109 total
+
+
+split up more. but not splitting index the same
+[2021-03-20 12:35:49.535] [info] STAT load        took 469
+[2021-03-20 12:35:49.535] [info] STAT merge       took 72
+[2021-03-20 12:35:49.535] [info] STAT save        took 18
+[2021-03-20 12:35:49.535] [info] STAT word index  took 2
+[2021-03-20 12:35:49.535] [info] STAT word merge  took 0
+[2021-03-20 12:35:49.535] [info] STAT word find   took 2
+[2021-03-20 12:35:49.535] [info] STAT trine index took 11
+[2021-03-20 12:35:49.535] [info] STAT trine merge took 0
+[2021-03-20 12:35:49.535] [info] STAT trine find  took 6
+[2021-03-20 12:35:49.561] [info] done
+./merger  75.91s user 5.74s system 190% cpu 42.967 total
+
+./indexer  99.41s user 5.69s system 277% cpu 37.819 total
+
+same as last but with matching index
+[2021-03-20 12:37:47.588] [info] STAT load        took 135
+[2021-03-20 12:37:47.588] [info] STAT merge       took 48
+[2021-03-20 12:37:47.588] [info] STAT save        took 23
+[2021-03-20 12:37:47.588] [info] STAT word index  took 1
+[2021-03-20 12:37:47.588] [info] STAT word merge  took 0
+[2021-03-20 12:37:47.588] [info] STAT word find   took 1
+[2021-03-20 12:37:47.588] [info] STAT trine index took 12
+[2021-03-20 12:37:47.588] [info] STAT trine merge took 0
+[2021-03-20 12:37:47.588] [info] STAT trine find  took 6
+[2021-03-20 12:37:47.619] [info] done
+./merger  57.28s user 5.78s system 179% cpu 35.120 total
+
+
+fewer splits for testing
+./indexer  83.08s user 2.94s system 314% cpu 27.327 total
+
+[2021-03-20 12:49:56.623] [info] STAT load        took 1756
+[2021-03-20 12:49:56.623] [info] STAT merge       took 4293
+[2021-03-20 12:49:56.623] [info] STAT save        took 1922
+[2021-03-20 12:49:56.623] [info] STAT word index  took 23
+[2021-03-20 12:49:56.623] [info] STAT word merge  took 53
+[2021-03-20 12:49:56.623] [info] STAT word find   took 80
+[2021-03-20 12:49:56.623] [info] STAT trine index took 802
+[2021-03-20 12:49:56.623] [info] STAT trine merge took 252
+[2021-03-20 12:49:56.623] [info] STAT trine find  took 1495
+[2021-03-20 12:49:57.278] [info] done
+./merger  36.18s user 2.64s system 161% cpu 24.019 total
+
+single thread for testing
+
+[2021-03-20 12:53:46.560] [info] STAT load        took 1584
+[2021-03-20 12:53:46.560] [info] STAT merge       took 3878
+[2021-03-20 12:53:46.560] [info] STAT save        took 1841
+[2021-03-20 12:53:46.560] [info] STAT word index  took 20
+[2021-03-20 12:53:46.560] [info] STAT word merge  took 49
+[2021-03-20 12:53:46.560] [info] STAT word find   took 77
+[2021-03-20 12:53:46.560] [info] STAT trine index took 680
+[2021-03-20 12:53:46.560] [info] STAT trine merge took 194
+[2021-03-20 12:53:46.560] [info] STAT trine find  took 1388
+[2021-03-20 12:53:47.172] [info] done
+./merger  31.07s user 2.28s system 99% cpu 33.655 total
+
+using about 1-1.5g
+
+==30579== HEAP SUMMARY:
+==30579==     in use at exit: 0 bytes in 0 blocks
+==30579==   total heap usage: 77,815,982 allocs, 77,815,982 frees, 19,514,858,886 bytes allocated
+
+store postings compresses :
+single thread
+using about 1g so saved about a third of memory. not bad
+
+[2021-03-20 14:20:29.548] [info] STAT load        took 2573
+[2021-03-20 14:20:29.548] [info] STAT merge       took 4477
+[2021-03-20 14:20:29.548] [info] STAT save        took 2492
+[2021-03-20 14:20:29.548] [info] STAT word index  took 32
+[2021-03-20 14:20:29.548] [info] STAT word merge  took 47
+[2021-03-20 14:20:29.548] [info] STAT word find   took 108
+[2021-03-20 14:20:29.548] [info] STAT trine index took 778
+[2021-03-20 14:20:29.548] [info] STAT trine merge took 169
+[2021-03-20 14:20:29.548] [info] STAT trine find  took 1531
+[2021-03-20 14:20:30.897] [info] done
+./merger  42.36s user 1.53s system 99% cpu 44.213 total
+
+but slower in every way?
+
+malloc is slower than realloc. Intersting.
+
+This also doesn't copy out the counts to a vector on load.
+Just keeps them as a pointer.
+
+using 1.2g virt, less than 1g res
+
+[2021-03-20 14:43:53.485] [info] STAT load        took 1482
+[2021-03-20 14:43:53.485] [info] STAT merge       took 3762
+[2021-03-20 14:43:53.485] [info] STAT save        took 1601
+[2021-03-20 14:43:53.485] [info] STAT word index  took 22
+[2021-03-20 14:43:53.485] [info] STAT word merge  took 26
+[2021-03-20 14:43:53.485] [info] STAT word find   took 76
+[2021-03-20 14:43:53.485] [info] STAT trine index took 748
+[2021-03-20 14:43:53.485] [info] STAT trine merge took 126
+[2021-03-20 14:43:53.485] [info] STAT trine find  took 1389
+[2021-03-20 14:43:54.456] [info] done
+./merger  30.68s user 2.28s system 99% cpu 33.226 total
+
+indexer with stored postings
+using 1.5g virt, 1g res
+./indexer  90.47s user 3.04s system 305% cpu 30.579 total
+
+
+test 4 threads
+./indexer  91.34s user 3.26s system 309% cpu 30.521 total
+./merger  43.06s user 3.38s system 252% cpu 18.375 total
+
+indexer using about 2G, merger about 3G
+( ./indexer && ./merger; )  133.21s user 6.29s system 296% cpu 47.095 total
+
+single thread:
+using about 4G
+./indexer_single  100.94s user 2.46s system 99% cpu 1:43.91 total
+
+very strange that the single thread had 100% utilization
+while the split up one did not.
+
+Join indexs for sites together to try speed up merger.
+But sorting more pairs takes longer.
+This is with the cuttoff at 1000 pages. Bigger is worse.
+3 threads
+./indexer  101.35s user 2.51s system 267% cpu 38.859 total
+
+but it doesn't seem to have helped much
+./merger  34.48s user 2.55s system 225% cpu 16.432 total
+
+10,000 page blocks which will just be one. 
+There is also the problem that the sites / page ids will not be in order now.
+./indexer  123.39s user 4.07s system 258% cpu 49.290 total
+./merger  28.30s user 2.68s system 225% cpu 13.736 total
+
+it does seem to speed it up. uses more memory though, 4g for index, 2 for merger.
+./indexer  124.72s user 4.12s system 267% cpu 48.084 total
+./merger  28.34s user 2.74s system 231% cpu 13.446 total
+
+trying page blocks of 100 / site size. So, just merges tiny sites.
+1g indexer, 2g merger
+
+./indexer  84.13s user 2.23s system 270% cpu 31.952 total
+./merger  39.18s user 2.60s system 226% cpu 18.461 total
+
+not much help at all.
+No harm though. And it makes it easier to manage.
+

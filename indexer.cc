@@ -32,7 +32,7 @@
 
 using nlohmann::json;
 
-void index_site(crawl::site &site) {
+void index_site(search::indexer &indexer, crawl::site &site) {
   spdlog::info("index site {}", site.host);
 
   char *file_buf = (char *) malloc(scrape::max_file_size);
@@ -53,8 +53,6 @@ void index_site(crawl::site &site) {
 
 	tokenizer::token_type token;
   tokenizer::tokenizer tok;
-
-  search::indexer indexer;
 
   spdlog::info("process pages for {}", site.host);
   for (auto &page: site.pages) {
@@ -158,43 +156,72 @@ void index_site(crawl::site &site) {
   free(file_buf);
 
   spdlog::info("finished indexing site {}", site.host);
-
-  std::string path = "meta/sites/" + util::host_hash(site.host) + "/" + site.host;
-
-  indexer.save(path);
 }
 
 void
-indexer_run(Channel<std::string*> &in, Channel<std::string*> &out, int tid)
+indexer_run(Channel<std::string*> &in,
+    Channel<bool> &out_ready,
+    Channel<std::string*> &out,
+    int tid)
 {
   spdlog::info("thread {} started", tid);
 
-  std::string *b = NULL;
-  b >> out;
+  std::list<std::string> paths;
+
+  size_t part_n = 0;
+  size_t n_pages = 0;
+
+  search::indexer indexer;
 
   while (true) {
-    std::string *name;
+    true >> out_ready;
 
+    std::string *name;
     name << in;
 
     if (name == NULL) {
+      spdlog::info("{} got fin", tid);
       break;
     }
 
-    spdlog::info("{} start on {}", tid, *name);
-
     crawl::site site(*name);
-    spdlog::info("{} load {}", tid, site.host);
+    spdlog::info("{} load  {}", tid, site.host);
     site.load();
 
+    if (n_pages + site.pages.size() > 100) {
+      spdlog::info("{} save with  {} pages", tid, n_pages);
+      std::string base_path = fmt::format("meta/part_index.{}.{}", tid, part_n++);
+      auto p = indexer.save(base_path);
+      spdlog::info("{} saved to {}", tid, p);
+      paths.emplace_back(p);
+
+      indexer.clear();
+      n_pages = 0;
+    }
+
+    n_pages += site.pages.size();
+
     spdlog::info("{} index {}", tid, site.host);
-    spdlog::info("{} site has {} pages", tid, site.pages.size());
-
-    index_site(site);
-    spdlog::info("{} finished {}", tid, site.host);
-
-    name >> out;
+    index_site(indexer, site);
+    spdlog::info("{} done  {}", tid, site.host);
   }
+
+  std::string base_path = fmt::format("meta/part_index.{}.{}", tid, part_n++);
+  auto p = indexer.save(base_path);
+  spdlog::info("{} saved to {}", tid, p);
+  paths.emplace_back(p);
+
+  for (auto &p: paths) {
+    &p >> out;
+  }
+
+  spdlog::info("{} send fin", tid);
+  std::string *end = NULL;
+  end >> out;
+
+  spdlog::info("{} got fin ack", tid);
+  std::string *sync;
+  sync << in;
 }
 
 int main(int argc, char *argv[]) {
@@ -207,18 +234,18 @@ int main(int argc, char *argv[]) {
   spdlog::info("starting {} threads", n_threads);
 
   Channel<std::string*> in_channels[n_threads];
+  Channel<bool> out_ready_channels[n_threads];
   Channel<std::string*> out_channels[n_threads];
 
   std::vector<std::thread> threads;
 
   for (size_t i = 0; i < n_threads; i++) {
     auto th = std::thread(
-        [](Channel<std::string*> &in,
-           Channel<std::string*> &out, int i) {
-          indexer_run(in, out, i);
-        },
+        indexer_run,
         std::ref(in_channels[i]),
-        std::ref(out_channels[i]), i);
+        std::ref(out_ready_channels[i]),
+        std::ref(out_channels[i]),
+        i);
 
     threads.emplace_back(std::move(th));
   }
@@ -230,17 +257,9 @@ int main(int argc, char *argv[]) {
       continue;
     }
 
-/*
-    site->load();
-    index_site(*site);
-    site->unload();
-    site++;
-    continue;
-*/
-
     bool found = false;
     for (size_t i = 0; !found && i < n_threads; i++) {
-      if (!out_channels[i].empty()) {
+      if (!out_ready_channels[i].empty()) {
         found = true;
 
         if (site != crawler.sites.end()) {
@@ -248,9 +267,8 @@ int main(int argc, char *argv[]) {
           site++;
         }
 
-        std::string *host;
-
-        host << out_channels[i];
+        bool ready;
+        ready << out_ready_channels[i];
       }
     }
 
@@ -259,12 +277,29 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  std::string *b = NULL;
+  std::string *sync = NULL;
   for (size_t i = 0; i < n_threads; i++) {
-    b >> in_channels[i];
+    sync >> in_channels[i];
+  }
+
+  std::list<std::string> index_parts;
+  for (size_t i = 0; i < n_threads; i++) {
+    spdlog::info("get out from {}", i);
+    std::string *s;
+    do {
+      s << out_channels[i];
+      if (s != NULL) {
+        spdlog::info("got {} from {}", *s, i);
+        index_parts.push_back(*s);
+      }
+    } while (s != NULL);
+
+    sync >> in_channels[i];
   }
 
   spdlog::info("wait for threads");
+
+  search::save_parts("meta/part_index.json", index_parts);
 
   for (auto &t: threads) {
     t.join();
