@@ -118,10 +118,6 @@ void index_site(search::indexer &indexer, crawl::site &site) {
 
         std::string s(str_c(&tok_buffer));
 
-        if (s.size() < 2) {
-          continue;
-        }
-
         page_length++;
 
         indexer.words.insert(s, index_id);
