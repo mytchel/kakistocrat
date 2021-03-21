@@ -79,11 +79,11 @@ void crawler::enable_references(
 
   for (auto &page: isite->pages) {
     for (auto &l: page.links) {
-      auto it = sites_link_count.find(l.site);
-      if (it == sites_link_count.end()) {
-        sites_link_count.emplace(l.site, 1);
-      } else {
-        it->second++;
+      if (l.first.site == isite->id) continue;
+
+      auto it = sites_link_count.try_emplace(l.first.site, l.second);
+      if (!it.second) {
+        it.first->second += l.second;
       }
     }
   }
@@ -118,6 +118,18 @@ void crawler::enable_references(
   }
 }
 
+static void add_link(page *p, page_id id, size_t count)
+{
+  for (auto &l: p->links) {
+    if (l.first == id) {
+      l.second += count;
+      return;
+    }
+  }
+
+  p->links.emplace_back(id, count);
+}
+
 void crawler::update_site(
     site *isite,
     std::list<scrape::page> &page_list)
@@ -131,7 +143,6 @@ void crawler::update_site(
     auto p = site_find_add_page(isite, u.url, isite->level + 1, u.path);
 
     p->links.clear();
-    p->links.reserve(u.links.size());
 
     p->title = u.title;
 
@@ -144,15 +155,15 @@ void crawler::update_site(
     if (p == NULL) continue;
 
     for (auto &l: u.links) {
-      auto host = util::get_host(l);
+      auto host = util::get_host(l.first);
       if (host == "") continue;
 
       if (host == isite->host) {
-        auto n_p = isite->find_page(l);
+        auto n_p = isite->find_page(l.first);
         // Incase all the links didn't come though then
         // don't fuck with the page reference.
         if (n_p != NULL) {
-          p->links.emplace_back(isite->id, n_p->id);
+          add_link(p, page_id(isite->id, n_p->id), l.second);
         }
 
       } else {
@@ -169,9 +180,9 @@ void crawler::update_site(
           o_site->load();
         }
 
-        auto o_p = site_find_add_page(o_site, l, p->level + 1);
+        auto o_p = site_find_add_page(o_site, l.first, p->level + 1);
 
-        p->links.emplace_back(o_site->id, o_p->id);
+        add_link(p, page_id(o_site->id, o_p->id), l.second);
       }
     }
   }

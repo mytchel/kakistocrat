@@ -56,22 +56,24 @@ void scores::iteration()
 
     crawl::page_id page_id(p.id);
 
-    double link_score = p.score / (double) p.links.size();
-
+    size_t link_count = 0;
+    for (auto &l: p.links) {
+      link_count += l.second;
+    }
+    
+    double link_score = p.score / (double) link_count;
     p.score = 0;
 
     for (auto &l: p.links) {
-      crawl::page_id id(l);
-      double score = link_score;
+      crawl::page_id id(l.first);
+      double score = link_score * l.second;
       if (page_id.site == id.site) {
         score *= 0.9;
       }
 
-      auto i = new_scores.find(l);
-      if (i == new_scores.end()) {
-        new_scores.emplace(l, score);
-      } else {
-        i->second += score;
+      auto i = new_scores.try_emplace(l.first, score);
+      if (!i.second) {
+        i.first->second += score;
       }
     }
   }
@@ -151,15 +153,14 @@ scores::scores(crawl::crawler &crawler)
 
       crawl::page_id id(s.id, p.id);
 
-      std::vector<uint64_t> links;
+      auto it = pages.emplace(std::piecewise_construct,
+                  std::forward_as_tuple(id.to_value()),
+                  std::forward_as_tuple(id.to_value(),
+                      p.level, score, p.url, p.path, p.title));
 
       for (auto &l: p.links) {
-        links.push_back(l.to_value());
+        it.first->second.links.emplace_back(l.first.to_value(), l.second);
       }
-
-      page n(id.to_value(), p.level, score, p.url, p.path, p.title, links);
-
-      pages.emplace(id.to_value(), n);
     }
 
     s.flush();
@@ -170,12 +171,12 @@ scores::scores(crawl::crawler &crawler)
 
     crawl::page_id page_id(p.id);
 
-    std::vector<uint64_t> fixed_links;
+    std::vector<std::pair<uint64_t, size_t>> fixed_links;
 
     for (auto &l: p.links) {
-      auto p = find_page(l);
+      auto p = find_page(l.first);
       if (p != NULL) {
-        fixed_links.push_back(l);
+        fixed_links.emplace_back(l);
       }
     }
 

@@ -11,14 +11,6 @@ struct page_id {
   std::uint32_t site;
   std::uint32_t page;
 
-  bool operator<(const page_id &a) const {
-    if (site == a.site) {
-      return page < a.page;
-    } else {
-      return site < a.site;
-    }
-  }
-
   uint64_t to_value() {
     return (((uint64_t ) site) << 32) | ((uint64_t ) page);
   }
@@ -32,6 +24,18 @@ struct page_id {
   page_id(uint64_t v) :
     site(v >> 32),
     page(v & 0xffffffff) { }
+
+  bool operator<(const page_id &a) const {
+    if (site == a.site) {
+      return page < a.page;
+    } else {
+      return site < a.site;
+    }
+  }
+
+  bool operator==(const page_id &o) const {
+    return site == o.site && page == o.page;
+  }
 };
 
 void to_json(nlohmann::json &j, const page_id &s);
@@ -46,7 +50,7 @@ struct page {
 
   time_t last_scanned{0};
 
-  std::vector<page_id> links;
+  std::list<std::pair<page_id, size_t>> links;
 
   page() {}
 
@@ -58,12 +62,14 @@ struct page {
     : id(i), level(l), url(u), path(p),
       title(tt), last_scanned(t) {}
 
+/*
   page(uint32_t i, size_t l, std::string u, std::string p,
       std::string tt, time_t t,
-      std::vector<page_id> li)
+      std::list<std::pair<page_id, size_t>> li)
     : id(i), level(l), url(u), path(p),
       title(tt), last_scanned(t),
       links(li) {}
+      */
 };
 
 void to_json(nlohmann::json &j, const page &s);

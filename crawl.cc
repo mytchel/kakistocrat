@@ -71,15 +71,19 @@ void site::load() {
     return;
   }
 
-  json j = json::parse(file);
+  try {
+    json j = json::parse(file);
 
+    //j.at("id").get_to(id);
+    //j.at("host").get_to(host);
+    j.at("last_scanned").get_to(last_scanned);
+    j.at("next_id").get_to(next_id);
+    j.at("pages").get_to(pages);
+  } catch (const std::exception& e) {
+    spdlog::warn("failed to load {}", path);
+  }
+  
   file.close();
-
-  j.at("id").get_to(id);
-  j.at("host").get_to(host);
-  j.at("last_scanned").get_to(last_scanned);
-  j.at("next_id").get_to(next_id);
-  j.at("pages").get_to(pages);
 }
 
 void site::save() {
@@ -158,22 +162,27 @@ void crawler::load()
     return;
   }
 
-  json j = json::parse(file);
-
-  file.close();
-
-  j.at("next_id").get_to(next_id);
-
   sites.clear();
 
-  for (auto &s_j: j.at("sites")) {
-    sites.emplace_back(
-          s_j.at("id").get<std::uint32_t>(),
-          s_j.at("host").get<std::string>(),
-          s_j.at("level").get<size_t>(),
-          s_j.at("max_pages").get<size_t>(),
-          s_j.at("last_scanned").get<time_t>());
+  try {
+    json j = json::parse(file);
+
+    j.at("next_id").get_to(next_id);
+
+    for (auto &s_j: j.at("sites")) {
+      sites.emplace_back(
+            s_j.at("id").get<std::uint32_t>(),
+            s_j.at("host").get<std::string>(),
+            s_j.at("level").get<size_t>(),
+            s_j.at("max_pages").get<size_t>(),
+            s_j.at("last_scanned").get<time_t>());
+    }
+
+  } catch (const std::exception& e) {
+    spdlog::warn("failed to load {}", path);
   }
+
+  file.close();
 }
 
 site * crawler::find_site(std::string host)

@@ -257,9 +257,11 @@ void site::finish(
     auto u_host = util::get_host(u);
     if (u_host.empty()) continue;
 
-    auto it = url->links.insert(u);
+    auto t = url->links.try_emplace(u, 1);
+    if (!t.second) {
+      t.first->second++;
 
-    if (it.second && u_host == host) {
+    } else if (t.second && u_host == host) {
       if (url_pending.size() > max_pages) {
         continue;
       }
