@@ -238,7 +238,7 @@ void write_buf(std::string path, uint8_t *buf, size_t len)
     return;
   }
 
-  spdlog::info("writing {:4} mb to {}", len / 1024 / 1024, path);
+  spdlog::info("writing {:4} kb to {}", len / 1024, path);
   file.write((const char *) buf, len);
 
   file.close();
@@ -249,11 +249,16 @@ static size_t hash_to_buf(
     std::list<std::pair<std::string, posting>>::iterator &start,
     std::list<std::pair<std::string, posting>>::iterator &end,
     size_t count,
-    uint8_t *buffer)
+    uint8_t *buffer, size_t buffer_len)
 {
   size_t offset = sizeof(uint32_t) * 2;
 
   for (auto &p: pages) {
+    if (offset + sizeof(uint64_t) >= buffer_len) {
+      spdlog::warn("buffer too small");
+      return 0;
+    }
+
     *((uint64_t *) (buffer + offset)) = p.first;
     offset += sizeof(uint64_t);
   }
@@ -264,6 +269,12 @@ static size_t hash_to_buf(
       spdlog::warn("what the hell: {} : '{}'", len, p->first.c_str());
       len = 255;
     }
+
+    if (offset + 1 + len + p->second.size() >= buffer_len) {
+      spdlog::warn("buffer too small");
+      return 0;
+    }
+
 
     buffer[offset] = len;
 
@@ -324,10 +335,12 @@ size_t index_part::save_to_buf(uint8_t *buffer)
   ((uint32_t *) buffer)[0] = page_ids.size();
   ((uint32_t *) buffer)[1] = count;
 
-  spdlog::info("saving with {} dict {} key {} ids",
-      (float) total_dict / offset,
-      (float) total_key / offset,
-      (float) total_ids / offset);
+  if (offset > 0) {
+    spdlog::info("saving with {} dict {} key {} ids",
+        (float) total_dict / offset,
+        (float) total_key / offset,
+        (float) total_ids / offset);
+  }
 
   return offset;
 }
@@ -361,6 +374,10 @@ std::vector<index_part_info> index_part_save(
       });
 
   uint8_t *buffer = (uint8_t *) malloc(max_index_part_size);
+  if (buffer == NULL) {
+    spdlog::warn("part buffer malloc failed");
+    return parts;
+  }
 
   auto split_at = get_split_at();
 
@@ -373,7 +390,7 @@ std::vector<index_part_info> index_part_save(
   while (true) {
     if (end == postings.end() || (split != split_at.end() && *split < end->first)) {
       if (start != end) {
-        size_t len = hash_to_buf(pages, start, end, count, buffer);
+        size_t len = hash_to_buf(pages, start, end, count, buffer, max_index_part_size);
 
         auto path = fmt::format("{}.{}.dat", base_path, start->first);
 
@@ -400,16 +417,16 @@ std::vector<index_part_info> index_part_save(
   return parts;
 }
 
-std::string indexer::save(std::string base_path)
+std::string indexer::save()
 {
-  auto words_path = base_path + ".words";
-  auto pairs_path = base_path + ".pairs";
-  auto trines_path = base_path + ".trines";
-  auto meta_path = base_path + ".meta.json";
+  auto words_path = fmt::format("{}.{}.words", base_path, flush_count);
+  auto pairs_path = fmt::format("{}.{}.pairs", base_path, flush_count);
+  auto trines_path = fmt::format("{}.{}.trines", base_path, flush_count);
+  auto meta_path = fmt::format("{}.{}.meta.json", base_path, flush_count);
 
-  auto word_parts = index_part_save(pages, words, words_path);
-  auto pair_parts = index_part_save(pages, pairs, pairs_path);
-  auto trine_parts = index_part_save(pages, trines, trines_path);
+  auto word_parts = index_part_save(pages, word_t, words_path);
+  auto pair_parts = index_part_save(pages, pair_t, pairs_path);
+  auto trine_parts = index_part_save(pages, trine_t, trines_path);
 
   index_info info(meta_path);
 
@@ -431,6 +448,8 @@ std::string indexer::save(std::string base_path)
   info.trine_parts = trine_parts;
 
   info.save();
+
+  flush_count++;
 
   return meta_path;
 }
@@ -784,11 +803,7 @@ void index_part::merge(index_part &other)
     if (it != store.end()) {
       auto start = std::chrono::system_clock::now();
 
-      auto pairs = o_it->second.decompress();
-
-      for (auto &p: pairs) {
-        it->second.append(p.first + page_id_offset, p.second);
-      }
+      store.back().second.merge(o_it->second, page_id_offset);
 
       auto end = std::chrono::system_clock::now();
       merge_total += end - start;
@@ -819,10 +834,7 @@ void index_part::merge(index_part &other)
 
       store.emplace_back(key(c_buf, c_len), posting());
 
-      auto pairs = o_it->second.decompress();
-      for (auto &p: pairs) {
-        store.back().second.append(p.first + page_id_offset, p.second);
-      }
+      store.back().second.merge(o_it->second, page_id_offset);
 
       update_index(std::prev(store.end()));
       auto end = std::chrono::system_clock::now();

@@ -37,19 +37,17 @@ uint32_t hash(std::string key)
 	return result & (HTCAP - 1);
 }
 
-void hash_table::insert(std::string key, uint32_t val)
+size_t hash_table::insert(std::string key, uint32_t val)
 {
-  if (key.size() > 255) return;
+  if (key.size() > 255) return 0;
 
 	uint32_t index = hash(key);
 
   if (store[index]) {
-		if (store[index]->insert(key, val)) {
-      n_postings++;
-    }
+		return store[index]->insert(key, val);
   } else {
-		store[index] = new bst(key, val);
-    n_postings++;
+		store[index] = new bst(key);
+    return sizeof(bst) + key.size() + store[index]->store.append(val);
   }
 }
 

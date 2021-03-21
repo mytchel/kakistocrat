@@ -20,25 +20,51 @@ namespace search {
 
 std::vector<std::string> get_split_at();
 
-const size_t max_index_part_size = 1024 * 1024 * 300;
+enum index_type{words, pairs, trines};
+
+const size_t max_index_part_size = 1024 * 1024 * 10;
 
 std::list<std::string> load_parts(std::string path);
 void save_parts(std::string path, std::list<std::string>);
 
 struct indexer {
   std::vector<std::pair<uint64_t, uint32_t>> pages;
-  hash_table words, pairs, trines;
+  hash_table word_t, pair_t, trine_t;
+  size_t usage{0};
+  
+  std::string base_path;
+  size_t flush_count{0};
+  std::list<std::string> paths;
 
-  std::string save(std::string base_path);
+  std::string save();
 
   void clear() {
     pages.clear();
-    words.clear();
-    pairs.clear();
-    trines.clear();
+    word_t.clear();
+    pair_t.clear();
+    trine_t.clear();
+    usage = 0;
   }
 
-  indexer() {}
+  void flush() {
+    paths.emplace_back(save());
+
+    clear();
+
+    flush_count++;
+  }
+
+  void insert(index_type t, std::string s, uint32_t index_id) {
+    if (t == words) {
+      usage += word_t.insert(s, index_id);
+    } else if (t == pairs) {
+      usage += pair_t.insert(s, index_id);
+    } else if (t == trines) {
+      usage += trine_t.insert(s, index_id);
+    }
+  }
+
+  indexer(std::string p) : base_path(p) {}
 };
 
 struct key {
@@ -134,8 +160,6 @@ struct key {
     return l == len;
   }
 };
-
-enum index_type{words, pairs, trines};
 
 struct index_part {
   index_type type;

@@ -88,28 +88,62 @@ void posting::reserve(size_t id, size_t cnt) {
   }
 }
 
-void posting::merge(posting &other)
+uint32_t get_last_id(uint8_t *ids, size_t ids_len)
 {
-  reserve(other.ids_len, other.counts_len);
+	uint32_t prevI = 0;
+	uint32_t docI = 0;
+	size_t di = 0;
+	size_t ci = 0;
 
-  memcpy(ids + ids_len, other.ids, other.ids_len);
-  ids_len += other.ids_len;
+	while (di < ids_len) {
+		di += vbyte_read(&ids[di], &docI);
+		docI += prevI;
+		prevI = docI;
+	}
+
+  return docI;
+}
+
+void posting::merge(posting &other, uint32_t id_add)
+{
+  reserve(5 + other.ids_len, other.counts_len);
+
+  if (counts_len > 0 && last_id == 0) {
+    last_id = get_last_id(ids, ids_len);
+  }
+
+  uint32_t first_id;
+  size_t offset;
+  
+  offset = vbyte_read(other.ids, &first_id);
+
+  ids_len += vbyte_store(ids + ids_len, first_id + id_add - last_id);
+
+  memcpy(ids + ids_len, other.ids + offset, other.ids_len - offset);
+
+  ids_len += other.ids_len - offset;
 
   memcpy(counts + counts_len, other.counts, other.counts_len);
   counts_len += other.counts_len;
+
+  last_id = get_last_id(other.ids, other.ids_len) + id_add;
 }
 
-void posting::append(uint32_t id, uint8_t count)
+size_t posting::append(uint32_t id, uint8_t count)
 {
   if (counts_len > 0 && id == last_id) {
     counts[counts_len-1] += count;
-    return;
+    return 0;
   }
 
-  reserve(9, 1);
+  reserve(5, 1);
 
-  ids_len += vbyte_store(ids + ids_len, id - last_id);
+  size_t l = vbyte_store(ids + ids_len, id - last_id);
   counts[counts_len++] = count;
   last_id = id;
+
+  ids_len += l;
+
+  return l + 1;
 }
 

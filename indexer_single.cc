@@ -119,7 +119,7 @@ void index_site(crawl::site &s, search::indexer &indexer) {
 
         std::string s(str_c(&tok_buffer));
 
-        indexer.words.insert(s, index_id);
+        indexer.insert(search::words, s, index_id);
 
         if (str_length(&tok_buffer_trine) > 0) {
           str_cat(&tok_buffer_trine, " ");
@@ -127,7 +127,7 @@ void index_site(crawl::site &s, search::indexer &indexer) {
 
           std::string s(str_c(&tok_buffer_trine));
 
-          indexer.trines.insert(s, index_id);
+          indexer.insert(search::trines, s, index_id);
 
           str_resize(&tok_buffer_trine, 0);
         }
@@ -138,7 +138,7 @@ void index_site(crawl::site &s, search::indexer &indexer) {
 
           std::string s(str_c(&tok_buffer_pair));
 
-          indexer.pairs.insert(s, index_id);
+          indexer.insert(search::pairs, s, index_id);
 
           str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
         }
@@ -162,7 +162,7 @@ int main(int argc, char *argv[]) {
   crawl::crawler crawler;
   crawler.load();
 
-  search::indexer indexer;
+  search::indexer indexer("meta/single");
 
   auto site = crawler.sites.begin();
   while (site != crawler.sites.end()) {
@@ -179,7 +179,7 @@ int main(int argc, char *argv[]) {
     site++;
   }
 
-  indexer.save("meta/full");
+  indexer.save();
 
   return 0;
 }

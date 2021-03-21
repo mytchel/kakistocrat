@@ -6,16 +6,16 @@
 struct bst {
   std::string key;
 	posting store;
-  bst *left, *right;
+  bst *left{NULL}, *right{NULL};
 
   ~bst() {
     if (left) delete left;
     if (right) delete right;
   }
 
-  bst(std::string &key, uint32_t val);
+  bst(std::string &k) : key(k) {}
 
-  bool insert(std::string &key, uint32_t val);
+  size_t insert(std::string &key, uint32_t val);
 
   void get_postings(std::list<std::pair<std::string, posting>> &postings);
 };

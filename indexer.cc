@@ -75,6 +75,11 @@ void index_site(search::indexer &indexer, crawl::site &site) {
     spdlog::debug("process page {} / {} : {}", page_id, index_id, page.url);
     size_t len = pfile.gcount();
 
+    if (indexer.usage > 1024 * 1024 * 200) {
+      spdlog::info("indexer using {}", indexer.usage);
+      indexer.flush();
+    }
+
     tok.init(file_buf, len);
 
     bool in_head = false, in_title = false;
@@ -120,7 +125,7 @@ void index_site(search::indexer &indexer, crawl::site &site) {
 
         page_length++;
 
-        indexer.words.insert(s, index_id);
+        indexer.insert(search::words, s, index_id);
 
         if (str_length(&tok_buffer_trine) > 0) {
           str_cat(&tok_buffer_trine, " ");
@@ -128,7 +133,7 @@ void index_site(search::indexer &indexer, crawl::site &site) {
 
           std::string s(str_c(&tok_buffer_trine));
 
-          indexer.trines.insert(s, index_id);
+          indexer.insert(search::trines, s, index_id);
 
           str_resize(&tok_buffer_trine, 0);
         }
@@ -139,7 +144,7 @@ void index_site(search::indexer &indexer, crawl::site &site) {
 
           std::string s(str_c(&tok_buffer_pair));
 
-          indexer.pairs.insert(s, index_id);
+          indexer.insert(search::pairs, s, index_id);
 
           str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
         }
@@ -167,12 +172,7 @@ indexer_run(Channel<std::string*> &in,
 {
   spdlog::info("thread {} started", tid);
 
-  std::list<std::string> paths;
-
-  size_t part_n = 0;
-  size_t n_pages = 0;
-
-  search::indexer indexer;
+  search::indexer indexer(fmt::format("meta/index_parts/index.{}", tid));
 
   while (true) {
     true >> out_ready;
@@ -189,30 +189,14 @@ indexer_run(Channel<std::string*> &in,
     spdlog::info("{} load  {}", tid, site.host);
     site.load();
 
-    if (n_pages > 50 && n_pages + site.pages.size() > 100) {
-      spdlog::info("{} save with  {} pages", tid, n_pages);
-      std::string base_path = fmt::format("meta/index_parts/index.{}.{}", tid, part_n++);
-      auto p = indexer.save(base_path);
-      spdlog::info("{} saved to {}", tid, p);
-      paths.emplace_back(p);
-
-      indexer.clear();
-      n_pages = 0;
-    }
-
-    n_pages += site.pages.size();
-
     spdlog::info("{} index {}", tid, site.host);
     index_site(indexer, site);
     spdlog::info("{} done  {}", tid, site.host);
   }
 
-  std::string base_path = fmt::format("meta/index_parts/index.{}.{}", tid, part_n++);
-  auto p = indexer.save(base_path);
-  spdlog::info("{} saved to {}", tid, p);
-  paths.emplace_back(p);
+  indexer.flush();
 
-  for (auto &p: paths) {
+  for (auto &p: indexer.paths) {
     &p >> out;
   }
 

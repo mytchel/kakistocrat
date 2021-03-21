@@ -249,7 +249,7 @@ void crawler::crawl()
 {
   auto n_threads = std::thread::hardware_concurrency();
   // TODO: get from file limit
-  size_t max_con_per_thread = 200;//1000 / (2 * n_threads);
+  size_t max_con_per_thread = 50;//1000 / (2 * n_threads);
 
   spdlog::info("starting {} threads", n_threads);
 

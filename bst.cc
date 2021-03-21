@@ -5,12 +5,7 @@
 
 #include "bst.h"
 
-bst::bst(std::string &k, uint32_t val) : store(val) {
-	left = right = {};
-	key = k;
-}
-
-bool bst::insert(std::string &k, uint32_t val)
+size_t bst::insert(std::string &k, uint32_t val)
 {
   bst *b = this;
 	for (;;) {
@@ -20,21 +15,22 @@ bool bst::insert(std::string &k, uint32_t val)
       if (b->left) {
         b = b->left;
       } else {
-				b->left = new bst(k, val);
-				return true;
+				b->left = new bst(k);
+        size_t l = b->left->store.append(val);
+				return sizeof(bst) + k.size() + l;;
       }
 
     } else if (cmp > 0) {
 			if (b->right) {
 			  b = b->right;
       } else {
-				b->right = new bst(k, val);
-				return true;
+				b->right = new bst(k);
+        size_t l = b->right->store.append(val);
+				return sizeof(bst) + k.size() + l;;
       }
 
     } else {
-      b->store.append(val);
-			return false;
+      return b->store.append(val);
 		}
 	}
 }

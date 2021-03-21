@@ -16,10 +16,6 @@ struct posting {
 
   posting() {}
 
-  posting(uint32_t i) {
-    append(i);
-  }
-
   ~posting() {
     if (ids_max > 0) {
       free(ids);
@@ -71,8 +67,8 @@ struct posting {
 
   void reserve(size_t id, size_t cnt);
 
-  void append(uint32_t id, uint8_t count = 1);
-  void merge(posting &other);
+  size_t append(uint32_t id, uint8_t count = 1);
+  void merge(posting &other, uint32_t id_add = 0);
 
   bool only_one() {
     if (counts_len == 0) return true;
