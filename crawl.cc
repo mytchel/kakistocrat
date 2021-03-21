@@ -36,7 +36,6 @@ void from_json(const json &j, page_id &id) {
 void to_json(json &j, const page &p) {
   j = json{
       {"i", p.id},
-      {"l", p.level},
       {"u", p.url},
       {"p", p.path},
       {"t", p.title},
@@ -46,7 +45,6 @@ void to_json(json &j, const page &p) {
 
 void from_json(const json &j, page &p) {
   j.at("i").get_to(p.id);
-  j.at("l").get_to(p.level);
   j.at("u").get_to(p.url);
   j.at("p").get_to(p.path);
   j.at("t").get_to(p.title);

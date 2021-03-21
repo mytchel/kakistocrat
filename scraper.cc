@@ -543,7 +543,7 @@ CURL *make_handle_other(site* s, request_type r, std::string url)
   curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 2L);
   curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 60L);
   curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 30L);
- 
+
   curl_easy_setopt(curl_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
 
   char c_url[util::max_url_len];

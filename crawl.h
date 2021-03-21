@@ -43,7 +43,6 @@ void from_json(const nlohmann::json &j, page_id &s);
 
 struct page {
   std::uint32_t id;
-  size_t level;
   std::string url;
   std::string path;
   std::string title{"unknown"};
@@ -54,22 +53,14 @@ struct page {
 
   page() {}
 
-  page(uint32_t i, size_t l, std::string u, std::string p)
-    : id(i), level(l), url(u), path(p) {}
+  page(uint32_t i, std::string u, std::string p)
+    : id(i), url(u), path(p) {}
 
-  page(uint32_t i, size_t l, std::string u, std::string p,
+  page(uint32_t i, std::string u, std::string p,
       std::string tt, time_t t)
-    : id(i), level(l), url(u), path(p),
+    : id(i), url(u), path(p),
       title(tt), last_scanned(t) {}
 
-/*
-  page(uint32_t i, size_t l, std::string u, std::string p,
-      std::string tt, time_t t,
-      std::list<std::pair<page_id, size_t>> li)
-    : id(i), level(l), url(u), path(p),
-      title(tt), last_scanned(t),
-      links(li) {}
-      */
 };
 
 void to_json(nlohmann::json &j, const page &s);
@@ -92,8 +83,8 @@ struct site {
 
   bool loaded{false};
   bool changed{false};
-  
-  void flush() { 
+
+  void flush() {
     if (changed) {
       save();
       changed = false;

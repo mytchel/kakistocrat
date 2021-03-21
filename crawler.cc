@@ -52,20 +52,18 @@ page* site_find_add_page(site *site, std::string url, size_t level,
 
   auto p = site->find_page(url);
   if (p != NULL) {
-    if (p->level > level) p->level = level;
     return p;
   }
 
   p = site->find_page_by_path(path);
   if (p != NULL) {
-    if (p->level > level) p->level = level;
     return p;
   }
 
   auto id = site->next_id++;
 
   site->changed = true;
-  return &site->pages.emplace_back(id, level, url, path);
+  return &site->pages.emplace_back(id, url, path);
 }
 
 void crawler::enable_references(
@@ -140,7 +138,7 @@ void crawler::update_site(
   isite->changed = true;
 
   for (auto &u: page_list) {
-    auto p = site_find_add_page(isite, u.url, isite->level + 1, u.path);
+    auto p = site_find_add_page(isite, u.url, isite->level, u.path);
 
     p->links.clear();
 
@@ -173,14 +171,14 @@ void crawler::update_site(
 
         site *o_site = find_site(host);
         if (o_site == NULL) {
-          sites.emplace_back(next_id++, p->level + 1, host);
+          sites.emplace_back(next_id++, isite->level + 1, host);
           o_site = &sites.back();
 
         } else if (o_site->loaded == 0) {
           o_site->load();
         }
 
-        auto o_p = site_find_add_page(o_site, l.first, p->level + 1);
+        auto o_p = site_find_add_page(o_site, l.first, isite->level + 1);
 
         add_link(p, page_id(o_site->id, o_p->id), l.second);
       }
@@ -254,7 +252,7 @@ void crawler::crawl()
 {
   auto n_threads = std::thread::hardware_concurrency();
   // TODO: get from file limit
-  size_t max_con_per_thread = 50;//1000 / (2 * n_threads);
+  size_t max_con_per_thread = 200;//1000 / (2 * n_threads);
 
   spdlog::info("starting {} threads", n_threads);
 

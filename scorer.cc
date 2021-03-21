@@ -60,7 +60,7 @@ void scores::iteration()
     for (auto &l: p.links) {
       link_count += l.second;
     }
-    
+
     double link_score = p.score / (double) link_count;
     p.score = 0;
 
@@ -156,7 +156,7 @@ scores::scores(crawl::crawler &crawler)
       auto it = pages.emplace(std::piecewise_construct,
                   std::forward_as_tuple(id.to_value()),
                   std::forward_as_tuple(id.to_value(),
-                      p.level, score, p.url, p.path, p.title));
+                      s.level, score, p.url, p.path, p.title));
 
       for (auto &l: p.links) {
         it.first->second.links.emplace_back(l.first.to_value(), l.second);

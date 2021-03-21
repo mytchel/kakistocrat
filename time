@@ -424,3 +424,9 @@ with both:
 5.3M    meta/index.words.m.dat
 5.7M    meta/index.words.s.dat
 
+
+three cores
+( ./indexer; ./merger; )  249.15s user 4.79s system 255% cpu 1:39.53 total
+vs doing it all in one
+./indexer_single  178.45s user 2.85s system 99% cpu 3:02.09 total
+
