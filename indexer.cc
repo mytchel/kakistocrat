@@ -56,7 +56,7 @@ void index_site(search::indexer &indexer, crawl::site &site) {
 
   spdlog::info("process pages for {}", site.host);
   for (auto &page: site.pages) {
-    if (!page.valid) continue;
+    if (page.last_scanned == 0) continue;
 
     uint64_t page_id = crawl::page_id(site.id, page.id).to_value();
     uint32_t index_id = indexer.pages.size();

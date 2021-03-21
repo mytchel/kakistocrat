@@ -41,8 +41,7 @@ void to_json(json &j, const page &p) {
       {"p", p.path},
       {"t", p.title},
       {"links", p.links},
-      {"s", p.last_scanned},
-      {"v", p.valid}};
+      {"s", p.last_scanned}};
 }
 
 void from_json(const json &j, page &p) {
@@ -55,12 +54,11 @@ void from_json(const json &j, page &p) {
   j.at("links").get_to(p.links);
 
   j.at("s").get_to(p.last_scanned);
-  j.at("v").get_to(p.valid);
 }
 
 void site::load() {
-  spdlog::debug("load {} {}", loaded, host);
-  if (loaded++ > 0) return;
+  if (loaded) return;
+  loaded = true;
 
   std::string path = "meta/sites/" + util::host_hash(host) + "/" + host + "/map.json";
 
@@ -85,10 +83,6 @@ void site::load() {
 }
 
 void site::save() {
-  if (loaded == 0 || !changed) {
-    return;
-  }
-
   std::string dir_path = "meta/sites/" + util::host_hash(host) + "/" + host;
   std::string path = dir_path + "/map.json";
   util::make_path(dir_path);
@@ -114,23 +108,6 @@ void site::save() {
   file.close();
 }
 
-void site::unload() {
-  spdlog::debug("unload {} {}", loaded, host);
-  if (loaded == 0) {
-    return;
-  }
-
-  if (loaded > 1) {
-    loaded--;
-    return;
-  }
-
-  save();
-
-  loaded = 0;
-  pages.clear();
-}
-
 void crawler::save()
 {
   std::string path = "meta/map.json";
@@ -141,8 +118,6 @@ void crawler::save()
   std::vector<json> j_sites;
 
   for (auto &s: sites) {
-    s.save();
-
     json j = {
       {"id", s.id},
       {"host", s.host},

@@ -64,6 +64,7 @@ page* site_find_add_page(site *site, std::string url, size_t level,
 
   auto id = site->next_id++;
 
+  site->changed = true;
   return &site->pages.emplace_back(id, level, url, path);
 }
 
@@ -74,9 +75,9 @@ void crawler::enable_references(
 {
   std::map<uint32_t, size_t> sites_link_count;
 
-  for (auto &page: isite->pages) {
-    if (!page.valid) continue;
+  isite->load();
 
+  for (auto &page: isite->pages) {
     for (auto &l: page.links) {
       auto it = sites_link_count.find(l.site);
       if (it == sites_link_count.end()) {
@@ -119,9 +120,12 @@ void crawler::enable_references(
 
 void crawler::update_site(
     site *isite,
-    std::list<scrape::index_url> &page_list)
+    std::list<scrape::page> &page_list)
 {
   spdlog::info("update {} info", isite->host);
+
+  isite->load();
+  isite->changed = true;
 
   for (auto &u: page_list) {
     auto p = site_find_add_page(isite, u.url, isite->level + 1, u.path);
@@ -133,10 +137,7 @@ void crawler::update_site(
 
     p->path = u.path;
     p->last_scanned = u.last_scanned;
-    p->valid = u.ok;
   }
-
-  std::set<uint32_t> loaded_sites;
 
   for (auto &u: page_list) {
     auto p = isite->find_page(u.url);
@@ -164,11 +165,8 @@ void crawler::update_site(
           sites.emplace_back(next_id++, p->level + 1, host);
           o_site = &sites.back();
 
-          loaded_sites.emplace(o_site->id);
-
         } else if (o_site->loaded == 0) {
           o_site->load();
-          loaded_sites.emplace(o_site->id);
         }
 
         auto o_p = site_find_add_page(o_site, l, p->level + 1);
@@ -176,13 +174,6 @@ void crawler::update_site(
         p->links.emplace_back(o_site->id, o_p->id);
       }
     }
-  }
-
-  spdlog::debug("unloading sites that {} touched", isite->host);
-  for (auto i: loaded_sites) {
-    site *o_site = find_site(i);
-    o_site->changed = true;
-    o_site->unload();
   }
 }
 
@@ -252,7 +243,7 @@ void crawler::crawl()
 {
   auto n_threads = std::thread::hardware_concurrency();
   // TODO: get from file limit
-  size_t max_con_per_thread = 100;//1000 / (2 * n_threads);
+  size_t max_con_per_thread = 50;//1000 / (2 * n_threads);
 
   spdlog::info("starting {} threads", n_threads);
 
@@ -263,14 +254,7 @@ void crawler::crawl()
 
   std::vector<std::thread> threads;
   for (size_t i = 0; i < n_threads; i++) {
-    auto th = std::thread(
-        [](
-            Channel<scrape::site*> &in,
-            Channel<scrape::site*> &out,
-            Channel<bool> &stat,
-            int i, size_t m) {
-          scrape::scraper(in, out, stat, i, m);
-        },
+    auto th = std::thread(scrape::scraper,
         std::ref(in_channels[i]),
         std::ref(out_channels[i]),
         std::ref(stat_channels[i]),
@@ -281,50 +265,52 @@ void crawler::crawl()
 
   std::list<scrape::site> scrapping_sites;
 
-  save();
-  auto last_save = std::chrono::system_clock::now();
-  bool have_changes = false;
+  auto last_save = std::chrono::system_clock::now() - 100s;
+  bool have_changes = true;
 
   while (true) {
     if (have_changes && last_save + 10s < std::chrono::system_clock::now()) {
-      last_save = std::chrono::system_clock::now();
-
       spdlog::info("periodic save");
+
+      for (auto &s: sites) {
+        s.flush();
+      }
 
       // Save the current index so exiting early doesn't loose
       // all the work that has been done
       save();
-    }
 
-    bool all_blocked = true;
+      have_changes = false;
+      last_save = std::chrono::system_clock::now();
+    }
 
     for (size_t i = 0; i < n_threads; i++) {
       if (!stat_channels[i].empty()) {
         thread_stats[i] << stat_channels[i];
-        all_blocked &= !thread_stats[i];
       }
 
       if (thread_stats[i]) {
         auto site = get_next_site();
         if (site != NULL) {
-          spdlog::info("send site {} to be scraped", site->host);
+          thread_stats[i] = false;
+
+          spdlog::info("send site {} to be scraped ({} active)",
+              site->host, scrapping_sites.size());
 
           site->load();
 
           site->scraping = true;
 
-          std::list<scrape::index_url> urls;
+          std::list<scrape::page> pages;
 
           for (auto &p: site->pages) {
-            urls.emplace_back(p.url, p.path, p.last_scanned, p.valid);
+            pages.emplace_back(p.url, p.path, p.last_scanned);
           }
 
-          scrapping_sites.emplace_back(site->host, levels[site->level].max_pages, urls);
+          scrapping_sites.emplace_back(site->host, levels[site->level].max_pages, pages);
           auto &s = scrapping_sites.back();
 
           &s >> in_channels[i];
-
-          site->unload();
         }
       }
 
@@ -339,8 +325,6 @@ void crawler::crawl()
           spdlog::info("site '{}' not found in map.", s->host);
           exit(1);
         }
-
-        site->load();
 
         site->max_pages = 0;
         site->scraped = true;
@@ -365,13 +349,9 @@ void crawler::crawl()
             return &ss == s;
             });
 
-        site->changed = true;
-        site->unload();
         have_changes = true;
       }
     }
-
-    auto delay = std::chrono::milliseconds(1);
 
     if (scrapping_sites.empty() && !have_next_site()) {
       time_t now = time(NULL);
@@ -379,32 +359,23 @@ void crawler::crawl()
       bool have_something = false;
       for (auto &s: sites) {
         size_t min = (4 * (1 + s.level)) * 60 * 60;
-        if (s.last_scanned + min < now) {
+        if (s.scraped && s.last_scanned + min < now) {
           int r = rand() % ((24 * (1 + s.level) - 4) * 60 * 60);
-          s.scraped = s.last_scanned + min + r < now;
-          if (!s.scraped) {
+          bool should_scrape = s.last_scanned + min + r < now;
+          if (should_scrape) {
+            s.scraped = false;
             spdlog::info("transition {} from scraped to ready", s.host);
 
             if (s.level == 0) {
               spdlog::info("give site {} at level 0 more pages", s.host);
               s.max_pages = levels[0].max_pages;
             }
-
-            have_something = true;
           }
         }
       }
-
-      if (!have_something) {
-        delay = std::chrono::minutes(1);
-        spdlog::info("have nothing");
-      }
-
-    } else if (all_blocked) {
-      delay = std::chrono::milliseconds(100);
     }
 
-    std::this_thread::sleep_for(delay);
+    std::this_thread::sleep_for(10ms);
   }
 }
 

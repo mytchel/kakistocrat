@@ -111,7 +111,7 @@ scores::scores(crawl::crawler &crawler)
     s.load();
 
     for (auto &p: s.pages) {
-      if (p.valid) {
+      if (p.last_scanned > 0) {
         n_pages++;
       }
     }
@@ -147,7 +147,7 @@ scores::scores(crawl::crawler &crawler)
 
   for (auto &s: crawler.sites) {
     for (auto &p: s.pages) {
-      if (!p.valid) continue;
+      if (p.last_scanned == 0) continue;
 
       crawl::page_id id(s.id, p.id);
 
@@ -162,7 +162,7 @@ scores::scores(crawl::crawler &crawler)
       pages.emplace(id.to_value(), n);
     }
 
-    s.unload();
+    s.flush();
   }
 
   for (auto &i: pages) {

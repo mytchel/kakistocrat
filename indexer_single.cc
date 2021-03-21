@@ -55,7 +55,7 @@ void index_site(crawl::site &s, search::indexer &indexer) {
   tokenizer::tokenizer tok;
 
   for (auto &page: s.pages) {
-    if (!page.valid) continue;
+    if (page.last_scanned == 0) continue;
 
     uint64_t page_id = crawl::page_id(s.id, page.id).to_value();
     uint32_t index_id = indexer.pages.size();
@@ -175,7 +175,7 @@ int main(int argc, char *argv[]) {
 
     index_site(*site, indexer);
 
-    site->unload();
+    site->flush();
     site++;
   }
 

@@ -43,13 +43,13 @@ struct curl_data {
 
   site *m_site;
   request_type req_type;
-  index_url url;
+  page *url;
   std::string s_url;
 
   size_t size;
   bool unchanged;
 
-  void init_page(site *s, index_url u) {
+  void init_page(site *s, page *u) {
     in_use = true;
 
     m_site = s;
@@ -122,7 +122,7 @@ size_t curl_cb_header_write(char *buffer, size_t size, size_t nitems, void *ctx)
       return 0;
     }
 
-  } else if (strstr(buffer, "Last-Modified: ")) {
+  } else if (d->url && d->url->last_scanned && strstr(buffer, "Last-Modified: ")) {
     char *s = buffer + strlen("Last-Modified: ");
 
     if (strlen(s) > 25) {
@@ -130,7 +130,7 @@ size_t curl_cb_header_write(char *buffer, size_t size, size_t nitems, void *ctx)
       strptime(s, "%a, %d %b %Y %H:%M:%S", &tm);
       time_t time = mktime(&tm);
 
-      if (d->url.last_scanned > time) {
+      if (d->url->last_scanned > time) {
         d->unchanged = true;
         return 0;
       }
@@ -148,10 +148,10 @@ bool curl_data::save()
     return false;
   }
 
-  file.open(url.path, std::ios::out | std::ios::binary | std::ios::trunc);
+  file.open(url->path, std::ios::out | std::ios::binary | std::ios::trunc);
 
   if (!file.is_open()) {
-    spdlog::warn("error opening file {} for {}", url.path, url.url);
+    spdlog::warn("error opening file {} for {}", url->path, url->url);
     return false;
   }
 
@@ -234,7 +234,7 @@ std::list<std::string> curl_data::find_links(std::string page_url, std::string &
 
   if (page_proto.empty() || page_host.empty() || page_dir.empty()) {
     spdlog::error("BAD PAGE URL '{}' : '{}' -> '{}' '{}' '{}'",
-        url.url, page_url, page_proto, page_host, page_dir);
+        url->url, page_url, page_proto, page_host, page_dir);
     return urls;
   }
 
@@ -422,7 +422,7 @@ void curl_data::finish(std::string effective_url) {
     // Sites seem to do this to facebook for some things
     if (util::get_host(effective_url) != m_site->host) {
       spdlog::trace("redirected from {} to other site {}",
-          url.url, effective_url);
+          url->url, effective_url);
 
       m_site->finish_bad(url, false);
     }
@@ -479,7 +479,7 @@ void curl_data::finish_bad_net(CURLcode res) {
     } else {
       if (res != CURLE_WRITE_ERROR) {
         if (res != CURLE_OPERATION_TIMEDOUT) {
-          spdlog::info("miss ({}) {} {}", (int) res, curl_easy_strerror(res), url.url);
+          spdlog::info("miss ({}) {} {}", (int) res, curl_easy_strerror(res), url->url);
         }
         m_site->finish_bad(url, true);
       } else {
@@ -499,22 +499,9 @@ void curl_data::finish_bad_net(CURLcode res) {
   in_use = false;
 }
 
-curl_data *get_curl_data(std::list<curl_data> &store)
+CURL *make_handle(site* s, page *u)
 {
-  for (auto &d: store) {
-    if (!d.in_use) {
-      return &d;
-    }
-  }
-
-  store.emplace_back();
-  auto &d = store.back();
-  return &d;
-}
-
-CURL *make_handle(std::list<curl_data> &store, site* s, index_url u)
-{
-  curl_data *d = get_curl_data(store);
+  curl_data *d = new curl_data();
 
   d->init_page(s, u);
 
@@ -525,24 +512,24 @@ CURL *make_handle(std::list<curl_data> &store, site* s, index_url u)
   curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, d);
   curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_cb_buffer_write);
   curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, d);
-  curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+  curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "crawlycrawler");
   curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
   curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 5L);
-  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 30L);
-  curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 10L);
+  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 60L);
+  curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 30L);
 
   curl_easy_setopt(curl_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
 
   char url[util::max_url_len];
-  strncpy(url, u.url.c_str(), sizeof(url));
+  strncpy(url, u->url.c_str(), sizeof(url));
   curl_easy_setopt(curl_handle, CURLOPT_URL, url);
 
   return curl_handle;
 }
 
-CURL *make_handle_other(std::list<curl_data> &store, site* s, request_type r, std::string url)
+CURL *make_handle_other(site* s, request_type r, std::string url)
 {
-  curl_data *d = get_curl_data(store);
+  curl_data *d = new curl_data();
 
   d->init_other(s, r, url);
 
@@ -551,10 +538,12 @@ CURL *make_handle_other(std::list<curl_data> &store, site* s, request_type r, st
   curl_easy_setopt(curl_handle, CURLOPT_PRIVATE, d);
   curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_cb_buffer_write);
   curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, d);
-  curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "crawlycralwer");
-  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 30L);
-  curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 5L);
-
+  curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "crawlycrawler");
+  curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
+  curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 2L);
+  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 60L);
+  curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 30L);
+ 
   curl_easy_setopt(curl_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
 
   char c_url[util::max_url_len];
@@ -567,45 +556,30 @@ CURL *make_handle_other(std::list<curl_data> &store, site* s, request_type r, st
 void
 scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, size_t max_con)
 {
-  spdlog::info("thread {} started", tid);
+  spdlog::info("thread {} started with {} max concurrent connections", tid, max_con);
 
-  sigset_t sigpipe_mask;
-  sigemptyset(&sigpipe_mask);
-  sigaddset(&sigpipe_mask, SIGPIPE);
-  pthread_sigmask(SIG_BLOCK, &sigpipe_mask, NULL);
-
-  size_t max_host = 6;
+  size_t max_con_per_host = 4;
 
   CURLM *multi_handle = curl_multi_init();
   curl_multi_setopt(multi_handle, CURLMOPT_MAX_TOTAL_CONNECTIONS, max_con);
-  curl_multi_setopt(multi_handle, CURLMOPT_MAX_HOST_CONNECTIONS, max_host);
-
-  /* enables http/2 if available */
-#ifdef CURLPIPE_MULTIPLEX
+  curl_multi_setopt(multi_handle, CURLMOPT_MAX_HOST_CONNECTIONS, max_con_per_host);
   curl_multi_setopt(multi_handle, CURLMOPT_PIPELINING, CURLPIPE_MULTIPLEX);
-#endif
-
-  std::list<curl_data> curl_data_store;
 
   std::list<site*> sites;
 
   size_t active_connections = 0;
 
-  auto last_log = std::chrono::system_clock::now();
-
   auto last_accepting = std::chrono::system_clock::now() - 100s;
-  bool accepting = false;
-
-  size_t empty_time = 0;
 
   while (true) {
-    bool n_accepting = max_con - active_connections > max_host * 3;
-    if (accepting != n_accepting) {
-      if (!n_accepting || last_accepting + 10s < std::chrono::system_clock::now()) {
-        n_accepting >> stat;
-        accepting = n_accepting;
-        last_accepting = std::chrono::system_clock::now();
-      }
+    bool accepting = max_con - active_connections > max_con_per_host * 2;
+
+    if (accepting && last_accepting + 5s < std::chrono::system_clock::now()) {
+      spdlog::info("thread {} has {} connections for {} sites",
+               tid, active_connections, sites.size());
+
+      true >> stat;
+      last_accepting = std::chrono::system_clock::now();
     }
 
     bool adding = true;
@@ -621,7 +595,7 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
         } else if (!(*s) ->getting_robots && !(*s)->got_robots) {
           (*s)->getting_robots = true;
           std::string url = "https://" + (*s)->host + "/robots.txt";
-          curl_multi_add_handle(multi_handle, make_handle_other(curl_data_store, *s, ROBOTS, url));
+          curl_multi_add_handle(multi_handle, make_handle_other(*s, ROBOTS, url));
           active_connections++;
           adding = true;
 
@@ -630,14 +604,14 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
           (*s)->sitemap_url_pending.erase(url);
           (*s)->sitemap_url_getting.insert(url);
 
-          curl_multi_add_handle(multi_handle, make_handle_other(curl_data_store, *s, SITEMAP, url));
+          curl_multi_add_handle(multi_handle, make_handle_other(*s, SITEMAP, url));
           active_connections++;
           adding = true;
 
         } else if ((*s)->got_robots && (*s)->sitemap_url_getting.empty()) {
           auto u = (*s)->get_next();
           if (u) {
-            curl_multi_add_handle(multi_handle, make_handle(curl_data_store, *s, *u));
+            curl_multi_add_handle(multi_handle, make_handle(*s, *u));
             active_connections++;
             adding = true;
           }
@@ -659,21 +633,6 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
 
       s->init_paths();
       sites.push_back(s);
-    }
-
-    if (sites.empty()) {
-      if (++empty_time > 100) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        curl_data_store.clear();
-        empty_time = 100;
-      } else {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      }
-
-      continue;
-
-    } else {
-      empty_time = 0;
     }
 
     curl_multi_wait(multi_handle, NULL, 0, 1000, NULL);
@@ -704,6 +663,8 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
         } else {
           d->finish_bad_net(res);
         }
+
+        delete d;
 
         curl_multi_remove_handle(multi_handle, handle);
         curl_easy_cleanup(handle);

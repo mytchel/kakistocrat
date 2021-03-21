@@ -7,23 +7,22 @@ namespace scrape {
 
 const size_t max_file_size = 1024 * 1024 * 10;
 
-struct index_url {
+struct page {
   std::string url;
   std::string path;
   std::string title{""};
 
   time_t last_scanned{0};
-  bool ok{false};
 
   std::set<std::string> links;
 
-  index_url() : url(""), path("") {}
+//  page() : url(""), path("") {}
 
-  index_url(std::string u, std::string p) :
+  page(std::string u, std::string p) :
     url(u), path(p) {}
 
-  index_url(std::string u, std::string p, time_t t, bool v) :
-    url(u), path(p), last_scanned(t), ok(v) {}
+  page(std::string u, std::string p, time_t t) :
+    url(u), path(p), last_scanned(t) {}
 };
 
 struct sitemap_url {
@@ -33,14 +32,14 @@ struct sitemap_url {
 struct site {
   std::string host;
 
-  std::list<index_url> url_pending;
-  std::list<index_url> url_scanning;
+  std::list<page> url_pending;
+  std::list<page> url_scanning;
 
-  std::list<index_url> url_scanned;
-  std::list<index_url> url_unchanged;
-  std::list<index_url> url_bad;
+  std::list<page> url_scanned;
+  std::list<page> url_unchanged;
+  std::list<page> url_bad;
 
-  std::list<std::string> disallow_path;
+  std::set<std::string> disallow_path;
   bool getting_robots{false};
   bool got_robots{false};
 
@@ -55,23 +54,22 @@ struct site {
 
   site() : host(""), max_pages(0) {}
   site(std::string h, size_t m) : host(h), max_pages(m) {}
-  site(std::string h, size_t m, std::list<index_url> s)
+  site(std::string h, size_t m, std::list<page> s)
     : host(h), max_pages(m), url_pending(s) {}
 
   void init_paths();
 
   void process_sitemap_entry(std::string url, std::optional<time_t> lastmod);
-  void add_disallow(std::string path);
+  void add_disallow(std::string &path);
 
-  void finish(index_url u, std::list<std::string> links, std::string title);
-
-  void finish_unchanged(index_url u);
-  void finish_bad(index_url u, bool actually_bad);
+  void finish(page *u, std::list<std::string> &links, std::string &title);
+  void finish_unchanged(page *u);
+  void finish_bad(page *u, bool actually_bad);
 
   bool should_finish();
   bool finished();
 
-  std::optional<index_url> get_next();
+  std::optional<page*> get_next();
 
   bool disallow_url(std::string u);
 };

@@ -24,6 +24,8 @@
 #include <chrono>
 #include <thread>
 
+#include "spdlog/spdlog.h"
+
 #include "util.h"
 #include "scrape.h"
 
@@ -155,7 +157,7 @@ bool bad_prefix(std::string path) {
 }
 
 bool index_check(
-    std::list<index_url> &url_index,
+    std::list<page> &url_index,
     std::string url)
 {
   for (auto &i: url_index) {
@@ -168,7 +170,7 @@ bool index_check(
 }
 
 bool index_check_path(
-    std::list<index_url> &url_index,
+    std::list<page> &url_index,
     std::string path)
 {
   for (auto &i: url_index) {
@@ -180,8 +182,8 @@ bool index_check_path(
   return false;
 }
 
-void site::add_disallow(std::string path) {
-  disallow_path.push_back(path);
+void site::add_disallow(std::string &path) {
+  disallow_path.emplace(path);
 
   auto u = url_pending.begin();
   while (u != url_pending.end()) {
@@ -238,18 +240,27 @@ void site::process_sitemap_entry(
 }
 
 void site::finish(
-      index_url url,
-      std::list<std::string> links,
-      std::string title)
+      page *url,
+      std::list<std::string> &links,
+      std::string &title)
 {
+  spdlog::debug("{} bad={} uc={} c={} s={} p={} finish {}",
+      host,
+      url_bad.size(),
+      url_unchanged.size(),
+      url_scanned.size(),
+      url_scanning.size(),
+      url_pending.size(),
+      url->url);
+
   for (auto &u: links) {
     auto u_host = util::get_host(u);
     if (u_host.empty()) continue;
 
-    url.links.insert(u);
+    auto it = url->links.insert(u);
 
-    if (u_host == host) {
-      if (url_pending.size() > 4 * max_pages) {
+    if (it.second && u_host == host) {
+      if (url_pending.size() > max_pages) {
         continue;
       }
 
@@ -299,7 +310,7 @@ void site::finish(
     }
   }
 
-  url.title.clear();
+  url->title.clear();
 
   for (int i = 0; i < title.size(); i++) {
     char c = title[i];
@@ -318,9 +329,9 @@ void site::finish(
           }
         }
 
-        url.title += ' ';
+        url->title += ' ';
       } else {
-        url.title += '&';
+        url->title += '&';
       }
 
       continue;
@@ -334,38 +345,45 @@ void site::finish(
         (c == '.' || c == '/') ||
         (c == '-' || c == '_') ||
         (c == '(' || c == ')')) {
-      url.title += c;
+      url->title += c;
     }
   }
 
-  url.last_scanned = time(NULL);
-  url.ok = true;
+  url->last_scanned = time(NULL);
 
-  url_scanned.push_back(url);
-
-  url_scanning.remove_if([&url](auto &u) { return u.url == url.url; });
+  auto it = url_scanning.begin();
+  while (it != url_scanning.end()) {
+    if (it->url == url->url) {
+      url_scanned.splice(url_scanned.end(), url_scanning, it);
+      break;
+    } else {
+      it++;
+    }
+  }
 }
 
-void site::finish_unchanged(index_url url) {
-  url.ok = true;
-
-  url_unchanged.push_back(url);
-
-  url_scanning.remove_if([url](auto u) {
-        return u.url == url.url;
-      });
+void site::finish_unchanged(page *url) {
+  auto it = url_scanning.begin();
+  while (it != url_scanning.end()) {
+    if (it->url == url->url) {
+      url_unchanged.splice(url_unchanged.end(), url_scanning, it);
+      break;
+    } else {
+      it++;
+    }
+  }
 }
 
-void site::finish_bad(index_url url, bool actually_bad) {
-  url.last_scanned = time(NULL);
-  url.ok = false;
-
-  url_bad.push_back(url);
-
-
-  url_scanning.remove_if([url](auto u) {
-        return u.url == url.url;
-      });
+void site::finish_bad(page *url, bool actually_bad) {
+  auto it = url_scanning.begin();
+  while (it != url_scanning.end()) {
+    if (it->url == url->url) {
+      url_bad.splice(url_bad.end(), url_scanning, it);
+      break;
+    } else {
+      it++;
+    }
+  }
 
   if (actually_bad) {
     fail++;
@@ -378,38 +396,40 @@ bool site::should_finish() {
   }
 
   if (url_unchanged.size() + url_scanned.size() >= max_pages) {
+    spdlog::info("site {} has reached max pages: {} + {} >= {}", 
+          host, url_unchanged.size(), url_scanned.size(), max_pages);
     return true;
   }
 
-  if (fail > 10 && fail > url_scanned.size() / 4) {
+  if (fail > 10 && fail > url_scanned.size() / 2) {
+    spdlog::warn("site {} has reached max errors: {} > {} / 4",
+        fail, url_scanned.size());
     return true;
   }
 
   return false;
 }
 
-std::optional<index_url> site::get_next() {
+std::optional<page*> site::get_next() {
   if (url_unchanged.size() + url_scanned.size() + url_scanning.size() >= max_pages) {
     return {};
 
+  } else if (url_scanning.size() >= max_active) {
+    return {};
+  
   } else if (should_finish()) {
     return {};
-  }
 
-  if (url_scanning.size() >= max_active) {
+  } else if (url_pending.empty()) {
     return {};
   }
 
-  if (url_pending.empty()) {
-    return {};
-  }
+  spdlog::debug("{} get next {}", host, url_pending.front().url);
 
-  auto u = url_pending.front();
-  url_pending.pop_front();
+  url_scanning.splice(url_scanning.end(), 
+    url_pending, url_pending.begin());
 
-  url_scanning.push_back(u);
-
-  return u;
+  return &url_scanning.back();
 }
 
 bool site::finished() {

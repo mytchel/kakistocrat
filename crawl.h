@@ -45,7 +45,6 @@ struct page {
   std::string title{"unknown"};
 
   time_t last_scanned{0};
-  bool valid{false};
 
   std::vector<page_id> links;
 
@@ -55,15 +54,15 @@ struct page {
     : id(i), level(l), url(u), path(p) {}
 
   page(uint32_t i, size_t l, std::string u, std::string p,
-      std::string tt, time_t t, bool v)
+      std::string tt, time_t t)
     : id(i), level(l), url(u), path(p),
-      title(tt), last_scanned(t), valid(v) {}
+      title(tt), last_scanned(t) {}
 
   page(uint32_t i, size_t l, std::string u, std::string p,
-      std::string tt, time_t t, bool v,
+      std::string tt, time_t t,
       std::vector<page_id> li)
     : id(i), level(l), url(u), path(p),
-      title(tt), last_scanned(t), valid(v),
+      title(tt), last_scanned(t),
       links(li) {}
 };
 
@@ -79,17 +78,28 @@ struct site {
   std::uint32_t next_id{1};
   std::list<page> pages;
 
-  size_t loaded{0};
-  bool changed{false};
-
   // For crawler to manage
   bool scraped{false};
   bool scraping{false};
   size_t max_pages{0};
   size_t level;
 
+  bool loaded{false};
+  bool changed{false};
+  
+  void flush() { 
+    if (changed) {
+      save();
+      changed = false;
+    }
+
+    if (loaded) {
+      loaded = false;
+      pages.clear();
+    }
+  }
+
   void load();
-  void unload();
   void save();
 
   site(std::string h) : host(h) {}
@@ -101,7 +111,7 @@ struct site {
 
   // For creating new sites
   site(uint32_t i, size_t l, std::string h) :
-    id(i), level(l), host(h), loaded(1), changed(true) {}
+    id(i), level(l), host(h), loaded(true), changed(true) {}
 
   page* find_page(uint32_t id);
   page* find_page(std::string url);
@@ -143,7 +153,7 @@ struct crawler {
   site* get_next_site();
 
   void update_site(site *isite,
-      std::list<scrape::index_url> &page_list);
+      std::list<scrape::page> &page_list);
 
   void enable_references(
     site *isite,
