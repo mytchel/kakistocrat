@@ -14,7 +14,7 @@ struct page {
 
   time_t last_scanned{0};
 
-  std::map<std::string, size_t> links;
+  std::list<std::pair<std::string, size_t>> links;
 
   page(std::string u, std::string p) :
     url(u), path(p) {}

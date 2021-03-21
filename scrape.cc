@@ -239,6 +239,18 @@ void site::process_sitemap_entry(
   url_pending.emplace_back(url, p);
 }
 
+bool add_link(page *p, std::string &n) {
+  for (auto &l: p->links) {
+    if (l.first == n) {
+      l.second++;
+      return false;
+    }
+  }
+
+  p->links.emplace_back(n, 1);
+  return true;
+}
+
 void site::finish(
       page *url,
       std::list<std::string> &links,
@@ -257,11 +269,9 @@ void site::finish(
     auto u_host = util::get_host(u);
     if (u_host.empty()) continue;
 
-    auto t = url->links.try_emplace(u, 1);
-    if (!t.second) {
-      t.first->second++;
+    bool is_new = add_link(url, u);
 
-    } else if (t.second && u_host == host) {
+    if (is_new && u_host == host) {
       if (url_pending.size() > max_pages) {
         continue;
       }

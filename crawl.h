@@ -42,7 +42,7 @@ void to_json(nlohmann::json &j, const page_id &s);
 void from_json(const nlohmann::json &j, page_id &s);
 
 struct page {
-  std::uint32_t id;
+  uint32_t id;
   std::string url;
   std::string path;
   std::string title{"unknown"};
@@ -60,7 +60,6 @@ struct page {
       std::string tt, time_t t)
     : id(i), url(u), path(p),
       title(tt), last_scanned(t) {}
-
 };
 
 void to_json(nlohmann::json &j, const page &s);

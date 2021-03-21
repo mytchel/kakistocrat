@@ -48,6 +48,8 @@ bool crawler::check_blacklist(
 page* site_find_add_page(site *site, std::string url, size_t level,
     std::string path = "")
 {
+  site->load();
+
   if (site->level > level) site->level = level;
 
   auto p = site->find_page(url);
@@ -170,9 +172,6 @@ void crawler::update_site(
         if (o_site == NULL) {
           sites.emplace_back(next_id++, isite->level + 1, host);
           o_site = &sites.back();
-
-        } else if (o_site->loaded == 0) {
-          o_site->load();
         }
 
         auto o_p = site_find_add_page(o_site, l.first, isite->level + 1);
