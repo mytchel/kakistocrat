@@ -134,9 +134,6 @@ void crawler::update_site(
 {
   spdlog::info("update {} info", isite->host);
 
-  isite->load();
-  isite->changed = true;
-
   for (auto &u: page_list) {
     auto p = site_find_add_page(isite, u.url, isite->level, u.path);
 
@@ -335,11 +332,14 @@ void crawler::crawl()
           exit(1);
         }
 
+        site->load();
+
         site->max_pages = 0;
         site->scraped = true;
         site->scraping = false;
 
         site->last_scanned = time(NULL);
+        site->changed = true;
 
         update_site(site, s->url_scanned);
 
@@ -384,7 +384,7 @@ void crawler::crawl()
       }
     }
 
-    std::this_thread::sleep_for(10ms);
+    std::this_thread::sleep_for(100ms);
   }
 }
 

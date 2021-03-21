@@ -635,6 +635,10 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
       sites.push_back(s);
     }
 
+    if (sites.empty()) {
+      std::this_thread::sleep_for(100ms);
+    }
+
     curl_multi_wait(multi_handle, NULL, 0, 1000, NULL);
     int still_running = 0;
     curl_multi_perform(multi_handle, &still_running);
