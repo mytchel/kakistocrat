@@ -398,14 +398,14 @@ bool site::should_finish() {
   }
 
   if (url_unchanged.size() + url_scanned.size() >= max_pages) {
-    spdlog::info("site {} has reached max pages: {} + {} >= {}", 
+    spdlog::info("site {} has reached max pages: {} + {} >= {}",
           host, url_unchanged.size(), url_scanned.size(), max_pages);
     return true;
   }
 
   if (fail > 10 && fail > url_scanned.size() / 2) {
-    spdlog::warn("site {} has reached max errors: {} > {} / 4",
-        fail, url_scanned.size());
+    spdlog::warn("site {} has reached max errors: {} > {} / 2",
+        host, fail, url_scanned.size());
     return true;
   }
 
@@ -418,7 +418,7 @@ std::optional<page*> site::get_next() {
 
   } else if (url_scanning.size() >= max_active) {
     return {};
-  
+
   } else if (should_finish()) {
     return {};
 
@@ -428,7 +428,7 @@ std::optional<page*> site::get_next() {
 
   spdlog::debug("{} get next {}", host, url_pending.front().url);
 
-  url_scanning.splice(url_scanning.end(), 
+  url_scanning.splice(url_scanning.end(),
     url_pending, url_pending.begin());
 
   return &url_scanning.back();
