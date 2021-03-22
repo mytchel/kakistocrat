@@ -210,6 +210,8 @@ indexer_run(Channel<std::string*> &in,
 }
 
 int main(int argc, char *argv[]) {
+  spdlog::info("loading");
+
   crawl::crawler crawler;
   crawler.load();
 

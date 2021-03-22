@@ -37,23 +37,24 @@ uint32_t hash(std::string key)
 	return result & (HTCAP - 1);
 }
 
-size_t hash_table::insert(std::string key, uint32_t val)
+size_t hash_table::insert(std::string s, uint32_t val)
 {
-  if (key.size() > 255) return 0;
+  if (s.size() == 0 || s.size() > key_max_len) return 0;
 
-	uint32_t index = hash(key);
+	uint32_t index = hash(s);
 
   if (store[index]) {
-		return store[index]->insert(key, val);
+		return store[index]->insert(s, val, keys);
   } else {
-		store[index] = new bst(key);
-    return sizeof(bst) + key.size() + store[index]->store.append(val);
+    key k(keys.get(key_size(s)), s);
+		store[index] = new bst(k);
+    return sizeof(bst) + k.size() + store[index]->store.append(val);
   }
 }
 
-std::list<std::pair<std::string, posting>> hash_table::get_postings()
+std::list<std::pair<key, posting>> hash_table::get_postings()
 {
-  std::list<std::pair<std::string, posting>> postings;
+  std::list<std::pair<key, posting>> postings;
 
   //postings.reserve(n_postings);
 

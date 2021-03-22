@@ -15,6 +15,8 @@ using namespace std::chrono_literals;
 
 #include "posting.h"
 #include "hash_table.h"
+#include "key.h"
+#include "buf_list.h"
 
 namespace search {
 
@@ -67,100 +69,6 @@ struct indexer {
   indexer(std::string p) : base_path(p) {}
 };
 
-struct key {
-  const char *c;
-  uint8_t len;
-
-  key(const char *cc) :
-    c(cc), len(strlen(cc)) {}
-
-  key(const char *cc, uint8_t l) :
-    c(cc), len(l) {}
-
-  key(std::string const &s) {
-    len = s.size();
-    c = s.data();
-  }
-
-  key(key const &o) {
-    len = o.len;
-    c = o.c;
-  }
-
-  uint8_t size() {
-    return len;
-  }
-
-  const char *data() {
-    return c;
-  }
-
-  std::string str() {
-    return std::string(c, c + len);
-  }
-
-  bool operator==(std::string &s) const {
-    if (len != s.size()) return false;
-    return memcmp(c, s.data(), len) == 0;
-  }
-
-  bool operator==(const key &o) const {
-    if (len != o.len) return false;
-    return memcmp(c, o.c, len) == 0;
-  }
-
-  bool operator<=(const std::string &s) const {
-    uint8_t l = 0;;
-    uint8_t ol = s.size();;
-    const char *od = s.data();;
-
-    while (l < len && l < ol) {
-      if (c[l] < od[l]) {
-        return true;
-      } else if (c[l] > od[l]) {
-        return false;
-      } else {
-        l++;
-      }
-    }
-
-    return true;
-  }
-
-  bool operator>=(const std::string &s) const {
-    uint8_t l = 0;;
-    uint8_t ol = s.size();;
-    const char *od = s.data();;
-
-    while (l < len && l < ol) {
-      if (c[l] > od[l]) {
-        return true;
-      } else if (c[l] < od[l]) {
-        return false;
-      } else {
-        l++;
-      }
-    }
-
-    return true;
-  }
-
-  bool operator<(const key &o) const {
-    uint8_t l = 0;;
-    while (l < len && l < o.len) {
-      if (c[l] < o.c[l]) {
-        return true;
-      } else if (c[l] > o.c[l]) {
-        return false;
-      } else {
-        l++;
-      }
-    }
-
-    return l == len;
-  }
-};
-
 struct index_part {
   index_type type;
   std::string path;
@@ -170,9 +78,7 @@ struct index_part {
 
   uint8_t *backing{NULL};
 
-  char *extra_backing{NULL};
-  size_t extra_backing_offset{0};
-  std::list<char *> extra_backing_list;
+  buf_list extra_backing;
 
   std::list<std::pair<key, posting>> store;
 
@@ -194,22 +100,14 @@ struct index_part {
 
   index_part(index_part &&p)
     : type(p.type), path(p.path),
-      start(p.start), end(p.end)
+      start(p.start), end(p.end),
+      extra_backing(std::move(p.extra_backing)),
+      store(std::move(p.store)),
+      index(std::move(p.index)),
+      page_ids(std::move(p.page_ids))
   {
     backing = p.backing;
-
-    extra_backing = p.extra_backing;
-    extra_backing_offset = p.extra_backing_offset;
-    extra_backing_list = std::move(p.extra_backing_list);
-
-    store = std::move(p.store);
-
-    index = std::move(p.index);
-
-    page_ids = std::move(p.page_ids);
-
     p.backing = NULL;
-    p.extra_backing = NULL;
   }
 
   ~index_part()
@@ -217,25 +115,18 @@ struct index_part {
     if (backing) {
       free(backing);
     }
-
-    if (extra_backing) {
-      free(extra_backing);
-
-      for (auto b: extra_backing_list) {
-        free(b);
-      }
-    }
   }
 
   bool load_backing();
   void load();
   void save();
-  size_t save_to_buf(uint8_t *buffer);
+  size_t save_to_buf(uint8_t *buffer, size_t len);
 
   void merge(index_part &other);
 
   void update_index(std::list<std::pair<key, posting>>::iterator);
-  std::list<std::pair<key, posting>>::iterator find(key k);
+  std::list<std::pair<key, posting>>::iterator find(std::string);
+  std::list<std::pair<key, posting>>::iterator find(key);
 };
 
 struct index_part_info {

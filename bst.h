@@ -1,11 +1,14 @@
 #ifndef BST_H
 #define BST_H
 
+#include "key.h"
 #include "posting.h"
+#include "buf_list.h"
 
 struct bst {
-  std::string key;
+  key k;
 	posting store;
+
   bst *left{NULL}, *right{NULL};
 
   ~bst() {
@@ -13,11 +16,11 @@ struct bst {
     if (right) delete right;
   }
 
-  bst(std::string &k) : key(k) {}
+  bst(key kk) : k(kk) {}
 
-  size_t insert(std::string &key, uint32_t val);
+  size_t insert(std::string &key, uint32_t val, buf_list &b);
 
-  void get_postings(std::list<std::pair<std::string, posting>> &postings);
+  void get_postings(std::list<std::pair<key, posting>> &postings);
 };
 
 #endif
