@@ -371,7 +371,7 @@ std::vector<index_part_info> index_part_save(
   uint8_t *buffer = (uint8_t *) malloc(max_index_part_size);
   if (buffer == NULL) {
     spdlog::warn("part buffer malloc failed");
-    return parts;
+    throw std::bad_alloc();
   }
 
   auto split_at = get_split_at();
@@ -462,7 +462,7 @@ bool index_part::load_backing()
   backing = (uint8_t *) malloc(part_size);
   if (backing == NULL) {
     spdlog::warn("load backing failed {}, malloc failed for {}", path, part_size);
-    return false;
+    throw std::bad_alloc();
   }
 
   std::ifstream file;

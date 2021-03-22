@@ -66,6 +66,14 @@ struct indexer {
     }
   }
 
+  uint32_t next_id() {
+    return pages.size();
+  }
+
+  void add_page(uint64_t page_id, size_t size) {
+    pages.emplace_back(page_id, size);
+  }
+
   indexer(std::string p) : base_path(p) {}
 };
 

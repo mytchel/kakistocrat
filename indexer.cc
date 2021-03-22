@@ -32,10 +32,8 @@
 
 using nlohmann::json;
 
-void index_site(search::indexer &indexer, crawl::site &site) {
+void index_site(search::indexer &indexer, char *file_buf, size_t file_buf_len, crawl::site &site) {
   spdlog::info("index site {}", site.host);
-
-  char *file_buf = (char *) malloc(scrape::max_file_size);
 
   const size_t buf_len = 80;
 
@@ -59,7 +57,7 @@ void index_site(search::indexer &indexer, crawl::site &site) {
     if (page.last_scanned == 0) continue;
 
     uint64_t page_id = crawl::page_id(site.id, page.id).to_value();
-    uint32_t index_id = indexer.pages.size();
+    uint32_t index_id = indexer.next_id();
 
     std::ifstream pfile;
 
@@ -70,14 +68,21 @@ void index_site(search::indexer &indexer, crawl::site &site) {
       continue;
     }
 
-    pfile.read(file_buf, scrape::max_file_size);
+    pfile.read(file_buf, file_buf_len);
 
     spdlog::debug("process page {} / {} : {}", page_id, index_id, page.url);
     size_t len = pfile.gcount();
 
-    if (indexer.usage > 1024 * 1024 * 200) {
+    while (indexer.usage > 1024 * 1024 * 100) {
       spdlog::info("indexer using {}", indexer.usage);
-      indexer.flush();
+
+      try {
+        indexer.flush();
+      } catch (const std::bad_alloc&) {
+        spdlog::warn("out of mem, waiting");
+
+        std::this_thread::sleep_for(10s);
+      }
     }
 
     tok.init(file_buf, len);
@@ -125,41 +130,46 @@ void index_site(search::indexer &indexer, crawl::site &site) {
 
         page_length++;
 
-        indexer.insert(search::words, s, index_id);
+        try {
+          indexer.insert(search::words, s, index_id);
 
-        if (str_length(&tok_buffer_trine) > 0) {
-          str_cat(&tok_buffer_trine, " ");
-          str_cat(&tok_buffer_trine, str_c(&tok_buffer));
+          if (str_length(&tok_buffer_trine) > 0) {
+            str_cat(&tok_buffer_trine, " ");
+            str_cat(&tok_buffer_trine, str_c(&tok_buffer));
 
-          std::string s(str_c(&tok_buffer_trine));
+            std::string s(str_c(&tok_buffer_trine));
 
-          indexer.insert(search::trines, s, index_id);
+            indexer.insert(search::trines, s, index_id);
 
-          str_resize(&tok_buffer_trine, 0);
-        }
+            str_resize(&tok_buffer_trine, 0);
+          }
 
-        if (str_length(&tok_buffer_pair) > 0) {
-          str_cat(&tok_buffer_pair, " ");
+          if (str_length(&tok_buffer_pair) > 0) {
+            str_cat(&tok_buffer_pair, " ");
+            str_cat(&tok_buffer_pair, str_c(&tok_buffer));
+
+            std::string s(str_c(&tok_buffer_pair));
+
+            indexer.insert(search::pairs, s, index_id);
+
+            str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
+          }
+
+          str_resize(&tok_buffer_pair, 0);
           str_cat(&tok_buffer_pair, str_c(&tok_buffer));
+        
+        } catch (const std::bad_alloc&) {
+          spdlog::warn("out of mem, waiting");
 
-          std::string s(str_c(&tok_buffer_pair));
-
-          indexer.insert(search::pairs, s, index_id);
-
-          str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
+          std::this_thread::sleep_for(10s);
         }
-
-        str_resize(&tok_buffer_pair, 0);
-        str_cat(&tok_buffer_pair, str_c(&tok_buffer));
       }
     } while (token != tokenizer::END);
 
     pfile.close();
 
-    indexer.pages.emplace_back(page_id, page_length);
+    indexer.add_page(page_id, page_length);
   }
-
-  free(file_buf);
 
   spdlog::info("finished indexing site {}", site.host);
 }
@@ -172,7 +182,13 @@ indexer_run(Channel<std::string*> &in,
 {
   spdlog::info("thread {} started", tid);
 
-  search::indexer indexer(fmt::format("meta/index_parts/index.{}", tid));
+  util::make_path(fmt::format("meta/index_parts/{}", tid));
+  search::indexer indexer(fmt::format("meta/index_parts/{}/part", tid));
+  
+  char *file_buf = (char *) malloc(scrape::max_file_size);
+  if (file_buf == NULL) {
+    throw std::bad_alloc();
+  }
 
   while (true) {
     true >> out_ready;
@@ -190,11 +206,24 @@ indexer_run(Channel<std::string*> &in,
     site.load();
 
     spdlog::info("{} index {}", tid, site.host);
-    index_site(indexer, site);
+    index_site(indexer, file_buf, scrape::max_file_size, site);
     spdlog::info("{} done  {}", tid, site.host);
   }
 
-  indexer.flush();
+  free(file_buf);
+
+  while (true) {
+    spdlog::info("indexer using {}", indexer.usage);
+
+    try {
+      indexer.flush();
+      break;
+    } catch (const std::bad_alloc&) {
+      spdlog::warn("out of mem, waiting");
+
+      std::this_thread::sleep_for(10s);
+    }
+  }
 
   for (auto &p: indexer.paths) {
     &p >> out;
@@ -262,7 +291,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (!found) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      std::this_thread::sleep_for(10ms);
     }
   }
 
