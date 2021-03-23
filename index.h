@@ -33,7 +33,7 @@ struct indexer {
   std::vector<std::pair<uint64_t, uint32_t>> pages;
   hash_table word_t, pair_t, trine_t;
   size_t usage{0};
-  
+
   std::string base_path;
   size_t flush_count{0};
   std::list<std::string> paths;
@@ -70,7 +70,7 @@ struct indexer {
     return pages.size();
   }
 
-  void add_page(uint64_t page_id, size_t size) {
+  void add_page(uint64_t page_id, uint32_t size) {
     pages.emplace_back(page_id, size);
   }
 
@@ -189,7 +189,7 @@ struct index {
   void save();
 
   void find_part_matches(index_part &p,
-    std::vector<std::string> &terms,
+    std::list<std::string> &terms,
     std::vector<std::vector<std::pair<uint64_t, double>>> &postings);
 
   std::vector<std::vector<std::pair<uint64_t, double>>>

@@ -58,6 +58,7 @@ void index_site(search::indexer &indexer, char *file_buf, size_t file_buf_len, c
 
     uint64_t page_id = crawl::page_id(site.id, page.id).to_value();
     uint32_t index_id = indexer.next_id();
+    size_t page_length = 0;
 
     std::ifstream pfile;
 
@@ -73,16 +74,10 @@ void index_site(search::indexer &indexer, char *file_buf, size_t file_buf_len, c
     spdlog::debug("process page {} / {} : {}", page_id, index_id, page.url);
     size_t len = pfile.gcount();
 
-    while (indexer.usage > 1024 * 1024 * 100) {
+    if (indexer.usage > 1024 * 1024 * 100) {
       spdlog::info("indexer using {}", indexer.usage);
 
-      try {
-        indexer.flush();
-      } catch (const std::bad_alloc&) {
-        spdlog::warn("out of mem, waiting");
-
-        std::this_thread::sleep_for(10s);
-      }
+      indexer.flush();
     }
 
     tok.init(file_buf, len);
@@ -91,8 +86,6 @@ void index_site(search::indexer &indexer, char *file_buf, size_t file_buf_len, c
 
     str_resize(&tok_buffer_pair, 0);
     str_resize(&tok_buffer_trine, 0);
-
-    size_t page_length = 0;
 
     do {
       token = tok.next(&tok_buffer);
@@ -130,39 +123,32 @@ void index_site(search::indexer &indexer, char *file_buf, size_t file_buf_len, c
 
         page_length++;
 
-        try {
-          indexer.insert(search::words, s, index_id);
+        indexer.insert(search::words, s, index_id);
 
-          if (str_length(&tok_buffer_trine) > 0) {
-            str_cat(&tok_buffer_trine, " ");
-            str_cat(&tok_buffer_trine, str_c(&tok_buffer));
+        if (str_length(&tok_buffer_trine) > 0) {
+          str_cat(&tok_buffer_trine, " ");
+          str_cat(&tok_buffer_trine, str_c(&tok_buffer));
 
-            std::string s(str_c(&tok_buffer_trine));
+          std::string s(str_c(&tok_buffer_trine));
 
-            indexer.insert(search::trines, s, index_id);
+          indexer.insert(search::trines, s, index_id);
 
-            str_resize(&tok_buffer_trine, 0);
-          }
-
-          if (str_length(&tok_buffer_pair) > 0) {
-            str_cat(&tok_buffer_pair, " ");
-            str_cat(&tok_buffer_pair, str_c(&tok_buffer));
-
-            std::string s(str_c(&tok_buffer_pair));
-
-            indexer.insert(search::pairs, s, index_id);
-
-            str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
-          }
-
-          str_resize(&tok_buffer_pair, 0);
-          str_cat(&tok_buffer_pair, str_c(&tok_buffer));
-        
-        } catch (const std::bad_alloc&) {
-          spdlog::warn("out of mem, waiting");
-
-          std::this_thread::sleep_for(10s);
+          str_resize(&tok_buffer_trine, 0);
         }
+
+        if (str_length(&tok_buffer_pair) > 0) {
+          str_cat(&tok_buffer_pair, " ");
+          str_cat(&tok_buffer_pair, str_c(&tok_buffer));
+
+          std::string s(str_c(&tok_buffer_pair));
+
+          indexer.insert(search::pairs, s, index_id);
+
+          str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
+        }
+
+        str_resize(&tok_buffer_pair, 0);
+        str_cat(&tok_buffer_pair, str_c(&tok_buffer));
       }
     } while (token != tokenizer::END);
 
@@ -184,7 +170,7 @@ indexer_run(Channel<std::string*> &in,
 
   util::make_path(fmt::format("meta/index_parts/{}", tid));
   search::indexer indexer(fmt::format("meta/index_parts/{}/part", tid));
-  
+
   char *file_buf = (char *) malloc(scrape::max_file_size);
   if (file_buf == NULL) {
     throw std::bad_alloc();
@@ -212,18 +198,9 @@ indexer_run(Channel<std::string*> &in,
 
   free(file_buf);
 
-  while (true) {
-    spdlog::info("indexer using {}", indexer.usage);
+  spdlog::info("indexer using {}", indexer.usage);
 
-    try {
-      indexer.flush();
-      break;
-    } catch (const std::bad_alloc&) {
-      spdlog::warn("out of mem, waiting");
-
-      std::this_thread::sleep_for(10s);
-    }
-  }
+  indexer.flush();
 
   for (auto &p: indexer.paths) {
     &p >> out;
@@ -246,7 +223,7 @@ int main(int argc, char *argv[]) {
 
   util::make_path("meta/index_parts");
 
-  auto n_threads = std::thread::hardware_concurrency();
+  auto n_threads = 1;//std::thread::hardware_concurrency();
   if (n_threads > 1) n_threads--;
 
   spdlog::info("starting {} threads", n_threads);

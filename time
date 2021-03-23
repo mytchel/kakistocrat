@@ -430,3 +430,36 @@ three cores
 vs doing it all in one
 ./indexer_single  178.45s user 2.85s system 99% cpu 3:02.09 total
 
+now with new data.
+./indexer  4.17s user 0.15s system 93% cpu 4.635 total
+./merger  2.60s user 0.13s system 244% cpu 1.121 total
+
+./indexer_single  3.94s user 0.11s system 99% cpu 4.064 total
+
+hmm. Maybe I should get more data...
+
+( ./indexer; ./merger; )  183.78s user 3.29s system 249% cpu 1:14.92 total
+./indexer_single  109.27s user 1.86s system 99% cpu 1:51.68 total
+
+thats reasonable.
+
+have I done something?
+( ./indexer; ./merger; )  24.60s user 0.86s system 206% cpu 12.316 total
+./indexer_single  15.38s user 0.26s system 99% cpu 15.694 total
+
+check old commit:
+( ./indexer; ./merger; )  22.07s user 0.82s system 206% cpu 11.089 total
+did I kill the data?
+./indexer_single  12.20s user 0.29s system 99% cpu 12.534 total
+
+I've done something bad?
+
+Get 600s worth of crawl data.
+
+./indexer  70.09s user 1.14s system 267% cpu 26.668 total
+./merger  22.49s user 0.94s system 272% cpu 8.585 total
+./indexer_single  61.63s user 0.79s system 99% cpu 1:02.62 total
+
+don't do fancy posting copy:
+./merger  24.48s user 0.89s system 286% cpu 8.842 total
+well...

@@ -35,10 +35,10 @@ void searcher::load()
 
 // This only returns documents that match all the terms.
 // Which may not be the best?
-static std::vector<std::pair<uint64_t, double>> intersect_postings(
+static std::list<std::pair<uint64_t, double>> intersect_postings(
     std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
 {
-  std::vector<std::pair<uint64_t, double>> result;
+  std::list<std::pair<uint64_t, double>> result;
 
   if (postings.size() == 0) {
     return result;
@@ -76,9 +76,9 @@ static std::vector<std::pair<uint64_t, double>> intersect_postings(
 	return result;
 }
 
-std::vector<search_entry> searcher::search(char *line)
+std::list<search_entry> searcher::search(char *line)
 {
-  std::vector<search_entry> results;
+  std::list<search_entry> results;
 
   spdlog::info("search for {}", line);
 
@@ -111,7 +111,7 @@ std::vector<search_entry> searcher::search(char *line)
     results.emplace_back(score, page_id, page->url, page->title, page->path);
   }
 
-  std::sort(results.begin(), results.end(),
+  results.sort(
       [](const search_entry &a, const search_entry &b) {
         return a.score > b.score;
       });

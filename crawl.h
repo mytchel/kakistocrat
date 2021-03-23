@@ -8,8 +8,8 @@
 namespace crawl {
 
 struct page_id {
-  std::uint32_t site;
-  std::uint32_t page;
+  uint32_t site;
+  uint32_t page;
 
   uint64_t to_value() {
     return (((uint64_t ) site) << 32) | ((uint64_t ) page);
@@ -17,13 +17,12 @@ struct page_id {
 
   page_id() {}
 
-  page_id(uint32_t s, uint32_t p) :
-    site(s),
-    page(p) { }
+  page_id(uint32_t s, uint32_t p)
+    : site(s), page(p) { }
 
   page_id(uint64_t v) :
-    site(v >> 32),
-    page(v & 0xffffffff) { }
+    site((uint32_t) (v >> 32)),
+    page((uint32_t) (v & 0xffffffff)) { }
 
   bool operator<(const page_id &a) const {
     if (site == a.site) {

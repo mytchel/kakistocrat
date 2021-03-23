@@ -444,8 +444,6 @@ std::string indexer::save()
 
   info.save();
 
-  flush_count++;
-
   return meta_path;
 }
 
@@ -467,7 +465,7 @@ bool index_part::load_backing()
 
   std::ifstream file;
 
-  spdlog::info("load {:4} mb from {}", part_size / 1024 / 1024, path);
+  spdlog::info("load {:4} kb from {}", part_size / 1024, path);
 
   file.open(path, std::ios::in | std::ios::binary);
 
@@ -608,9 +606,9 @@ void index::save()
 }
 
 struct terms {
-  std::vector<std::string> words;
-  std::vector<std::string> pairs;
-  std::vector<std::string> trines;
+  std::list<std::string> words;
+  std::list<std::string> pairs;
+  std::list<std::string> trines;
 };
 
 static terms split_terms(char *line)
@@ -693,8 +691,6 @@ rank(
 {
   std::vector<std::pair<uint64_t, double>> pairs_ranked;
 
-  pairs_ranked.reserve(postings.size());
-
 	// IDF = ln(N/df_t)
 	double wt = log(page_lengths.size() / postings.size());
 	for (auto &p: postings) {
@@ -702,6 +698,7 @@ rank(
     //spdlog::info("posting has id {} check from {}", index_id, page_ids.size());
 		uint64_t page_id = page_ids.at(index_id);
 
+    spdlog::info("index id {} -. page id {}", index_id, page_id);
     //spdlog::info("posting has page id {}", page_id);
     auto it = page_lengths.find(page_id);
     if (it == page_lengths.end()) {
@@ -735,11 +732,12 @@ rank(
 
 void index::find_part_matches(
     search::index_part &part,
-    std::vector<std::string> &terms,
+    std::list<std::string> &terms,
     std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
 {
   spdlog::info("check part {} {}", part.path, part.page_ids.size());
 
+  bool f = false;
 	for (auto &term: terms) {
     if ((part.start && term < *part.start || (part.end && term > *part.end)))
       continue;
@@ -754,8 +752,18 @@ void index::find_part_matches(
 
       spdlog::info("have ranked {} with {} docs", pair->first.str(), pairs_ranked.size());
       postings.push_back(pairs_ranked);
+
+      f = true;
 		}
 	}
+
+  if (f) {
+    size_t i = 0;
+  for (auto p: part.page_ids) {
+    spdlog::info("page {} {}", i++, p);
+  }
+  }
+
 }
 
 std::vector<std::vector<std::pair<uint64_t, double>>> index::find_matches(char *line)
@@ -811,7 +819,7 @@ void index_part::merge(index_part &other)
     if (it != store.end()) {
       auto start = std::chrono::system_clock::now();
 
-      store.back().second.merge(o_it->second, page_id_offset);
+      it->second.merge(o_it->second, page_id_offset);
 
       auto end = std::chrono::system_clock::now();
       merge_total += end - start;

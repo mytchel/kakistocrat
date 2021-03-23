@@ -72,15 +72,15 @@ void site::load() {
   try {
     json j = json::parse(file);
 
-    //j.at("id").get_to(id);
-    //j.at("host").get_to(host);
+    j.at("id").get_to(id);
+    j.at("host").get_to(host);
     j.at("last_scanned").get_to(last_scanned);
     j.at("next_id").get_to(next_id);
     j.at("pages").get_to(pages);
   } catch (const std::exception& e) {
     spdlog::warn("failed to load {}", path);
   }
-  
+
   file.close();
 }
 

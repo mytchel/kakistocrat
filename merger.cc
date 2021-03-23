@@ -219,13 +219,13 @@ int main(int argc, char *argv[]) {
 
   info.average_page_length /= info.page_lengths.size();
 
+  info.save();
+
   for (auto &t: threads) {
     if (t.joinable()) {
       t.join();
     }
   }
-
-  info.save();
 
   spdlog::info("done");
 

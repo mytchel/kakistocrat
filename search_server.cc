@@ -20,6 +20,7 @@
 #include <cstdint>
 
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 #include <crow.h>
 
 #include "util.h"

@@ -29,7 +29,7 @@ struct searcher {
 
   void load();
 
-  std::vector<search_entry> search(char *str);
+  std::list<search_entry> search(char *str);
 };
 
 }

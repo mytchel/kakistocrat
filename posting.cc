@@ -106,6 +106,15 @@ uint32_t get_last_id(uint8_t *ids, size_t ids_len)
 
 void posting::merge(posting &other, uint32_t id_add)
 {
+  auto pairs = other.decompress();
+
+  for (auto &p: pairs) {
+    append(p.first + id_add, p.second);
+  }
+
+  return;
+  /*
+
   reserve(5 + other.ids_len, other.counts_len);
 
   if (counts_len > 0 && last_id == 0) {
@@ -114,7 +123,7 @@ void posting::merge(posting &other, uint32_t id_add)
 
   uint32_t first_id;
   size_t offset;
-  
+
   offset = vbyte_read(other.ids, &first_id);
 
   ids_len += vbyte_store(ids + ids_len, first_id + id_add - last_id);
@@ -127,6 +136,7 @@ void posting::merge(posting &other, uint32_t id_add)
   counts_len += other.counts_len;
 
   last_id = get_last_id(other.ids, other.ids_len) + id_add;
+  */
 }
 
 size_t posting::append(uint32_t id, uint8_t count)

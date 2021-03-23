@@ -19,6 +19,7 @@
 #include <cstdint>
 
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 
 #include "util.h"
 #include "crawl.h"
@@ -26,6 +27,8 @@
 #include "search.h"
 
 int main(int argc, char *argv[]) {
+  spdlog::set_level(spdlog::level::debug);
+
   search::searcher searcher("meta/scores.json", "meta/index.json");
 
   searcher.load();
