@@ -227,7 +227,10 @@ void index_part::insert(std::string s, uint32_t val) {
   while (it != end) {
     if (it->first == key_len) {
       if (it->second->first == s) {
-        return it->second->second.append(val);
+        return it->second->second.append(val, 1,
+            [this](size_t len) {
+              return post_backing.get(len);
+            });
       }
 
     } else if (it->first > key_len) {
@@ -239,9 +242,14 @@ void index_part::insert(std::string s, uint32_t val) {
 
   key k(key_backing.get(key_len), s);
 
-  store.emplace_back(k, posting(val));
+  store.emplace_back(k, posting());
 
   auto ref = std::prev(store.end());
+
+  ref->second.append(val, 1,
+      [this](size_t len) {
+        return post_backing.get(len);
+      });
 
   index[hash_key].emplace(it, key_len, ref);
 }
@@ -358,7 +366,10 @@ void index_part::merge(index_part &other)
       auto start = std::chrono::system_clock::now();
 
       auto r = std::get<2>(f);
-      r->second->second.merge(o_it->second, page_id_offset);
+      r->second->second.merge(o_it->second, page_id_offset,
+          [this](size_t s) {
+            return post_backing.get(s);
+          });
 
       auto end = std::chrono::system_clock::now();
       merge_total += end - start;
@@ -375,7 +386,10 @@ void index_part::merge(index_part &other)
       store.emplace_back(key(c_buf), posting());
       auto n_it = std::prev(store.end());
 
-      n_it->second.merge(o_it->second, page_id_offset);
+      n_it->second.merge(o_it->second, page_id_offset,
+          [this](size_t s) {
+            return post_backing.get(s);
+          });
 
       auto in = std::get<1>(f);
       auto it = std::get<2>(f);

@@ -527,3 +527,28 @@ pre reserve merge
 
 hmmm.
 
+postings in buf list. crashes at end but wow.
+./indexer  48.14s user 0.85s system 278% cpu 17.570 total
+don't need to free.
+
+and completed. hmm, using 0.95g res
+./indexer  59.17s user 0.97s system 252% cpu 23.782 total
+0.93g res, not any faster...
+./indexer  59.31s user 0.99s system 246% cpu 24.496 total
+
+i'm starting to think the bottle neck is not allocations.
+more likely file reads.
+Oh well, this somehow makes it use less memory and is more
+managable.
+
+it seems that most of the ram usage isn't from the keys or postings
+anyway.
+
+Settings the flush to 10mb (based on key and postings usage) makes it
+faster. Smaller bits to sort. ram usage down to about 400mb.
+
+./indexer  56.84s user 0.82s system 265% cpu 21.690 total
+merger is slower for it.
+./merger  33.97s user 1.05s system 286% cpu 12.218 total
+
+

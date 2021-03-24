@@ -55,6 +55,7 @@ struct index_part {
   uint8_t *backing{NULL};
 
   buf_list key_backing;
+  buf_list post_backing;
 
   std::list<std::pair<key, posting>> store;
 
@@ -69,7 +70,7 @@ struct index_part {
   std::chrono::nanoseconds find_total{0ms};
 
   index_part()
-    : index(HTCAP) {}
+    : index(HTCAP), post_backing(1024*1024) {}
 
   index_part(index_type t, std::string p,
       std::optional<std::string> s,
@@ -81,6 +82,7 @@ struct index_part {
     : type(p.type), path(p.path),
       start(p.start), end(p.end),
       key_backing(std::move(p.key_backing)),
+      post_backing(std::move(p.post_backing)),
       store(std::move(p.store)),
       index(std::move(p.index)),
       page_ids(std::move(p.page_ids))
@@ -98,6 +100,7 @@ struct index_part {
 
   void clear() {
     key_backing.clear();
+    post_backing.clear();
     store.clear();
     page_ids.clear();
 
@@ -140,7 +143,6 @@ struct index_part {
 struct indexer {
   std::list<std::pair<uint64_t, uint32_t>> pages;
   index_part word_t, pair_t, trine_t;
-  size_t usage{0};
 
   std::string base_path;
   size_t flush_count{0};
@@ -153,7 +155,6 @@ struct indexer {
     word_t.clear();
     pair_t.clear();
     trine_t.clear();
-    usage = 0;
   }
 
   void flush() {
@@ -162,6 +163,16 @@ struct indexer {
     clear();
 
     flush_count++;
+  }
+
+  size_t usage() {
+    return word_t.key_backing.usage
+         + word_t.post_backing.usage
+         + pair_t.key_backing.usage
+         + pair_t.post_backing.usage
+         + trine_t.key_backing.usage
+         + trine_t.post_backing.usage
+         + pages.size() * (16);
   }
 
   void insert(index_type t, std::string s, uint32_t index_id) {

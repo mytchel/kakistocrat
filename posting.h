@@ -15,38 +15,19 @@ struct posting {
   uint32_t counts_len{0}, counts_max{0};
 
   posting() {}
-  posting(uint32_t v) {
-    append(v);
-  }
-
-  ~posting() {
-    if (ids_max > 0) {
-      free(ids);
-    }
-
-    if (counts_max > 0) {
-      free(counts);
-    }
-  }
 
   posting(uint8_t *b);
 
-  posting(const posting &p) {
+  posting(const posting &p, std::function<uint8_t* (size_t)> allocator) {
     ids_max = p.ids_len;
     ids_len = p.ids_len;
-    ids = (uint8_t *) malloc(ids_max);
-    if (ids == NULL) {
-      throw std::bad_alloc();
-    }
+    ids = allocator(ids_max);
 
     memcpy(ids, p.ids, ids_len);
 
     counts_max = p.counts_len;
     counts_len = p.counts_len;
-    counts = (uint8_t *) malloc(counts_max);
-    if (counts == NULL) {
-      throw std::bad_alloc();
-    }
+    counts = allocator(counts_max);
 
     memcpy(counts, p.counts, counts_len);
   }
@@ -56,13 +37,9 @@ struct posting {
     ids_len = p.ids_len;
     ids_max = p.ids_max;
 
-    p.ids_max = 0;
-
     counts = p.counts;
     counts_len = p.counts_len;
     counts_max = p.counts_max;
-
-    p.counts_max = 0;
   }
 
   size_t save(uint8_t *buffer);
@@ -79,16 +56,15 @@ struct posting {
 
   std::vector<std::pair<uint32_t, uint8_t>> decompress() const;
 
-  void reserve(size_t id, size_t cnt);
+  void reserve(size_t id, size_t cnt, std::function<uint8_t* (size_t)> allocator);
 
-  void append(uint32_t id, uint8_t count = 1);
-  void merge(posting &other, uint32_t id_add = 0);
+  void append(uint32_t id, uint8_t count, std::function<uint8_t* (size_t)> allocator);
+  void merge(posting &other, uint32_t id_add, std::function<uint8_t* (size_t)> allocator);
 
   bool only_one() {
     if (counts_len == 0) return true;
     if (counts_len > 1) return false;
     return counts[0] == 1;
-
   }
 };
 

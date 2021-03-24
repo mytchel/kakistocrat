@@ -65,80 +65,40 @@ size_t posting::save(uint8_t *buffer)
 	return size();
 }
 
-void posting::reserve(size_t id, size_t cnt) {
+void posting::reserve(size_t id, size_t cnt,
+    std::function<uint8_t* (size_t)> allocator)
+{
   if (ids_len + id > ids_max) {
     ids_max = (ids_len + id) * 2;
 
-    ids = (uint8_t *) realloc(ids, ids_max);
-    if (ids == NULL) {
-      throw std::bad_alloc();
-    }
+    uint8_t *n_ids = allocator(ids_max);
+    memcpy(n_ids, ids, ids_len);
+    ids = n_ids;
   }
 
   if (counts_len + cnt > counts_max) {
     counts_max = (counts_len + cnt) * 2;
 
-    counts = (uint8_t *) realloc(counts, counts_max);
-    if (counts == NULL) {
-      throw std::bad_alloc();
-    }
+    uint8_t *n_counts = allocator(counts_max);
+    memcpy(n_counts, counts, counts_len);
+    counts = n_counts;
   }
 }
 
-uint32_t get_last_id(uint8_t *ids, size_t ids_len)
-{
-	uint32_t prevI = 0;
-	uint32_t docI = 0;
-	size_t di = 0;
-	size_t ci = 0;
-
-	while (di < ids_len) {
-		di += vbyte_read(&ids[di], &docI);
-		docI += prevI;
-		prevI = docI;
-	}
-
-  return docI;
-}
-
-void posting::merge(posting &other, uint32_t id_add)
+void posting::merge(posting &other, uint32_t id_add,
+    std::function<uint8_t* (size_t)> allocator)
 {
   auto pairs = other.decompress();
 
-  reserve(5 + other.ids_len, other.counts_len);
+  reserve(5 + other.ids_len, other.counts_len, allocator);
 
   for (auto &p: pairs) {
-    append(p.first + id_add, p.second);
+    append(p.first + id_add, p.second, allocator);
   }
-
-  return;
-  /*
-
-  reserve(5 + other.ids_len, other.counts_len);
-
-  if (counts_len > 0 && last_id == 0) {
-    last_id = get_last_id(ids, ids_len);
-  }
-
-  uint32_t first_id;
-  size_t offset;
-
-  offset = vbyte_read(other.ids, &first_id);
-
-  ids_len += vbyte_store(ids + ids_len, first_id + id_add - last_id);
-
-  memcpy(ids + ids_len, other.ids + offset, other.ids_len - offset);
-
-  ids_len += other.ids_len - offset;
-
-  memcpy(counts + counts_len, other.counts, other.counts_len);
-  counts_len += other.counts_len;
-
-  last_id = get_last_id(other.ids, other.ids_len) + id_add;
-  */
 }
 
-void posting::append(uint32_t id, uint8_t count)
+void posting::append(uint32_t id, uint8_t count,
+    std::function<uint8_t* (size_t)> allocator)
 {
   if (counts_len > 0 && id == last_id) {
     if (counts[counts_len-1] < 255 - count) {
@@ -150,7 +110,7 @@ void posting::append(uint32_t id, uint8_t count)
     return;
   }
 
-  reserve(5, 1);
+  reserve(5, 1, allocator);
 
   ids_len += vbyte_store(ids + ids_len, id - last_id);
   counts[counts_len++] = count;
