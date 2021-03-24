@@ -9,10 +9,10 @@ struct posting {
   uint32_t last_id{0};
 
   uint8_t *ids{NULL};
-  size_t ids_len{0}, ids_max{0};
+  uint32_t ids_len{0}, ids_max{0};
 
   uint8_t *counts{NULL};
-  size_t counts_len{0}, counts_max{0};
+  uint32_t counts_len{0}, counts_max{0};
 
   posting() {}
   posting(uint32_t v) {
@@ -22,6 +22,9 @@ struct posting {
   ~posting() {
     if (ids_max > 0) {
       free(ids);
+    }
+
+    if (counts_max > 0) {
       free(counts);
     }
   }
@@ -64,13 +67,21 @@ struct posting {
 
   size_t save(uint8_t *buffer);
 
-  size_t size();
+  inline size_t usage()
+  {
+    return sizeof(posting) + ids_max + counts_max;
+  }
+
+  inline size_t size()
+  {
+    return sizeof(uint32_t) * 2 + ids_len + counts_len;
+  }
 
   std::vector<std::pair<uint32_t, uint8_t>> decompress() const;
 
   void reserve(size_t id, size_t cnt);
 
-  size_t append(uint32_t id, uint8_t count = 1);
+  void append(uint32_t id, uint8_t count = 1);
   void merge(posting &other, uint32_t id_add = 0);
 
   bool only_one() {

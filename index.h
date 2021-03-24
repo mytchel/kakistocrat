@@ -14,7 +14,7 @@
 using namespace std::chrono_literals;
 
 #include "posting.h"
-#include "hash_table.h"
+#include "hash.h"
 #include "key.h"
 #include "buf_list.h"
 
@@ -112,7 +112,7 @@ struct index_part {
   size_t save_to_buf(uint8_t *buffer, size_t len);
 
   void merge(index_part &other);
-  size_t insert(std::string key, uint32_t val);
+  void insert(std::string key, uint32_t val);
 
   void update_index(std::list<std::pair<key, posting>>::iterator);
   std::list<std::pair<key, posting>>::iterator find(std::string);
@@ -166,11 +166,11 @@ struct indexer {
 
   void insert(index_type t, std::string s, uint32_t index_id) {
     if (t == words) {
-      usage += word_t.insert(s, index_id);
+      word_t.insert(s, index_id);
     } else if (t == pairs) {
-      usage += pair_t.insert(s, index_id);
+      pair_t.insert(s, index_id);
     } else if (t == trines) {
-      usage += trine_t.insert(s, index_id);
+      trine_t.insert(s, index_id);
     }
   }
 

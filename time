@@ -504,3 +504,26 @@ just usage, so multiple saves
 ./indexer  64.19s user 1.19s system 265% cpu 24.624 total
 ./merger  23.72s user 1.13s system 280% cpu 8.873 total
 
+1.2g res
+./indexer  61.91s user 1.19s system 268% cpu 23.521 total
+not allocing extra for posting
+1.2g res
+./indexer  64.78s user 1.27s system 250% cpu 26.337 total
+alloc * 4
+1.19g res
+./indexer  63.37s user 1.16s system 270% cpu 23.814 total
+alloc * 8
+1.29g res
+./indexer  64.44s user 1.28s system 267% cpu 24.576 total
+
+normal
+./merger  22.69s user 1.03s system 289% cpu 8.207 total
+./merger  23.93s user 1.11s system 282% cpu 8.878 total
+./merger  23.85s user 1.07s system 288% cpu 8.627 total
+
+pre reserve merge
+./merger  23.11s user 1.07s system 285% cpu 8.465 total
+./merger  22.97s user 1.08s system 287% cpu 8.358 total
+
+hmmm.
+

@@ -27,7 +27,6 @@
 #include "crawl.h"
 #include "tokenizer.h"
 
-#include "hash_table.h"
 #include "index.h"
 
 using nlohmann::json;

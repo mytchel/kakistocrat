@@ -53,8 +53,7 @@ add_executable(indexer indexer.cc
     tokenizer.cc
     util.cc
     str.c
-	bst.cc
-	hash_table.cc
+	hash.cc
 	posting.cc
 	vbyte.cc
     index_part.cc
@@ -69,8 +68,7 @@ add_executable(indexer_single indexer_single.cc
     tokenizer.cc
     util.cc
     str.c
-	bst.cc
-	hash_table.cc
+	hash.cc
 	posting.cc
 	vbyte.cc
     index_part.cc
@@ -84,8 +82,7 @@ add_executable(merger merger.cc
     tokenizer.cc
     util.cc
     str.c
-	bst.cc
-	hash_table.cc
+	hash.cc
 	posting.cc
 	vbyte.cc
 	vbyte.cc
@@ -101,8 +98,7 @@ add_executable(merger_single merger_single.cc
     tokenizer.cc
     util.cc
     str.c
-	bst.cc
-	hash_table.cc
+	hash.cc
 	posting.cc
 	vbyte.cc
     index_part.cc
@@ -118,8 +114,7 @@ add_executable(search_cli search_cli.cc
     tokenizer.cc
     util.cc
     str.c
-	bst.cc
-	hash_table.cc
+	hash.cc
 	posting.cc
     index_part.cc
     index.cc
@@ -137,8 +132,7 @@ add_executable(search_server search_server.cc
     tokenizer.cc
     util.cc
     str.c
-	bst.cc
-	hash_table.cc
+	hash.cc
 	posting.cc
     index_part.cc
     index.cc

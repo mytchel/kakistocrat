@@ -19,8 +19,7 @@
 
 #include "util.h"
 #include "posting.h"
-#include "bst.h"
-#include "hash_table.h"
+#include "hash.h"
 #include "index.h"
 #include "tokenizer.h"
 

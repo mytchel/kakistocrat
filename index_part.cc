@@ -19,8 +19,7 @@
 
 #include "util.h"
 #include "posting.h"
-#include "bst.h"
-#include "hash_table.h"
+#include "hash.h"
 #include "index.h"
 #include "tokenizer.h"
 
@@ -214,9 +213,9 @@ bool index_part::load_backing()
   return true;
 }
 
-size_t index_part::insert(std::string s, uint32_t val) {
+void index_part::insert(std::string s, uint32_t val) {
   if (s.size() == 0 || s.size() > key_max_len)
-    return 0;
+    return;
 
   size_t key_len = key_size(s);
 
@@ -245,8 +244,6 @@ size_t index_part::insert(std::string s, uint32_t val) {
   auto ref = std::prev(store.end());
 
   index[hash_key].emplace(it, key_len, ref);
-
-  return ref->first.size() + ref->second.size() + 32;
 }
 
 void index_part::update_index(std::list<std::pair<key, posting>>::iterator ref)

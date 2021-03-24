@@ -20,11 +20,6 @@ posting::posting(uint8_t *backing)
   counts = ids + ids_len;
 }
 
-size_t posting::size()
-{
-  return sizeof(uint32_t) * 2 + ids_len + counts_len;
-}
-
 std::vector<std::pair<uint32_t, uint8_t>>
 posting::decompress() const
 {
@@ -73,6 +68,7 @@ size_t posting::save(uint8_t *buffer)
 void posting::reserve(size_t id, size_t cnt) {
   if (ids_len + id > ids_max) {
     ids_max = (ids_len + id) * 2;
+
     ids = (uint8_t *) realloc(ids, ids_max);
     if (ids == NULL) {
       throw std::bad_alloc();
@@ -81,6 +77,7 @@ void posting::reserve(size_t id, size_t cnt) {
 
   if (counts_len + cnt > counts_max) {
     counts_max = (counts_len + cnt) * 2;
+
     counts = (uint8_t *) realloc(counts, counts_max);
     if (counts == NULL) {
       throw std::bad_alloc();
@@ -107,6 +104,8 @@ uint32_t get_last_id(uint8_t *ids, size_t ids_len)
 void posting::merge(posting &other, uint32_t id_add)
 {
   auto pairs = other.decompress();
+
+  reserve(5 + other.ids_len, other.counts_len);
 
   for (auto &p: pairs) {
     append(p.first + id_add, p.second);
@@ -139,7 +138,7 @@ void posting::merge(posting &other, uint32_t id_add)
   */
 }
 
-size_t posting::append(uint32_t id, uint8_t count)
+void posting::append(uint32_t id, uint8_t count)
 {
   if (counts_len > 0 && id == last_id) {
     if (counts[counts_len-1] < 255 - count) {
@@ -147,17 +146,14 @@ size_t posting::append(uint32_t id, uint8_t count)
     } else {
       counts[counts_len-1] = 255;
     }
-    return 0;
+
+    return;
   }
 
   reserve(5, 1);
 
-  size_t l = vbyte_store(ids + ids_len, id - last_id);
+  ids_len += vbyte_store(ids + ids_len, id - last_id);
   counts[counts_len++] = count;
   last_id = id;
-
-  ids_len += l;
-
-  return l + 1;
 }
 
