@@ -223,7 +223,7 @@ int main(int argc, char *argv[]) {
 
   util::make_path("meta/index_parts");
 
-  auto n_threads = 1;//std::thread::hardware_concurrency();
+  auto n_threads = std::thread::hardware_concurrency();
   if (n_threads > 1) n_threads--;
 
   spdlog::info("starting {} threads", n_threads);

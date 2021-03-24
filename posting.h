@@ -15,6 +15,9 @@ struct posting {
   size_t counts_len{0}, counts_max{0};
 
   posting() {}
+  posting(uint32_t v) {
+    append(v);
+  }
 
   ~posting() {
     if (ids_max > 0) {

@@ -463,3 +463,44 @@ Get 600s worth of crawl data.
 don't do fancy posting copy:
 ./merger  24.48s user 0.89s system 286% cpu 8.842 total
 well...
+
+new baseline
+
+peak 1 gb
+./indexer  71.25s user 1.12s system 271% cpu 26.675 total
+peak 0.22 gb
+./merger  26.28s user 0.92s system 285% cpu 9.509 total
+peak 1.5g, hit buffer size limit
+./indexer_single  61.44s user 0.80s system 99% cpu 1:02.45 total
+
+
+replace hash table with indexer part. storing in ordered list not bst.
+backed by list (that should be ordered?)
+
+peak 1.2g
+./indexer  64.04s user 1.12s system 264% cpu 24.644 total
+
+put index info in vector not list.
+peak 1.2gb still
+./indexer  61.81s user 1.15s system 260% cpu 24.187 total
+./indexer  63.48s user 1.20s system 248% cpu 26.052 total
+
+peak 1.15g
+./indexer  72.27s user 1.17s system 266% cpu 27.564 total
+
+back to list, dont copy when getting part's postings
+./indexer  61.73s user 1.01s system 277% cpu 22.635 total
+
+merging indexer part and index part. this is only saving at the end.
+./indexer  59.52s user 1.19s system 262% cpu 23.146 total
+./merger  21.55s user 1.02s system 280% cpu 8.038 total
+search is broken. search is not broken any more than it alway was.
+
+forward lists and usage, no bonus
+./indexer  65.95s user 1.15s system 272% cpu 24.651 total
+./merger  24.31s user 0.96s system 285% cpu 8.843 total
+
+just usage, so multiple saves
+./indexer  64.19s user 1.19s system 265% cpu 24.624 total
+./merger  23.72s user 1.13s system 280% cpu 8.873 total
+

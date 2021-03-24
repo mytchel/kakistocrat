@@ -7,11 +7,11 @@ struct buf_list {
   std::list<uint8_t *> old;
   uint8_t *cur{NULL};
   size_t off{0};
-  
+
   size_t buf_size{1024};
 
   buf_list() {}
-  
+
   buf_list(buf_list &&b)
     : old(std::move(b.old))
   {

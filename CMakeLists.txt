@@ -57,6 +57,7 @@ add_executable(indexer indexer.cc
 	hash_table.cc
 	posting.cc
 	vbyte.cc
+    index_part.cc
     index.cc)
 
 target_link_libraries(indexer nlohmann_json::nlohmann_json)
@@ -72,6 +73,7 @@ add_executable(indexer_single indexer_single.cc
 	hash_table.cc
 	posting.cc
 	vbyte.cc
+    index_part.cc
     index.cc)
 
 target_link_libraries(indexer_single nlohmann_json::nlohmann_json)
@@ -86,6 +88,8 @@ add_executable(merger merger.cc
 	hash_table.cc
 	posting.cc
 	vbyte.cc
+	vbyte.cc
+    index_part.cc
     index.cc)
 
 target_link_libraries(merger nlohmann_json::nlohmann_json)
@@ -101,6 +105,7 @@ add_executable(merger_single merger_single.cc
 	hash_table.cc
 	posting.cc
 	vbyte.cc
+    index_part.cc
     index.cc)
 
 target_link_libraries(merger_single nlohmann_json::nlohmann_json)
@@ -116,6 +121,7 @@ add_executable(search_cli search_cli.cc
 	bst.cc
 	hash_table.cc
 	posting.cc
+    index_part.cc
     index.cc
 	vbyte.cc)
 
@@ -134,6 +140,7 @@ add_executable(search_server search_server.cc
 	bst.cc
 	hash_table.cc
 	posting.cc
+    index_part.cc
     index.cc
 	vbyte.cc)
 

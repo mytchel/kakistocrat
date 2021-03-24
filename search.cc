@@ -35,6 +35,7 @@ void searcher::load()
 
 // This only returns documents that match all the terms.
 // Which may not be the best?
+// It is certainly not what I want.
 static std::list<std::pair<uint64_t, double>> intersect_postings(
     std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
 {
@@ -44,17 +45,26 @@ static std::list<std::pair<uint64_t, double>> intersect_postings(
     return result;
   }
 
+  size_t pp = 0;
+  for (auto &i: postings) {
+    for (auto &p: i) {
+      spdlog::info("intersect {} {} = {}", pp, p.first, p.second);
+    }
+    pp++;
+  }
+
   std::vector<size_t> indexes(postings.size(), 0);
 
 	while (indexes[0] < postings[0].size()) {
-		size_t id = postings[0][indexes[0]].first;
+		auto id = postings[0][indexes[0]].first;
 		bool canAdd = true;
 		for (size_t i = 1; i < postings.size(); i++) {
 			while (indexes[i] < postings[i].size() && postings[i][indexes[i]].first < id)
 				indexes[i]++;
 
-			if (indexes[i] == postings[i].size())
+			if (indexes[i] == postings[i].size()) {
 				return result;
+      }
 
 			if (postings[i][indexes[i]].first != id)
 				canAdd = false;

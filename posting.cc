@@ -142,7 +142,11 @@ void posting::merge(posting &other, uint32_t id_add)
 size_t posting::append(uint32_t id, uint8_t count)
 {
   if (counts_len > 0 && id == last_id) {
-    counts[counts_len-1] += count;
+    if (counts[counts_len-1] < 255 - count) {
+      counts[counts_len-1] += count;
+    } else {
+      counts[counts_len-1] = 255;
+    }
     return 0;
   }
 

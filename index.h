@@ -29,9 +29,117 @@ const size_t max_index_part_size = 1024 * 1024 * 10;
 std::list<std::string> load_parts(std::string path);
 void save_parts(std::string path, std::list<std::string>);
 
+void write_buf(std::string path, uint8_t *buf, size_t len);
+
+std::pair<size_t, size_t> save_postings_to_buf(
+    std::list<std::pair<key, posting>>::iterator start,
+    std::list<std::pair<key, posting>>::iterator end,
+    uint8_t *buffer, size_t buffer_len);
+
+
+std::pair<size_t, size_t> save_pages_to_buf(
+    std::vector<uint64_t> &pages,
+    uint8_t *buffer, size_t buffer_len);
+
+std::pair<size_t, size_t> save_pages_to_buf(
+    std::list<std::pair<uint64_t, uint32_t>> &pages,
+    uint8_t *buffer, size_t buffer_len);
+
+struct index_part {
+  index_type type;
+  std::string path;
+
+  std::optional<std::string> start;
+  std::optional<std::string> end;
+
+  uint8_t *backing{NULL};
+
+  buf_list key_backing;
+
+  std::list<std::pair<key, posting>> store;
+
+  std::vector<std::list<
+      std::pair<uint8_t, std::list<std::pair<key, posting>>::iterator>
+    >> index;
+
+  std::vector<uint64_t> page_ids;
+
+  std::chrono::nanoseconds index_total{0ms};
+  std::chrono::nanoseconds merge_total{0ms};
+  std::chrono::nanoseconds find_total{0ms};
+
+  index_part()
+    : index(HTCAP) {}
+
+  index_part(index_type t, std::string p,
+      std::optional<std::string> s,
+      std::optional<std::string> e)
+    : index(HTCAP),
+      type(t), path(p), start(s), end(e) {}
+
+  index_part(index_part &&p)
+    : type(p.type), path(p.path),
+      start(p.start), end(p.end),
+      key_backing(std::move(p.key_backing)),
+      store(std::move(p.store)),
+      index(std::move(p.index)),
+      page_ids(std::move(p.page_ids))
+  {
+    backing = p.backing;
+    p.backing = NULL;
+  }
+
+  ~index_part()
+  {
+    if (backing) {
+      free(backing);
+    }
+  }
+
+  void clear() {
+    key_backing.clear();
+    store.clear();
+    page_ids.clear();
+
+    for (auto &i: index) {
+      i.clear();
+    }
+  }
+
+  bool load_backing();
+  void load();
+  void save();
+  size_t save_to_buf(uint8_t *buffer, size_t len);
+
+  void merge(index_part &other);
+  size_t insert(std::string key, uint32_t val);
+
+  void update_index(std::list<std::pair<key, posting>>::iterator);
+  std::list<std::pair<key, posting>>::iterator find(std::string);
+
+  std::tuple<
+    bool,
+
+    std::list<
+      std::pair<
+        uint8_t,
+        std::list<std::pair<key, posting>>::iterator
+      >
+    > *,
+
+    std::list<
+      std::pair<
+        uint8_t,
+        std::list<std::pair<key, posting>>::iterator
+      >
+    >::iterator>
+      find(key);
+};
+
+
 struct indexer {
-  std::vector<std::pair<uint64_t, uint32_t>> pages;
-  hash_table word_t, pair_t, trine_t;
+  std::list<std::pair<uint64_t, uint32_t>> pages;
+  index_part word_t, pair_t, trine_t;
   size_t usage{0};
 
   std::string base_path;
@@ -75,66 +183,6 @@ struct indexer {
   }
 
   indexer(std::string p) : base_path(p) {}
-};
-
-struct index_part {
-  index_type type;
-  std::string path;
-
-  std::optional<std::string> start;
-  std::optional<std::string> end;
-
-  uint8_t *backing{NULL};
-
-  buf_list extra_backing;
-
-  std::list<std::pair<key, posting>> store;
-
-  std::vector<std::vector<
-      std::pair<uint8_t, std::list<std::pair<key, posting>>::iterator>
-    >> index;
-
-  std::vector<uint64_t> page_ids;
-
-  std::chrono::nanoseconds index_total{0ms};
-  std::chrono::nanoseconds merge_total{0ms};
-  std::chrono::nanoseconds find_total{0ms};
-
-  index_part(index_type t, std::string p,
-      std::optional<std::string> s,
-      std::optional<std::string> e)
-    : index(HTCAP),
-      type(t), path(p), start(s), end(e) {}
-
-  index_part(index_part &&p)
-    : type(p.type), path(p.path),
-      start(p.start), end(p.end),
-      extra_backing(std::move(p.extra_backing)),
-      store(std::move(p.store)),
-      index(std::move(p.index)),
-      page_ids(std::move(p.page_ids))
-  {
-    backing = p.backing;
-    p.backing = NULL;
-  }
-
-  ~index_part()
-  {
-    if (backing) {
-      free(backing);
-    }
-  }
-
-  bool load_backing();
-  void load();
-  void save();
-  size_t save_to_buf(uint8_t *buffer, size_t len);
-
-  void merge(index_part &other);
-
-  void update_index(std::list<std::pair<key, posting>>::iterator);
-  std::list<std::pair<key, posting>>::iterator find(std::string);
-  std::list<std::pair<key, posting>>::iterator find(key);
 };
 
 struct index_part_info {

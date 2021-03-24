@@ -186,178 +186,42 @@ void index_info::load()
   j.at("trine_parts").get_to(trine_parts);
 }
 
-void index_part::load()
-{
-  if (!load_backing()) {
-    return;
-  }
-
-  spdlog::info("loading");
-  uint32_t page_count = ((uint32_t *)backing)[0];
-  uint32_t posting_count = ((uint32_t *)backing)[1];
-  spdlog::info("loading {}, {}", page_count, posting_count);
-
-  size_t offset = sizeof(uint32_t) * 2;
-
-  page_ids.reserve(page_count);
-
-  for (size_t i = 0; i < page_count; i++) {
-    page_ids.push_back(((uint64_t *) (backing + offset))[i]);
-  }
-  offset += sizeof(uint64_t) * page_count;
-
-  spdlog::info("got pages {}", page_ids.size());
-
-  for (size_t i = 0; i < posting_count; i++) {
-    key k(backing + offset);
-    offset += k.size();
-
-    posting p(backing + offset);
-
-    offset += p.size();
-
-    store.emplace_back(k, std::move(p));
-
-    update_index(std::prev(store.end()));
-  }
-
-  spdlog::info("got postings {}", store.size());
-}
-
-void write_buf(std::string path, uint8_t *buf, size_t len)
-{
-  std::ofstream file;
-
-  file.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
-
-  if (!file.is_open()) {
-    spdlog::info("error opening file {}", path);
-    return;
-  }
-
-  spdlog::info("writing {:4} kb to {}", len / 1024, path);
-  file.write((const char *) buf, len);
-
-  file.close();
-}
-
-static size_t hash_to_buf(
-    std::vector<std::pair<uint64_t, uint32_t>> &pages,
-    std::list<std::pair<key, posting>>::iterator &start,
-    std::list<std::pair<key, posting>>::iterator &end,
-    size_t count,
+void save_part(
+    std::string path,
+    std::list<std::pair<uint64_t, uint32_t>> &pages,
+    std::list<std::pair<key, posting>>::iterator start,
+    std::list<std::pair<key, posting>>::iterator end,
     uint8_t *buffer, size_t buffer_len)
 {
+  size_t page_count = 0;
+  size_t post_count = 0;
   size_t offset = sizeof(uint32_t) * 2;
 
-  for (auto &p: pages) {
-    if (offset + sizeof(uint64_t) >= buffer_len) {
-      spdlog::warn("buffer too small");
-      return 0;
-    }
+  auto rpage = save_pages_to_buf(pages,
+      buffer + offset, max_index_part_size - offset);
 
-    *((uint64_t *) (buffer + offset)) = p.first;
-    offset += sizeof(uint64_t);
-  }
+  offset += rpage.first;
+  page_count = rpage.second;
 
-  for (auto p = start; p != end; p++) {
-    if (offset + p->first.size() + p->second.size() >= buffer_len) {
-      spdlog::warn("buffer too small");
-      return 0;
-    }
+  auto rpost = save_postings_to_buf(start, end,
+      buffer + offset, max_index_part_size - offset);
 
-    memcpy(buffer + offset, p->first.data(), p->first.size());
-    offset += p->first.size();
+  offset += rpost.first;
+  post_count = rpost.second;
 
-    offset += p->second.save(buffer + offset);
-  }
+  ((uint32_t *) buffer)[0] = page_count;
+  ((uint32_t *) buffer)[1] = post_count;
 
-  ((uint32_t *) buffer)[0] = pages.size();
-  ((uint32_t *) buffer)[1] = count;
-
-  return offset;
-}
-
-size_t index_part::save_to_buf(uint8_t *buffer, size_t buffer_len)
-{
-  /*
-  store.sort(
-      [](auto &a, auto &b) {
-        return a.first < b.first;
-      });
-*/
-
-  size_t offset = sizeof(uint32_t) * 2;
-
-  for (auto p: page_ids) {
-    if (offset + sizeof(uint64_t) >= buffer_len) {
-      spdlog::warn("buffer too small");
-      return 0;
-    }
-
-    *((uint64_t *) (buffer + offset)) = p;
-    offset += sizeof(uint64_t);
-  }
-
-  size_t total_dict = offset;
-  size_t total_key = 0;
-  size_t total_ids = 0;
-
-  uint32_t count = 0;
-
-  for (auto &p: store) {
-    if (p.second.only_one()) continue;
-    
-    if (offset + p.first.size() + p.second.size() >= buffer_len) {
-      spdlog::warn("buffer too small");
-      return 0;
-    }
-
-    memcpy(buffer + offset, p.first.data(), p.first.size());
-    offset += p.first.size();
-    total_key += p.first.size();
-
-    auto l = p.second.save(buffer + offset);
-    offset += l;
-    total_ids += l;
-    
-    count++;
-  }
-
-  ((uint32_t *) buffer)[0] = page_ids.size();
-  ((uint32_t *) buffer)[1] = count;
-
-  if (offset > 0) {
-    spdlog::info("saving with {} dict {} key {} ids",
-        (float) total_dict / offset,
-        (float) total_key / offset,
-        (float) total_ids / offset);
-  }
-
-  return offset;
-}
-
-void index_part::save()
-{
-  uint8_t *buffer = (uint8_t *) malloc(max_index_part_size);
-  if (buffer == NULL) {
-    throw std::bad_alloc();
-  }
-
-  size_t len = save_to_buf(buffer, max_index_part_size);
-
-  write_buf(path, buffer, len);
-
-  free(buffer);
+  write_buf(path, buffer, offset);
 }
 
 std::vector<index_part_info> index_part_save(
-    std::vector<std::pair<uint64_t, uint32_t>> &pages,
-    hash_table &t, std::string base_path)
+    std::list<std::pair<uint64_t, uint32_t>> &pages,
+    index_part &t, std::string base_path)
 {
   std::vector<index_part_info> parts;
 
-  auto postings = t.get_postings();
+  auto &postings = t.store;
 
   if (postings.empty()) {
     return parts;
@@ -380,21 +244,19 @@ std::vector<index_part_info> index_part_save(
   auto start = postings.begin();
   auto end = postings.begin();
 
-  size_t count = 0;
-
   while (true) {
     if (end == postings.end() || (split != split_at.end() && end->first >= *split)) {
       if (start != end) {
-        size_t len = hash_to_buf(pages, start, end, count, buffer, max_index_part_size);
-
         auto path = fmt::format("{}.{}.dat", base_path, start->first.str());
 
-        write_buf(path, buffer, len);
+        save_part(path, pages, start, end,
+            buffer, max_index_part_size);
 
-        parts.emplace_back(path, start->first.str(), std::prev(end)->first.str());
+        parts.emplace_back(path,
+            start->first.str(),
+            std::prev(end)->first.str());
       }
 
-      count = 0;
       start = end;
       split++;
 
@@ -403,7 +265,6 @@ std::vector<index_part_info> index_part_save(
       }
     }
 
-    count++;
     end++;
   }
 
@@ -445,95 +306,6 @@ std::string indexer::save()
   info.save();
 
   return meta_path;
-}
-
-bool index_part::load_backing()
-{
-  struct stat s;
-  if (stat(path.c_str(), &s) == -1) {
-    spdlog::warn("load backing failed {}, no file", path);
-    return false;
-  }
-
-  size_t part_size = s.st_size;
-
-  backing = (uint8_t *) malloc(part_size);
-  if (backing == NULL) {
-    spdlog::warn("load backing failed {}, malloc failed for {}", path, part_size);
-    throw std::bad_alloc();
-  }
-
-  std::ifstream file;
-
-  spdlog::info("load {:4} kb from {}", part_size / 1024, path);
-
-  file.open(path, std::ios::in | std::ios::binary);
-
-  if (!file.is_open() || file.fail() || !file.good() || file.bad()) {
-    spdlog::warn("error opening file {}",  path);
-    return false;
-  }
-
-  file.read((char *) backing, part_size);
-
-  file.close();
-
-  return true;
-}
-
-void index_part::update_index(std::list<std::pair<key, posting>>::iterator ref)
-{
-  uint32_t hash_key = hash(ref->first.c_str(), ref->first.len());
-  size_t key_len = ref->first.len();
-
-  if (index[hash_key].size() + 1 >= index[hash_key].capacity()) {
-    index[hash_key].reserve((index[hash_key].size() + 1) * 2);
-  }
-
-  auto it = index[hash_key].begin();
-  auto end = index[hash_key].end();
-  while (it != end) {
-    if (it->first >= key_len) {
-      break;
-    }
-    it++;
-  }
-
-  index[hash_key].emplace(it, key_len, ref);
-}
-
-std::list<std::pair<key, posting>>::iterator index_part::find(key k)
-{
-  uint32_t hash_key = hash(k.c_str(), k.len());
-
-  for (auto &i: index[hash_key]) {
-    if (i.first == k.len()) {
-      if (i.second->first == k) {
-        return i.second;
-      }
-    } else if (i.first > k.len()) {
-      break;
-    }
-  }
-
-  return store.end();
-}
-
-std::list<std::pair<key, posting>>::iterator index_part::find(std::string s)
-{
-  uint32_t hash_key = hash(s);
-
-  for (auto &i: index[hash_key]) {
-    if (i.first == s.size()) {
-      if (i.second->first == s) {
-        return i.second;
-      }
-    } else if (i.first > s.size()) {
-      break;
-    }
-  }
-
-  return store.end();
 }
 
 static index_part load_part(index_type type, index_part_info &info)
@@ -735,9 +507,6 @@ void index::find_part_matches(
     std::list<std::string> &terms,
     std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
 {
-  spdlog::info("check part {} {}", part.path, part.page_ids.size());
-
-  bool f = false;
 	for (auto &term: terms) {
     if ((part.start && term < *part.start || (part.end && term > *part.end)))
       continue;
@@ -752,18 +521,8 @@ void index::find_part_matches(
 
       spdlog::info("have ranked {} with {} docs", pair->first.str(), pairs_ranked.size());
       postings.push_back(pairs_ranked);
-
-      f = true;
 		}
 	}
-
-  if (f) {
-    size_t i = 0;
-  for (auto p: part.page_ids) {
-    spdlog::info("page {} {}", i++, p);
-  }
-  }
-
 }
 
 std::vector<std::vector<std::pair<uint64_t, double>>> index::find_matches(char *line)
@@ -787,69 +546,6 @@ std::vector<std::vector<std::pair<uint64_t, double>>> index::find_matches(char *
   }
 
   return postings;
-}
-
-void index_part::merge(index_part &other)
-{
-  auto o_it = other.store.begin();
-
-  size_t added = 0;
-
-  size_t key_buf_size = 1024 * 1024;
-
-  uint32_t page_id_offset = page_ids.size();
-
-  page_ids.reserve(page_ids.size() + other.page_ids.size());
-  for (auto p: other.page_ids) {
-    page_ids.push_back(p);
-  }
-
-  while (o_it != other.store.end()) {
-    if (start && o_it->first < *start) {
-      o_it++;
-      continue;
-    }
-    if (end && o_it->first >= *end) break;
-
-    auto start = std::chrono::system_clock::now();
-    auto it = find(o_it->first);
-    auto end = std::chrono::system_clock::now();
-    find_total += end - start;
-
-    if (it != store.end()) {
-      auto start = std::chrono::system_clock::now();
-
-      it->second.merge(o_it->second, page_id_offset);
-
-      auto end = std::chrono::system_clock::now();
-      merge_total += end - start;
-
-    } else {
-      auto start = std::chrono::system_clock::now();
-
-      size_t c_len = o_it->first.size();
-
-      uint8_t *c_buf = extra_backing.get(c_len);
-      if (c_buf == NULL) {
-        spdlog::warn("out of mem");
-        break;
-      }
-
-      memcpy(c_buf, o_it->first.data(), c_len);
-
-      store.emplace_back(key(c_buf), posting());
-
-      store.back().second.merge(o_it->second, page_id_offset);
-
-      update_index(std::prev(store.end()));
-      auto end = std::chrono::system_clock::now();
-      index_total += end - start;
-
-      added++;
-    }
-
-    o_it++;
-  }
 }
 
 }
