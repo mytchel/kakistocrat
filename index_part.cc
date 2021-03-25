@@ -45,9 +45,9 @@ void index_part::load()
   page_ids.reserve(page_count);
 
   for (size_t i = 0; i < page_count; i++) {
-    page_ids.push_back(((uint64_t *) (backing + offset))[i]);
+    page_ids.push_back(*((uint64_t *) (backing + offset)));
+    offset += sizeof(uint64_t);
   }
-  offset += sizeof(uint64_t) * page_count;
 
   spdlog::info("got pages {}", page_ids.size());
 
@@ -56,7 +56,6 @@ void index_part::load()
     offset += k.size();
 
     posting p(backing + offset);
-
     offset += p.size();
 
     store.emplace_back(k, std::move(p));

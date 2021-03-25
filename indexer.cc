@@ -73,7 +73,7 @@ void index_site(search::indexer &indexer, char *file_buf, size_t file_buf_len, c
     spdlog::debug("process page {} / {} : {}", page_id, index_id, page.url);
     size_t len = pfile.gcount();
 
-    if (indexer.usage() > 1024 * 1024 * 10) {
+    if (indexer.usage() > 1024 * 1024 * 30) {
       spdlog::info("indexer using {}", indexer.usage());
 
       indexer.flush();

@@ -70,12 +70,14 @@ struct index_part {
   std::chrono::nanoseconds find_total{0ms};
 
   index_part()
-    : index(HTCAP), post_backing(1024*1024) {}
+    : index(HTCAP),
+      post_backing(1024*1024) {}
 
   index_part(index_type t, std::string p,
       std::optional<std::string> s,
       std::optional<std::string> e)
     : index(HTCAP),
+      post_backing(1024*1024),
       type(t), path(p), start(s), end(e) {}
 
   index_part(index_part &&p)
