@@ -24,7 +24,7 @@ std::vector<std::string> get_split_at();
 
 enum index_type{words, pairs, trines};
 
-const size_t max_index_part_size = 1024 * 1024 * 10;
+const size_t max_index_part_size = 1024 * 1024 * 30;
 
 std::list<std::string> load_parts(std::string path);
 void save_parts(std::string path, std::list<std::string>);

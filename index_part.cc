@@ -93,7 +93,7 @@ std::pair<size_t, size_t> save_postings_to_buf(
 
   for (auto p = start; p != end; p++) {
     if (offset + p->first.size() + p->second.size() >= buffer_len) {
-      spdlog::warn("buffer too small");
+      spdlog::warn("buffer too small to save");
       return std::make_pair(offset, 0);
     }
 
@@ -116,7 +116,7 @@ std::pair<size_t, size_t> save_pages_to_buf(
 
   for (auto p: pages) {
     if (offset + sizeof(uint64_t) >= buffer_len) {
-      spdlog::warn("buffer too small");
+      spdlog::warn("buffer too small to save");
       return std::make_pair(offset, 0);
     }
 
@@ -135,7 +135,7 @@ std::pair<size_t, size_t> save_pages_to_buf(
 
   for (auto &p: pages) {
     if (offset + sizeof(uint64_t) >= buffer_len) {
-      spdlog::warn("buffer too small");
+      spdlog::warn("buffer too small to save");
       return std::make_pair(offset, 0);
     }
 
