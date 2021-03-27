@@ -80,8 +80,8 @@ void write_buf(std::string path, uint8_t *buf, size_t len)
 }
 
 std::pair<size_t, size_t> save_postings_to_buf(
-    list<std::pair<key, posting>, memory_pool<>>::iterator start,
-    list<std::pair<key, posting>, memory_pool<>>::iterator end,
+    list<std::pair<key, posting>, own_memory_pool>::iterator start,
+    list<std::pair<key, posting>, own_memory_pool>::iterator end,
     uint8_t *buffer, size_t buffer_len)
 {
   size_t count = 0;
@@ -255,7 +255,7 @@ void index_part::insert(std::string s, uint32_t val) {
   index[hash_key].emplace(it, key_len, ref);
 }
 
-void index_part::update_index(list<std::pair<key, posting>, memory_pool<>>::iterator ref)
+void index_part::update_index(list<std::pair<key, posting>, own_memory_pool>::iterator ref)
 {
   uint32_t hash_key = hash(ref->first.c_str(), ref->first.len());
   size_t key_len = ref->first.len();
@@ -279,17 +279,19 @@ void index_part::update_index(list<std::pair<key, posting>, memory_pool<>>::iter
 std::tuple<
   bool,
 
-  std::list<
+  list<
     std::pair<
       uint8_t,
-      list<std::pair<key, posting>, memory_pool<>>::iterator
-    >
+      list<std::pair<key, posting>, own_memory_pool>::iterator
+    >,
+    own_memory_pool
   > *,
 
-  std::list<
+  list<
     std::pair<uint8_t,
-      list<std::pair<key, posting>, memory_pool<>>::iterator
-    >
+      list<std::pair<key, posting>, own_memory_pool>::iterator
+    >,
+    own_memory_pool
   >::iterator
 >
 index_part::find(key k)
@@ -315,7 +317,7 @@ index_part::find(key k)
   return std::make_tuple(false, in, it);
 }
 
-list<std::pair<key, posting>, memory_pool<>>::iterator index_part::find(std::string s)
+list<std::pair<key, posting>, own_memory_pool>::iterator index_part::find(std::string s)
 {
   uint32_t hash_key = hash(s);
   size_t l = key_size(s);

@@ -8,6 +8,10 @@
 #include <foonathan/memory/container.hpp>
 #include <foonathan/memory/memory_pool.hpp>
 
+#include "foonathan/memory/detail/align.hpp"
+#include "foonathan/memory/detail/debug_helpers.hpp"
+#include "foonathan/memory/detail/assert.hpp"
+
 using namespace foonathan::memory;
 
 #include <optional>
@@ -22,7 +26,87 @@ using namespace std::chrono_literals;
 
 namespace search {
 
-std::vector<std::string> get_split_at(size_t parts = 200);
+struct own_memory_pool {
+  size_t node_size, chunk_size;
+
+  size_t usage{0};
+  size_t offset{0};
+  uint8_t *head{nullptr};
+  std::list<void*> chunks;
+
+  own_memory_pool(size_t ns, size_t cs)
+    : node_size(ns), chunk_size(cs)
+  {
+    spdlog::info("own memory pool init {} {} : {} kb chunks", ns, cs, ns*cs/1024);
+  }
+
+  own_memory_pool(own_memory_pool &&o)
+    : chunks(std::move(o.chunks)),
+      node_size(o.node_size), chunk_size(o.chunk_size),
+      usage(o.usage), offset(o.offset),
+      head(o.head)
+  {}
+
+  ~own_memory_pool()
+  {
+    for (auto c: chunks) {
+      free(c);
+    }
+  }
+
+  void clear()
+  {
+    head = nullptr;
+    offset = 0;
+    usage = 0;
+
+    for (auto c: chunks) {
+      free(c);
+    }
+
+    chunks.clear();
+  }
+
+  allocator_info info() const noexcept
+  {
+    return {"::own_memory_pool", this};
+  }
+
+  void alloc_chunk()
+  {
+    offset = 0;
+    head = (uint8_t *) malloc(node_size * chunk_size);
+    if (head == nullptr) {
+      throw std::bad_alloc();
+    }
+
+    usage += node_size * chunk_size;
+
+    chunks.push_back(head);
+  }
+
+  void* allocate_node(size_t size, size_t alignment)
+  {
+    detail::check_allocation_size<bad_node_size>(size, node_size, info());
+    detail::check_allocation_size<bad_alignment>(
+        alignment, [&] { return node_size; }, info());
+
+    if (head == nullptr || offset >= chunk_size * node_size) {
+      alloc_chunk();
+    }
+
+    void *r = &head[offset];
+
+    offset += node_size;
+
+    return r;
+  }
+
+  void deallocate_node(void *node, size_t size, size_t alignment) noexcept
+  {}
+};
+
+std::vector<std::string> get_split_at(size_t parts = 20);
 
 enum index_type{words, pairs, trines};
 
@@ -34,8 +118,8 @@ void save_parts(std::string path, std::list<std::string>);
 void write_buf(std::string path, uint8_t *buf, size_t len);
 
 std::pair<size_t, size_t> save_postings_to_buf(
-    list<std::pair<key, posting>, memory_pool<>>::iterator start,
-    list<std::pair<key, posting>, memory_pool<>>::iterator end,
+    list<std::pair<key, posting>, own_memory_pool>::iterator start,
+    list<std::pair<key, posting>, own_memory_pool>::iterator end,
     uint8_t *buffer, size_t buffer_len);
 
 
@@ -49,7 +133,7 @@ std::pair<size_t, size_t> save_pages_to_buf(
 
 struct index_part {
 
-  memory_pool<> pool;
+  own_memory_pool pool;
 
   index_type type;
   std::string path;
@@ -65,11 +149,12 @@ struct index_part {
   buf_list post_backing;
 
   std::vector<
-    list<std::pair<key, posting>, memory_pool<>>
+    list<std::pair<key, posting>, own_memory_pool>
     > stores;
 
-  std::vector<std::list<
-      std::pair<uint8_t, list<std::pair<key, posting>, memory_pool<>>::iterator>
+  std::vector<list<
+      std::pair<uint8_t, list<std::pair<key, posting>, own_memory_pool>::iterator>,
+      own_memory_pool
     >> index;
 
   std::vector<uint64_t> page_ids;
@@ -80,11 +165,16 @@ struct index_part {
 
   // For indexer
   index_part(std::vector<std::string> s_split)
-    : pool(list_node_size<std::pair<key, posting>>::value, 1024*1024*128),
-      index(HTCAP),
+    : pool(list_node_size<std::pair<key, posting>>::value, 1024 * 128),
       post_backing(1024*1024),
+      key_backing(1024*1024),
       store_split(s_split)
   {
+    index.reserve(HTCAP);
+    for (size_t i = 0; i < HTCAP; i++) {
+      index.emplace_back(pool);
+    }
+
     stores.reserve(s_split.size());
     for (auto &s: s_split) {
       stores.emplace_back(pool);
@@ -94,12 +184,17 @@ struct index_part {
   // For merger
   index_part(index_type t, std::string p,
       std::string s, std::optional<std::string> e)
-    : pool(list_node_size<std::pair<key, posting>>::value, 1024*1024*32),
-      index(HTCAP),
+    : pool(list_node_size<std::pair<key, posting>>::value, 1024),
       post_backing(1024*1024),
+      key_backing(1024*1024),
       type(t), path(p),
       start(s), end(e)
   {
+    index.reserve(HTCAP);
+    for (size_t i = 0; i < HTCAP; i++) {
+      index.emplace_back(pool);
+    }
+
     stores.emplace_back(pool);
   }
 
@@ -135,12 +230,27 @@ struct index_part {
 
     key_backing.clear();
     post_backing.clear();
+
+    pool.clear();
+
     page_ids.clear();
+  }
+
+  void print_usage(std::string n)
+  {
+    spdlog::info("usage {} : key {} post {} pool {} page {} -> {} mb",
+          n,
+          key_backing.usage,
+          post_backing.usage,
+          pool.usage,
+          page_ids.size() * sizeof(uint64_t),
+          usage() / 1024 / 1024);
   }
 
   size_t usage() {
     return key_backing.usage
          + post_backing.usage
+         + pool.usage
          + page_ids.size() * sizeof(uint64_t);
   }
 
@@ -152,7 +262,7 @@ struct index_part {
   void merge(index_part &other);
   void insert(std::string key, uint32_t val);
 
-  list<std::pair<key, posting>, memory_pool<>> * get_store(key s)
+  list<std::pair<key, posting>, own_memory_pool> * get_store(key s)
   {
     auto store_it = stores.begin();
     auto split_it = store_split.begin();
@@ -169,24 +279,26 @@ struct index_part {
     throw std::invalid_argument("key does not fit into split store");
   }
 
-  void update_index(list<std::pair<key, posting>, memory_pool<>>::iterator);
-  list<std::pair<key, posting>, memory_pool<>>::iterator find(std::string);
+  void update_index(list<std::pair<key, posting>, own_memory_pool>::iterator);
+  list<std::pair<key, posting>, own_memory_pool>::iterator find(std::string);
 
   std::tuple<
     bool,
 
-    std::list<
+    list<
       std::pair<
         uint8_t,
-        list<std::pair<key, posting>, memory_pool<>>::iterator
-      >
+        list<std::pair<key, posting>, own_memory_pool>::iterator
+      >,
+      own_memory_pool
     > *,
 
-    std::list<
+    list<
       std::pair<
         uint8_t,
-        list<std::pair<key, posting>, memory_pool<>>::iterator
-      >
+        list<std::pair<key, posting>, own_memory_pool>::iterator
+      >,
+      own_memory_pool
     >::iterator>
       find(key);
 };
@@ -210,6 +322,12 @@ struct indexer {
   }
 
   void flush() {
+    spdlog::info("flushing {}", base_path);
+
+    word_t.print_usage(fmt::format("{}-words", base_path));
+    pair_t.print_usage(fmt::format("{}-pair", base_path));
+    trine_t.print_usage(fmt::format("{}-trine", base_path));
+
     paths.emplace_back(save());
 
     clear();
