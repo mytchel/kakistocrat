@@ -238,12 +238,12 @@ struct index_part {
 
   void print_usage(std::string n)
   {
-    spdlog::info("usage {} : key {} post {} pool {} page {} -> {} mb",
+    spdlog::info("usage {} : key {} kb post {} kb pool {} kb page {} kb -> {} mb",
           n,
-          key_backing.usage,
-          post_backing.usage,
-          pool.usage,
-          page_ids.size() * sizeof(uint64_t),
+          key_backing.usage / 1024,
+          post_backing.usage / 1024,
+          pool.usage / 1024,
+          page_ids.size() * sizeof(uint64_t) / 1024,
           usage() / 1024 / 1024);
   }
 
