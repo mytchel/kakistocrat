@@ -29,6 +29,159 @@ using nlohmann::json;
 
 namespace search {
 
+static bool word_allow_extra(std::string s)
+{
+  if (s.size() < 4) return false;
+  if (s.size() > 30) return false;
+
+  for (auto c: s) {
+    if ('a' <= c && c <= 'z') {
+      continue;
+    } else {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void indexer::index_site(crawl::site &site, char *file_buf, size_t file_buf_len) {
+  spdlog::info("index site {}", site.host);
+
+  const size_t buf_len = 80;
+
+  char tok_buffer_store[buf_len];
+	struct str tok_buffer;
+	str_init(&tok_buffer, tok_buffer_store, sizeof(tok_buffer_store));
+
+  char pair_buffer[buf_len * 2 + 1];
+	struct str tok_buffer_pair;
+	str_init(&tok_buffer_pair, pair_buffer, sizeof(pair_buffer));
+
+  char trine_buffer[buf_len * 3 + 2];
+	struct str tok_buffer_trine;
+	str_init(&tok_buffer_trine, trine_buffer, sizeof(trine_buffer));
+
+	tokenizer::token_type token;
+  tokenizer::tokenizer tok;
+
+  spdlog::info("process pages for {}", site.host);
+  for (auto &page: site.pages) {
+    if (page.last_scanned == 0) continue;
+
+    uint64_t page_id = crawl::page_id(site.id, page.id).to_value();
+    uint32_t index_id = next_id();
+    size_t page_length = 0;
+
+    std::ifstream pfile;
+
+    pfile.open(page.path, std::ios::in | std::ios::binary);
+
+    if (!pfile.is_open() || pfile.fail() || !pfile.good() || pfile.bad()) {
+      spdlog::warn("error opening file {}", page.path);
+      continue;
+    }
+
+    pfile.read(file_buf, file_buf_len);
+
+    spdlog::debug("process page {} / {} : {}", page_id, index_id, page.url);
+    size_t len = pfile.gcount();
+
+    if (usage() > 1024 * 1024 * 200) {
+      spdlog::info("indexer using {}", usage());
+
+      flush();
+    }
+
+    tok.init(file_buf, len);
+
+    bool in_head = false, in_title = false;
+
+    str_resize(&tok_buffer_pair, 0);
+    str_resize(&tok_buffer_trine, 0);
+
+    do {
+      token = tok.next(&tok_buffer);
+
+      if (token == tokenizer::TAG) {
+        char tag_name[tokenizer::tag_name_max_len];
+        tokenizer::get_tag_name(tag_name, str_c(&tok_buffer));
+
+        auto t = std::string(tag_name);
+
+        if (t == "head") {
+          in_head = true;
+
+        } else if (t == "/head") {
+          in_head = false;
+
+        } else if (in_head && t == "title") {
+          in_title = true;
+
+        } else if (in_head && t == "/title") {
+          in_title = false;
+        }
+
+        // TODO: others
+        if (t != "a" && t != "strong") {
+          str_resize(&tok_buffer_pair, 0);
+          str_resize(&tok_buffer_trine, 0);
+        }
+
+      } else if ((in_title || !in_head) && token == tokenizer::WORD) {
+        str_tolower(&tok_buffer);
+        str_tostem(&tok_buffer);
+
+        std::string s(str_c(&tok_buffer));
+
+        if (s.size() > 2) {
+
+          page_length++;
+
+          insert(search::words, s, index_id);
+
+          if (word_allow_extra(s)) {
+            if (str_length(&tok_buffer_trine) > 0) {
+              str_cat(&tok_buffer_trine, " ");
+              str_cat(&tok_buffer_trine, str_c(&tok_buffer));
+
+              std::string s(str_c(&tok_buffer_trine));
+
+              insert(search::trines, s, index_id);
+
+              str_resize(&tok_buffer_trine, 0);
+            }
+
+            if (str_length(&tok_buffer_pair) > 0) {
+              str_cat(&tok_buffer_pair, " ");
+              str_cat(&tok_buffer_pair, str_c(&tok_buffer));
+
+              std::string s(str_c(&tok_buffer_pair));
+
+              insert(search::pairs, s, index_id);
+
+              str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
+            }
+
+            str_resize(&tok_buffer_pair, 0);
+            str_cat(&tok_buffer_pair, str_c(&tok_buffer));
+
+          } else {
+            str_resize(&tok_buffer_pair, 0);
+            str_resize(&tok_buffer_trine, 0);
+          }
+        }
+      }
+    } while (token != tokenizer::END);
+
+    pfile.close();
+
+    add_page(page_id, page_length);
+  }
+
+  spdlog::info("finished indexing site {}", site.host);
+}
+
 std::vector<std::string> alphabet() {
   std::vector<std::string> a;
 

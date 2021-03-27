@@ -601,3 +601,9 @@ be reasonable
 ./indexer  51.09s user 1.12s system 254% cpu 20.485 total
 ./indexer  54.68s user 1.10s system 262% cpu 21.253 total
 it is not allocing very often. And I can track its usage.
+
+fuck the trines. this drops most of them. any words with
+numbers and any shorter than 4 chars do not get put into
+pairs or trines. Any longer than 30 also do not.
+./indexer  22.46s user 0.46s system 241% cpu 9.484 total
+

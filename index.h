@@ -19,6 +19,7 @@ using namespace foonathan::memory;
 #include <chrono>
 using namespace std::chrono_literals;
 
+#include "crawl.h"
 #include "posting.h"
 #include "hash.h"
 #include "key.h"
@@ -341,6 +342,8 @@ struct indexer {
          + trine_t.usage()
          + pages.size() * (16);
   }
+
+  void index_site(crawl::site &site, char *file_buf, size_t file_buf_len);
 
   void insert(index_type t, std::string s, uint32_t index_id) {
     if (t == words) {
