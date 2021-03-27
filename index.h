@@ -20,7 +20,7 @@ using namespace std::chrono_literals;
 
 namespace search {
 
-std::vector<std::string> get_split_at(size_t parts = 500);
+std::vector<std::string> get_split_at(size_t parts = 200);
 
 enum index_type{words, pairs, trines};
 
@@ -49,15 +49,19 @@ struct index_part {
   index_type type;
   std::string path;
 
-  std::optional<std::string> start;
+  std::string start;
   std::optional<std::string> end;
+
+  std::vector<std::string> store_split;
 
   uint8_t *backing{NULL};
 
   buf_list key_backing;
   buf_list post_backing;
 
-  std::list<std::pair<key, posting>> store;
+  std::vector<
+    std::list<std::pair<key, posting>>
+    > stores;
 
   std::vector<std::list<
       std::pair<uint8_t, std::list<std::pair<key, posting>>::iterator>
@@ -69,23 +73,30 @@ struct index_part {
   std::chrono::nanoseconds merge_total{0ms};
   std::chrono::nanoseconds find_total{0ms};
 
-  index_part()
-    : index(HTCAP),
-      post_backing(1024*1024) {}
-
-  index_part(index_type t, std::string p,
-      std::optional<std::string> s,
-      std::optional<std::string> e)
+  // For indexer
+  index_part(std::vector<std::string> s_split)
     : index(HTCAP),
       post_backing(1024*1024),
-      type(t), path(p), start(s), end(e) {}
+      store_split(s_split),
+      stores(s_split.size())
+  {}
+
+  // For merger
+  index_part(index_type t, std::string p,
+      std::string s, std::optional<std::string> e)
+    : index(HTCAP),
+      stores(1),
+      post_backing(1024*1024),
+      type(t), path(p),
+      start(s), end(e)
+  {}
 
   index_part(index_part &&p)
     : type(p.type), path(p.path),
       start(p.start), end(p.end),
       key_backing(std::move(p.key_backing)),
       post_backing(std::move(p.post_backing)),
-      store(std::move(p.store)),
+      stores(std::move(p.stores)),
       index(std::move(p.index)),
       page_ids(std::move(p.page_ids))
   {
@@ -101,14 +112,17 @@ struct index_part {
   }
 
   void clear() {
-    key_backing.clear();
-    post_backing.clear();
-    store.clear();
-    page_ids.clear();
-
     for (auto &i: index) {
       i.clear();
     }
+
+    for (auto &s: stores) {
+      s.clear();
+    }
+
+    key_backing.clear();
+    post_backing.clear();
+    page_ids.clear();
   }
 
   size_t usage() {
@@ -116,7 +130,7 @@ struct index_part {
          + post_backing.usage
          + page_ids.size() * sizeof(uint64_t);
   }
- 
+
   bool load_backing();
   void load();
   void save();
@@ -124,6 +138,23 @@ struct index_part {
 
   void merge(index_part &other);
   void insert(std::string key, uint32_t val);
+
+  std::list<std::pair<key, posting>> * get_store(key s)
+  {
+    auto store_it = stores.begin();
+    auto split_it = store_split.begin();
+
+    while (split_it != store_split.end()) {
+      if (split_it + 1 == store_split.end() || s < *(split_it + 1)) {
+        return &(*store_it);
+      }
+
+      store_it++;
+      split_it++;
+    }
+
+    throw std::invalid_argument("key does not fit into split store");
+  }
 
   void update_index(std::list<std::pair<key, posting>>::iterator);
   std::list<std::pair<key, posting>>::iterator find(std::string);
@@ -198,21 +229,25 @@ struct indexer {
     pages.emplace_back(page_id, size);
   }
 
-  indexer(std::string p) : base_path(p) {}
+  indexer(std::string p, std::vector<std::string> split_at)
+    : base_path(p),
+      word_t(split_at),
+      pair_t(split_at),
+      trine_t(split_at)
+  {}
 };
 
 struct index_part_info {
   std::string path;
 
-  std::optional<std::string> start;
+  std::string start;
   std::optional<std::string> end;
 
   index_part_info() {}
 
   index_part_info(std::string p) : path(p) {}
 
-  index_part_info(std::string p,
-      std::optional<std::string> s,
+  index_part_info(std::string p, std::string s,
       std::optional<std::string> e)
     : path(p), start(s), end(e) {}
 };

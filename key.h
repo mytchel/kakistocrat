@@ -122,6 +122,24 @@ struct key {
     return true;
   }
 
+  bool operator>(const std::string &s) const {
+    uint8_t l = 0;;
+    uint8_t ol = s.size();;
+    const char *od = s.data();;
+
+    while (l < *b && l < ol) {
+      if (b[1+l] > od[l]) {
+        return true;
+      } else if (b[1+l] < od[l]) {
+        return false;
+      } else {
+        l++;
+      }
+    }
+
+    return l < *b;
+  }
+
   bool operator<(const std::string &s) const {
     uint8_t l = 0;;
     uint8_t ol = s.size();;

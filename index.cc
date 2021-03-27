@@ -33,11 +33,11 @@ std::vector<std::string> alphabet() {
   std::vector<std::string> a;
 
   a.push_back(".");
- 
+
   for (size_t i = 0; i < 10; i++) {
     a.push_back(std::string(1, '0' + i));
-  } 
- 
+  }
+
   for (size_t i = 0; i < 26; i++) {
     a.push_back(std::string(1, 'a' + i));
   }
@@ -47,44 +47,44 @@ std::vector<std::string> alphabet() {
 
 std::vector<std::string> get_split_at(size_t parts) {
   std::vector<std::string> total_split_at;
-
-  spdlog::info("get split at");
-
   auto a = alphabet();
+
   while (parts > 1) {
     std::vector<std::string> split_at;
-  
+
     if (parts > a.size()) {
       split_at = a;
 
       parts /= a.size();
 
     } else {
-      spdlog::info("split at splitting alphabet / {}", parts);
       size_t step = a.size() / parts;
-      for (size_t i = step; i + step < a.size(); i += step) {
-        spdlog::info("split at adding {} : {}", i, a[i]);
+      for (size_t i = 0; i < a.size(); i += step) {
         split_at.push_back(a[i]);
       }
-      
+
       parts = 1;
     }
 
-    std::vector<std::string> new_split_at;
-
     if (total_split_at.empty()) {
-      new_split_at = split_at;
+      total_split_at = split_at;
 
-    } else {
+    } else if (split_at.size() > 1) {
+
+      std::vector<std::string> new_split_at;
+
       for (auto &s: total_split_at) {
         new_split_at.push_back(s);
-        for (auto &ss: split_at) {
-          new_split_at.push_back(s + ss);
+
+        auto ss = split_at.begin();
+        ss++;
+        while (ss != split_at.end()) {
+          new_split_at.push_back(s + *ss++);
         }
       }
-    }
 
-    total_split_at = new_split_at;
+      total_split_at = new_split_at;
+    }
   }
 
   size_t i = 0;
@@ -137,28 +137,21 @@ void save_parts(std::string path, std::list<std::string> parts)
 
 void to_json(nlohmann::json &j, const index_part_info &i)
 {
-  std::string start = "", end = "";
-  if (i.start) start = *i.start;
+  std::string end = "";
   if (i.end) end = *i.end;
   j = json{
     {"path", i.path},
-    {"start", start},
+    {"start", i.start},
     {"end", end}};
 }
 
 void from_json(const nlohmann::json &j, index_part_info &i)
 {
-  std::string start = "", end = "";
+  std::string end;
 
   j.at("path").get_to(i.path);
-  j.at("start").get_to(start);
+  j.at("start").get_to(i.start);
   j.at("end").get_to(end);
-
-  if (start != "") {
-    i.start = start;
-  } else {
-    i.start = {};
-  }
 
   if (end != "") {
     i.end = end;
@@ -215,8 +208,7 @@ void index_info::load()
 void save_part(
     std::string path,
     std::list<std::pair<uint64_t, uint32_t>> &pages,
-    std::list<std::pair<key, posting>>::iterator start,
-    std::list<std::pair<key, posting>>::iterator end,
+    std::list<std::pair<key, posting>> &store,
     uint8_t *buffer, size_t buffer_len)
 {
   size_t page_count = 0;
@@ -229,7 +221,7 @@ void save_part(
   offset += rpage.first;
   page_count = rpage.second;
 
-  auto rpost = save_postings_to_buf(start, end,
+  auto rpost = save_postings_to_buf(store.begin(), store.end(),
       buffer + offset, max_index_part_size - offset);
 
   offset += rpost.first;
@@ -247,16 +239,7 @@ std::vector<index_part_info> index_part_save(
 {
   std::vector<index_part_info> parts;
 
-  auto &postings = t.store;
-
-  if (postings.empty()) {
-    return parts;
-  }
-
-  postings.sort(
-      [](auto &a, auto &b) {
-        return a.first < b.first;
-      });
+  spdlog::info("save part {}", base_path);
 
   uint8_t *buffer = (uint8_t *) malloc(max_index_part_size);
   if (buffer == NULL) {
@@ -264,34 +247,29 @@ std::vector<index_part_info> index_part_save(
     throw std::bad_alloc();
   }
 
-  auto split_at = get_split_at();
+  auto start = t.store_split.begin();
+  for (auto &store: t.stores) {
+    spdlog::info("save part {} {}", base_path, *start);
 
-  auto split = split_at.begin();
-  auto start = postings.begin();
-  auto end = postings.begin();
+    if (!store.empty()) {
 
-  while (true) {
-    if (end == postings.end() || (split != split_at.end() && end->first >= *split)) {
-      if (start != end) {
-        auto path = fmt::format("{}.{}.dat", base_path, start->first.str());
+      auto path = fmt::format("{}.{}.dat", base_path, *start);
 
-        save_part(path, pages, start, end,
-            buffer, max_index_part_size);
+      save_part(path, pages, store,
+          buffer, max_index_part_size);
 
-        parts.emplace_back(path,
-            start->first.str(),
-            std::prev(end)->first.str());
+      std::optional<std::string> end;
+      if (start + 1 != t.store_split.end()) {
+        end = *(start + 1);
       }
 
-      start = end;
-      split++;
+      parts.emplace_back(path, *start, end);
 
-      if (end == postings.end()) {
-        break;
-      }
+    } else {
+      spdlog::warn("save part {} {} part is empy", base_path, *start);
     }
 
-    end++;
+    start++;
   }
 
   free(buffer);
@@ -534,13 +512,13 @@ void index::find_part_matches(
     std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
 {
 	for (auto &term: terms) {
-    if ((part.start && term < *part.start || (part.end && term > *part.end)))
+    if ((term < part.start || (part.end && term > *part.end)))
       continue;
 
     spdlog::info("find term {} in {}", term, part.path);
 
 		auto pair = part.find(term);
-    if (pair != part.store.end()) {
+    if (pair != part.stores[0].end()) {
       auto pairs = pair->second.decompress();
       spdlog::info("have pair {} with {} docs", pair->first.str(), pairs.size());
       auto pairs_ranked = rank(pairs, part.page_ids, page_lengths, average_page_length);

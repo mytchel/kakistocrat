@@ -49,8 +49,6 @@ void index_part::load()
     offset += sizeof(uint64_t);
   }
 
-  spdlog::info("got pages {}", page_ids.size());
-
   for (size_t i = 0; i < posting_count; i++) {
     key k(backing + offset);
     offset += k.size();
@@ -58,12 +56,10 @@ void index_part::load()
     posting p(backing + offset);
     offset += p.size();
 
-    store.emplace_back(k, std::move(p));
+    stores[0].emplace_back(k, std::move(p));
 
-    update_index(std::prev(store.end()));
+    update_index(std::prev(stores[0].end()));
   }
-
-  spdlog::info("got postings {}", store.size());
 }
 
 void write_buf(std::string path, uint8_t *buf, size_t len)
@@ -148,6 +144,11 @@ std::pair<size_t, size_t> save_pages_to_buf(
 
 void index_part::save()
 {
+  if (store_split.size() > 0) {
+    spdlog::critical("index_part::save not implimented for split stores");
+    return;
+  }
+
   uint8_t *buffer = (uint8_t *) malloc(max_index_part_size);
   if (buffer == NULL) {
     throw std::bad_alloc();
@@ -164,7 +165,7 @@ void index_part::save()
   page_count = rpage.second;
 
   auto rpost = save_postings_to_buf(
-      store.begin(), store.end(),
+      stores[0].begin(), stores[0].end(),
       buffer + offset, max_index_part_size - offset);
 
   offset += rpost.first;
@@ -241,9 +242,10 @@ void index_part::insert(std::string s, uint32_t val) {
 
   key k(key_backing.get(key_len), s);
 
-  store.emplace_back(k, posting());
+  auto store  = get_store(k);
+  store->emplace_back(k, posting());
 
-  auto ref = std::prev(store.end());
+  auto ref = std::prev(store->end());
 
   ref->second.append(val, 1,
       [this](size_t len) {
@@ -328,12 +330,12 @@ std::list<std::pair<key, posting>>::iterator index_part::find(std::string s)
     }
   }
 
-  return store.end();
+  return stores[0].end();
 }
 
 void index_part::merge(index_part &other)
 {
-  auto o_it = other.store.begin();
+  auto o_it = other.stores[0].begin();
 
   size_t added = 0;
 
@@ -346,13 +348,18 @@ void index_part::merge(index_part &other)
     page_ids.push_back(p);
   }
 
-  while (o_it != other.store.end()) {
-    if (start && o_it->first < *start) {
+  while (o_it != other.stores[0].end()) {
+    if (o_it->first < start) {
       o_it++;
+      spdlog::info("skip");
       continue;
     }
 
-    if (end && o_it->first >= *end) break;
+    if (end && o_it->first >= *end) {
+      o_it++;
+      spdlog::info("skip");
+      continue;
+    }
 
     auto start = std::chrono::system_clock::now();
 
@@ -382,8 +389,8 @@ void index_part::merge(index_part &other)
 
       memcpy(c_buf, o_it->first.data(), c_len);
 
-      store.emplace_back(key(c_buf), posting());
-      auto n_it = std::prev(store.end());
+      stores[0].emplace_back(key(c_buf), posting());
+      auto n_it = std::prev(stores[0].end());
 
       n_it->second.merge(o_it->second, page_id_offset,
           [this](size_t s) {

@@ -168,7 +168,9 @@ indexer_run(Channel<std::string*> &in,
   spdlog::info("thread {} started", tid);
 
   util::make_path(fmt::format("meta/index_parts/{}", tid));
-  search::indexer indexer(fmt::format("meta/index_parts/{}/part", tid));
+
+  search::indexer indexer(fmt::format("meta/index_parts/{}/part", tid),
+      search::get_split_at());
 
   char *file_buf = (char *) malloc(scrape::max_file_size);
   if (file_buf == NULL) {

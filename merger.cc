@@ -36,7 +36,7 @@ void merge(
     std::string w_p,
     std::string p_p,
     std::string t_p,
-    std::optional<std::string> start,
+    std::string start,
     std::optional<std::string> end,
     Channel<size_t> &done_channel,
     size_t id)
@@ -53,9 +53,6 @@ void merge(
   std::chrono::nanoseconds merge_total{0ms};
   std::chrono::nanoseconds save_total{0ms};
 
-  std::string s_s = "''";
-  if (start) s_s = *start;
-
   for (auto &index_path: part_paths) {
     spdlog::info("load {} for merging", index_path);
 
@@ -63,13 +60,15 @@ void merge(
     index.load();
 
     spdlog::info("merge {} index", index_path);
-    
-    spdlog::info("index {} word part usage {} kb", s_s, out_word.usage() / 1024);
-    spdlog::info("index {} pair part usage {} kb", s_s, out_pair.usage() / 1024);
-    spdlog::info("index {} trine part usage {} kb", s_s, out_trine.usage() / 1024);
+
+    spdlog::info("index {} word part usage {} kb", start, out_word.usage() / 1024);
+    spdlog::info("index {} pair part usage {} kb", start, out_pair.usage() / 1024);
+    spdlog::info("index {} trine part usage {} kb", start, out_trine.usage() / 1024);
 
     for (auto &p: index.word_parts) {
-      if ((!end || p.start <= *end) && (!start || *start <= p.end)) {
+      if ((!end || p.start < *end) && start < p.end) {
+        spdlog::info("MERGE {}  from {}", start, p.start);
+
         auto tstart = std::chrono::system_clock::now();
         search::index_part in(search::words, p.path, p.start, p.end);
         in.load();
@@ -84,7 +83,7 @@ void merge(
     }
 
     for (auto &p: index.pair_parts) {
-      if ((!end || p.start <= *end) && (!start || *start <= p.end)) {
+      if ((!end || p.start < *end) && start < p.end) {
         auto tstart = std::chrono::system_clock::now();
         search::index_part in(search::pairs, p.path, p.start, p.end);
         in.load();
@@ -99,7 +98,7 @@ void merge(
     }
 
     for (auto &p: index.trine_parts) {
-      if ((!end || p.start <= *end) && (!start || *start <= p.end)) {
+      if ((!end || p.start < *end) && start < p.end) {
         auto tstart = std::chrono::system_clock::now();
         search::index_part in(search::trines, p.path, p.start, p.end);
         in.load();
@@ -158,9 +157,8 @@ int main(int argc, char *argv[]) {
 
   search::index_info info("meta/index.json");
 
-  std::optional<std::string> start, end;
   auto it = split_at.begin();
-  do {
+  while (it != split_at.end()) {
     if (!done_channel.empty()) {
       size_t id;
 
@@ -182,21 +180,18 @@ int main(int argc, char *argv[]) {
       continue;
     }
 
+    std::string start = *it;
+
+    std::optional<std::string> end;
+
+    it++;
     if (it != split_at.end()) {
       end = *it;
-      it++;
-    } else {
-      end = {};
     }
 
-    std::string w_p = "meta/index.words..dat";
-    std::string p_p = "meta/index.pairs..dat";
-    std::string t_p = "meta/index.trines..dat";
-    if (start) {
-      w_p = fmt::format("meta/index.words.{}.dat", *start);
-      p_p = fmt::format("meta/index.pairs.{}.dat", *start);
-      t_p = fmt::format("meta/index.trines.{}.dat", *start);
-    }
+    auto w_p = fmt::format("meta/index.words.{}.dat", start);
+    auto p_p = fmt::format("meta/index.pairs.{}.dat", start);
+    auto t_p = fmt::format("meta/index.trines.{}.dat", start);
 
     auto th = std::thread(merge, part_paths,
           w_p, p_p, t_p,
@@ -208,9 +203,7 @@ int main(int argc, char *argv[]) {
     info.word_parts.emplace_back(w_p, start, end);
     info.pair_parts.emplace_back(p_p, start, end);
     info.trine_parts.emplace_back(t_p, start, end);
-
-    start = end;
-  } while (end);
+  }
 
   info.average_page_length = 0;
 

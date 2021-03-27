@@ -552,3 +552,20 @@ merger is slower for it.
 ./merger  33.97s user 1.05s system 286% cpu 12.218 total
 
 
+extreme splitting and not sorting.
+./indexer  270.43s user 1.70s system 269% cpu 1:40.86 total
+same thing but split how it used to.
+so sorting isn't a bottlneck?
+./indexer  54.48s user 1.05s system 258% cpu 21.477 total
+
+not sure why this is slower
+./merger  48.28s user 1.23s system 291% cpu 16.976 total
+
+possibly a bug
+
+possibly a bug
+./indexer  53.29s user 1.02s system 258% cpu 20.983 total
+./merger  29.92s user 1.12s system 289% cpu 10.740 total
+
+ye
+
