@@ -20,11 +20,11 @@ using namespace std::chrono_literals;
 
 namespace search {
 
-std::vector<std::string> get_split_at();
+std::vector<std::string> get_split_at(size_t parts = 500);
 
 enum index_type{words, pairs, trines};
 
-const size_t max_index_part_size = 1024 * 1024 * 30;
+const size_t max_index_part_size = 1024 * 1024 * 200;
 
 std::list<std::string> load_parts(std::string path);
 void save_parts(std::string path, std::list<std::string>);
@@ -111,6 +111,12 @@ struct index_part {
     }
   }
 
+  size_t usage() {
+    return key_backing.usage
+         + post_backing.usage
+         + page_ids.size() * sizeof(uint64_t);
+  }
+ 
   bool load_backing();
   void load();
   void save();
@@ -168,12 +174,9 @@ struct indexer {
   }
 
   size_t usage() {
-    return word_t.key_backing.usage
-         + word_t.post_backing.usage
-         + pair_t.key_backing.usage
-         + pair_t.post_backing.usage
-         + trine_t.key_backing.usage
-         + trine_t.post_backing.usage
+    return word_t.usage()
+         + pair_t.usage()
+         + trine_t.usage()
          + pages.size() * (16);
   }
 

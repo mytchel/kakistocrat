@@ -53,6 +53,9 @@ void merge(
   std::chrono::nanoseconds merge_total{0ms};
   std::chrono::nanoseconds save_total{0ms};
 
+  std::string s_s = "''";
+  if (start) s_s = *start;
+
   for (auto &index_path: part_paths) {
     spdlog::info("load {} for merging", index_path);
 
@@ -60,6 +63,10 @@ void merge(
     index.load();
 
     spdlog::info("merge {} index", index_path);
+    
+    spdlog::info("index {} word part usage {} kb", s_s, out_word.usage() / 1024);
+    spdlog::info("index {} pair part usage {} kb", s_s, out_pair.usage() / 1024);
+    spdlog::info("index {} trine part usage {} kb", s_s, out_trine.usage() / 1024);
 
     for (auto &p: index.word_parts) {
       if ((!end || p.start <= *end) && (!start || *start <= p.end)) {

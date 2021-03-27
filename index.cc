@@ -29,43 +29,70 @@ using nlohmann::json;
 
 namespace search {
 
-std::vector<std::string> get_split_at() {
-  std::vector<std::string> split_at;
+std::vector<std::string> alphabet() {
+  std::vector<std::string> a;
 
-  if (true) {
-    split_at.emplace_back("a");
-    split_at.emplace_back("b");
-    split_at.emplace_back("c");
-    split_at.emplace_back("d");
-    split_at.emplace_back("e");
-    split_at.emplace_back("f");
-    split_at.emplace_back("g");
-    split_at.emplace_back("h");
-    split_at.emplace_back("i");
-    split_at.emplace_back("j");
-    split_at.emplace_back("k");
-    split_at.emplace_back("l");
-    split_at.emplace_back("m");
-    split_at.emplace_back("n");
-    split_at.emplace_back("o");
-    split_at.emplace_back("p");
-    split_at.emplace_back("q");
-    split_at.emplace_back("r");
-    split_at.emplace_back("s");
-    split_at.emplace_back("t");
-    split_at.emplace_back("u");
-    split_at.emplace_back("v");
-    split_at.emplace_back("w");
-    split_at.emplace_back("x");
-    split_at.emplace_back("y");
-    split_at.emplace_back("z");
-  } else if (true) {
-    split_at.emplace_back("f");
-    split_at.emplace_back("m");
-    split_at.emplace_back("s");
+  a.push_back(".");
+ 
+  for (size_t i = 0; i < 10; i++) {
+    a.push_back(std::string(1, '0' + i));
+  } 
+ 
+  for (size_t i = 0; i < 26; i++) {
+    a.push_back(std::string(1, 'a' + i));
   }
 
-  return split_at;
+  return a;
+}
+
+std::vector<std::string> get_split_at(size_t parts) {
+  std::vector<std::string> total_split_at;
+
+  spdlog::info("get split at");
+
+  auto a = alphabet();
+  while (parts > 1) {
+    std::vector<std::string> split_at;
+  
+    if (parts > a.size()) {
+      split_at = a;
+
+      parts /= a.size();
+
+    } else {
+      spdlog::info("split at splitting alphabet / {}", parts);
+      size_t step = a.size() / parts;
+      for (size_t i = step; i + step < a.size(); i += step) {
+        spdlog::info("split at adding {} : {}", i, a[i]);
+        split_at.push_back(a[i]);
+      }
+      
+      parts = 1;
+    }
+
+    std::vector<std::string> new_split_at;
+
+    if (total_split_at.empty()) {
+      new_split_at = split_at;
+
+    } else {
+      for (auto &s: total_split_at) {
+        new_split_at.push_back(s);
+        for (auto &ss: split_at) {
+          new_split_at.push_back(s + ss);
+        }
+      }
+    }
+
+    total_split_at = new_split_at;
+  }
+
+  size_t i = 0;
+  for (auto &s: total_split_at) {
+    spdlog::info("split at {} : {}", i++, s);
+  }
+
+  return total_split_at;
 }
 
 std::list<std::string> load_parts(std::string path)
