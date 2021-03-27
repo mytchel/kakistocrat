@@ -5,9 +5,11 @@
 
 #include <stdint.h>
 
-#include <list>
-#include <string>
-#include <vector>
+#include <foonathan/memory/container.hpp>
+#include <foonathan/memory/memory_pool.hpp>
+
+using namespace foonathan::memory;
+
 #include <optional>
 
 #include <chrono>
@@ -32,8 +34,8 @@ void save_parts(std::string path, std::list<std::string>);
 void write_buf(std::string path, uint8_t *buf, size_t len);
 
 std::pair<size_t, size_t> save_postings_to_buf(
-    std::list<std::pair<key, posting>>::iterator start,
-    std::list<std::pair<key, posting>>::iterator end,
+    list<std::pair<key, posting>, memory_pool<>>::iterator start,
+    list<std::pair<key, posting>, memory_pool<>>::iterator end,
     uint8_t *buffer, size_t buffer_len);
 
 
@@ -46,6 +48,9 @@ std::pair<size_t, size_t> save_pages_to_buf(
     uint8_t *buffer, size_t buffer_len);
 
 struct index_part {
+
+  memory_pool<> pool;
+
   index_type type;
   std::string path;
 
@@ -60,11 +65,11 @@ struct index_part {
   buf_list post_backing;
 
   std::vector<
-    std::list<std::pair<key, posting>>
+    list<std::pair<key, posting>, memory_pool<>>
     > stores;
 
   std::vector<std::list<
-      std::pair<uint8_t, std::list<std::pair<key, posting>>::iterator>
+      std::pair<uint8_t, list<std::pair<key, posting>, memory_pool<>>::iterator>
     >> index;
 
   std::vector<uint64_t> page_ids;
@@ -75,25 +80,33 @@ struct index_part {
 
   // For indexer
   index_part(std::vector<std::string> s_split)
-    : index(HTCAP),
+    : pool(list_node_size<std::pair<key, posting>>::value, 1024*1024*128),
+      index(HTCAP),
       post_backing(1024*1024),
-      store_split(s_split),
-      stores(s_split.size())
-  {}
+      store_split(s_split)
+  {
+    stores.reserve(s_split.size());
+    for (auto &s: s_split) {
+      stores.emplace_back(pool);
+    }
+  }
 
   // For merger
   index_part(index_type t, std::string p,
       std::string s, std::optional<std::string> e)
-    : index(HTCAP),
-      stores(1),
+    : pool(list_node_size<std::pair<key, posting>>::value, 1024*1024*32),
+      index(HTCAP),
       post_backing(1024*1024),
       type(t), path(p),
       start(s), end(e)
-  {}
+  {
+    stores.emplace_back(pool);
+  }
 
   index_part(index_part &&p)
     : type(p.type), path(p.path),
       start(p.start), end(p.end),
+      pool(std::move(p.pool)),
       key_backing(std::move(p.key_backing)),
       post_backing(std::move(p.post_backing)),
       stores(std::move(p.stores)),
@@ -139,7 +152,7 @@ struct index_part {
   void merge(index_part &other);
   void insert(std::string key, uint32_t val);
 
-  std::list<std::pair<key, posting>> * get_store(key s)
+  list<std::pair<key, posting>, memory_pool<>> * get_store(key s)
   {
     auto store_it = stores.begin();
     auto split_it = store_split.begin();
@@ -156,8 +169,8 @@ struct index_part {
     throw std::invalid_argument("key does not fit into split store");
   }
 
-  void update_index(std::list<std::pair<key, posting>>::iterator);
-  std::list<std::pair<key, posting>>::iterator find(std::string);
+  void update_index(list<std::pair<key, posting>, memory_pool<>>::iterator);
+  list<std::pair<key, posting>, memory_pool<>>::iterator find(std::string);
 
   std::tuple<
     bool,
@@ -165,14 +178,14 @@ struct index_part {
     std::list<
       std::pair<
         uint8_t,
-        std::list<std::pair<key, posting>>::iterator
+        list<std::pair<key, posting>, memory_pool<>>::iterator
       >
     > *,
 
     std::list<
       std::pair<
         uint8_t,
-        std::list<std::pair<key, posting>>::iterator
+        list<std::pair<key, posting>, memory_pool<>>::iterator
       >
     >::iterator>
       find(key);

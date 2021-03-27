@@ -208,7 +208,7 @@ void index_info::load()
 void save_part(
     std::string path,
     std::list<std::pair<uint64_t, uint32_t>> &pages,
-    std::list<std::pair<key, posting>> &store,
+    list<std::pair<key, posting>, memory_pool<>> &store,
     uint8_t *buffer, size_t buffer_len)
 {
   size_t page_count = 0;

@@ -24,6 +24,8 @@ add_subdirectory(x_nlohmann)
 
 add_subdirectory(x_spdlog)
 
+add_subdirectory(x_memory)
+
 configure_file(x_seed/seed seed COPYONLY)
 configure_file(x_seed/blacklist blacklist COPYONLY)
 
@@ -62,6 +64,7 @@ add_executable(indexer indexer.cc
 target_link_libraries(indexer nlohmann_json::nlohmann_json)
 target_link_libraries(indexer Threads::Threads)
 target_link_libraries(indexer spdlog::spdlog)
+target_link_libraries(indexer foonathan_memory)
 
 add_executable(indexer_single indexer_single.cc
     crawl.cc
@@ -76,6 +79,7 @@ add_executable(indexer_single indexer_single.cc
 
 target_link_libraries(indexer_single nlohmann_json::nlohmann_json)
 target_link_libraries(indexer_single spdlog::spdlog)
+target_link_libraries(indexer_single foonathan_memory)
 
 add_executable(merger merger.cc
     crawl.cc
@@ -92,20 +96,7 @@ add_executable(merger merger.cc
 target_link_libraries(merger nlohmann_json::nlohmann_json)
 target_link_libraries(merger Threads::Threads)
 target_link_libraries(merger spdlog::spdlog)
-
-add_executable(merger_single merger_single.cc
-    crawl.cc
-    tokenizer.cc
-    util.cc
-    str.c
-	hash.cc
-	posting.cc
-	vbyte.cc
-    index_part.cc
-    index.cc)
-
-target_link_libraries(merger_single nlohmann_json::nlohmann_json)
-target_link_libraries(merger_single spdlog::spdlog)
+target_link_libraries(merger foonathan_memory)
 
 add_executable(search_cli search_cli.cc
     search.cc
@@ -124,6 +115,7 @@ target_include_directories(search_cli PUBLIC ${CURL_INCLUDE_DIRS})
 
 target_link_libraries(search_cli nlohmann_json::nlohmann_json)
 target_link_libraries(search_cli spdlog::spdlog)
+target_link_libraries(search_cli foonathan_memory)
 
 add_executable(search_server search_server.cc
     search.cc
@@ -146,6 +138,7 @@ target_link_libraries(search_server nlohmann_json::nlohmann_json)
 target_link_libraries(search_server ${Boost_LIBRARIES})
 target_link_libraries(search_server z)
 target_link_libraries(search_server spdlog::spdlog)
+target_link_libraries(search_server foonathan_memory)
 
 configure_file(templates/search.html templates/search.html COPYONLY)
 

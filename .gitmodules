@@ -10,3 +10,6 @@
 [submodule "x_spdlog"]
 	path = x_spdlog
 	url = https://github.com/gabime/spdlog.git
+[submodule "x_memory"]
+	path = x_memory
+	url = https://github.com/foonathan/memory

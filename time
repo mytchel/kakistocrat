@@ -574,4 +574,6 @@ ye
 ./indexer_single  93.75s user 0.78s system 99% cpu 1:34.97 total
 wows. thats some overhead...
 
+trying out memory pool allocator and weird lists.
+./indexer  119.26s user 1.53s system 264% cpu 45.633 total
 
