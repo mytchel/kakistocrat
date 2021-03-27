@@ -49,7 +49,7 @@ std::vector<std::string> get_split_at(size_t parts) {
   std::vector<std::string> total_split_at;
   auto a = alphabet();
 
-  while (parts > 1) {
+  while (parts > 0) {
     std::vector<std::string> split_at;
 
     if (parts > a.size()) {
@@ -57,13 +57,18 @@ std::vector<std::string> get_split_at(size_t parts) {
 
       parts /= a.size();
 
+    } else if (parts == 1) {
+      split_at.push_back(a[0]);
+
+      parts = 0;
+
     } else {
       size_t step = a.size() / parts;
       for (size_t i = 0; i < a.size(); i += step) {
         split_at.push_back(a[i]);
       }
 
-      parts = 1;
+      parts = 0;
     }
 
     if (total_split_at.empty()) {
@@ -85,11 +90,6 @@ std::vector<std::string> get_split_at(size_t parts) {
 
       total_split_at = new_split_at;
     }
-  }
-
-  size_t i = 0;
-  for (auto &s: total_split_at) {
-    spdlog::info("split at {} : {}", i++, s);
   }
 
   return total_split_at;

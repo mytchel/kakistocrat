@@ -161,7 +161,7 @@ int main(int argc, char *argv[]) {
   crawl::crawler crawler;
   crawler.load();
 
-  search::indexer indexer("meta/single", search::get_split_at(1));
+  search::indexer indexer("meta/single", search::get_split_at());
 
   auto site = crawler.sites.begin();
   while (site != crawler.sites.end()) {
