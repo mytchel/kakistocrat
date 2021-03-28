@@ -17,15 +17,22 @@ posting::posting(uint8_t *b)
 	counts_len = ((uint32_t *) b)[1];
 
   if (ids_len > min_backing || counts_len > min_backing) {
-    backing = backing + sizeof(uint32_t) * 2;
+    backing = b + sizeof(uint32_t) * 2;
 
-    // make it so it is not taken to be in the
-    ids_max = 1;
-    counts_max = 1;
+    // indicate to use len
+    ids_max = 255;
+    counts_max = 255;
 
   } else {
-    memcpy(((uint8_t *) &backing) + 0, b + sizeof(uint32_t), ids_len);
-    memcpy(((uint8_t *) &backing) + min_backing, b + sizeof(uint32_t) + ids_len, counts_len);
+    backing = NULL;
+
+    memcpy(((uint8_t *) &backing) + 0,
+        b + sizeof(uint32_t) * 2,
+        ids_len);
+
+    memcpy(((uint8_t *) &backing) + from_size(0),
+        b + sizeof(uint32_t) * 2 + ids_len,
+        counts_len);
 
     ids_max = 0;
     counts_max = 0;
@@ -42,7 +49,11 @@ posting::decompress() const
 
   uint8_t *ids, *counts;
 
-  if (ids_max > 0 || counts_max > 0) {
+  if (ids_max == 255 || counts_max == 255) {
+    ids = backing;
+    counts = backing + ids_len;
+
+  } else if (ids_max > 0 || counts_max > 0) {
     ids = backing;
     counts = backing + from_size(ids_max);
 
@@ -94,6 +105,10 @@ size_t posting::save(uint8_t *buffer) const
 void posting::reserve(size_t id, size_t cnt,
     std::function<uint8_t* (size_t)> allocator)
 {
+  if (ids_max == 255 || counts_max == 255) {
+    throw std::invalid_argument("posting reserve attempt for size 255");
+  }
+
   size_t n_ids_max = ids_max;
   size_t n_counts_max = counts_max;
 
@@ -147,7 +162,7 @@ void posting::append(uint32_t id, uint8_t count,
 
     uint8_t *counts;
     if (ids_max > 0 || counts_max > 0) {
-      counts = backing + ids_max;
+      counts = backing + from_size(ids_max);
     } else {
       counts = ((uint8_t *) &backing) + from_size(0);
     }

@@ -718,3 +718,12 @@ what if we put small postings in the pointer?
 
 we're doing a good job at shrinking the already small parts...
 
+[2021-03-28 14:44:02.214] [info] usage meta/index_parts/0/part-words : key 3072 kb post 8192 kb pool store 21504 kb pool index 12288 kb page 0 kb -> 44 mb
+[2021-03-28 14:44:02.214] [info] usage meta/index_parts/0/part-pair : key 13312 kb post 4096 kb pool store 50176 kb pool index 28672 kb page 0 kb -> 94 mb
+[2021-03-28 14:44:02.214] [info] usage meta/index_parts/0/part-trine : key 20480 kb post 1024 kb pool store 57344 kb pool index 32768 kb page 0 kb -> 109 mb
+
+./indexer  24.41s user 0.49s system 89% cpu 27.759 total
+
+well...
+./merger  11.67s user 0.55s system 270% cpu 4.518 total
+

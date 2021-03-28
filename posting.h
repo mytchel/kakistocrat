@@ -24,20 +24,44 @@ struct posting {
     return min_backing << s;
   }
 
+  uint8_t size_needed(size_t s) const {
+    uint8_t n = 0;
+    while (from_size(n) < s) {
+      n++;
+    }
+
+    return n;
+  }
+
   posting(const posting &p, std::function<uint8_t* (size_t)> allocator) {
     ids_len = p.ids_len;
-    ids_max = p.ids_max;
+    ids_max = size_needed(ids_len);
 
     counts_len = p.counts_len;
-    counts_max = p.counts_max;
+    counts_max = size_needed(counts_len);
 
-    if (ids_max > 0 || counts_max > 0) {
-      backing = allocator(from_size(ids_max) + from_size(counts_max));
-      memcpy(backing, p.backing, ids_len);
-      memcpy(backing + from_size(ids_max), p.backing + from_size(p.ids_max), counts_len);
+    uint8_t *p_ids, *p_counts;
+
+    if (p.ids_max == 255 && p.counts_max == 255) {
+      p_ids = p.backing;
+      p_counts = p.backing + p.ids_len;
+
+      backing = NULL;
+
+    } else if (p.ids_max > 0 || p.counts_max > 0) {
+      p_ids = p.backing;
+      p_counts = p.backing + from_size(p.ids_max);
+
+      backing = NULL;
 
     } else {
       backing = p.backing;
+    }
+
+    if (backing == NULL) {
+      backing = allocator(from_size(ids_max) + from_size(counts_max));
+      memcpy(backing, p_ids, ids_len);
+      memcpy(backing + from_size(ids_max), p_counts, counts_len);
     }
   }
 
