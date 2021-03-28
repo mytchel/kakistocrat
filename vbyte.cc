@@ -17,6 +17,27 @@
 #include <stdint.h>
 #include "vbyte.h"
 
+size_t vbyte_len(uint32_t value)
+{
+	if (value < (1lu << 7)) {
+		return 1;
+  }
+
+  if (value < (1lu << 14)) {
+		return 2;
+  }
+
+  if (value < (1lu << 21)) {
+		return 3;
+  }
+
+  if (value < (1lu << 28)) {
+		return 4;
+  }
+
+  return 5;
+}
+
 int vbyte_read(const uint8_t *in, uint32_t *out)
 {
 	*out = in[0] & 0x7Flu;

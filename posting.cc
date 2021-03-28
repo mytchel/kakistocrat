@@ -11,13 +11,25 @@
 #include "vbyte.h"
 #include "posting.h"
 
-posting::posting(uint8_t *backing)
+posting::posting(uint8_t *b)
 {
-	ids_len = ((uint32_t *) backing)[0];
-	counts_len = ((uint32_t *) backing)[1];
+	ids_len = ((uint32_t *) b)[0];
+	counts_len = ((uint32_t *) b)[1];
 
-  ids = backing + 2 * sizeof(uint32_t);
-  counts = ids + ids_len;
+  if (ids_len > min_backing || counts_len > min_backing) {
+    backing = backing + sizeof(uint32_t) * 2;
+
+    // make it so it is not taken to be in the
+    ids_max = 1;
+    counts_max = 1;
+
+  } else {
+    memcpy(((uint8_t *) &backing) + 0, b + sizeof(uint32_t), ids_len);
+    memcpy(((uint8_t *) &backing) + min_backing, b + sizeof(uint32_t) + ids_len, counts_len);
+
+    ids_max = 0;
+    counts_max = 0;
+  }
 }
 
 std::vector<std::pair<uint32_t, uint8_t>>
@@ -27,6 +39,17 @@ posting::decompress() const
 	uint32_t docI = 0;
 	size_t di = 0;
 	size_t ci = 0;
+
+  uint8_t *ids, *counts;
+
+  if (ids_max > 0 || counts_max > 0) {
+    ids = backing;
+    counts = backing + from_size(ids_max);
+
+  } else {
+    ids = (uint8_t *) &backing;
+    counts = ((uint8_t *) &backing) + from_size(0);
+  }
 
   std::vector<std::pair<uint32_t, uint8_t>> pairs;
 
@@ -43,21 +66,24 @@ posting::decompress() const
   return pairs;
 }
 
-size_t posting::save(uint8_t *buffer)
+size_t posting::save(uint8_t *buffer) const
 {
-  /*
-  std::sort(counts.begin(), counts.end(),
-      [](auto &a, auto &b) {
-        return a.first < b.first;
-      }
-  );
-*/
-
   ((uint32_t *)buffer)[0] = ids_len;
 	((uint32_t *)buffer)[1] = counts_len;
 
   uint8_t *buf_ids = buffer + sizeof(uint32_t) * 2;
   uint8_t *buf_cnt = buf_ids + ids_len;
+
+  uint8_t *ids, *counts;
+
+  if (ids_max > 0 || counts_max > 0) {
+    ids = backing;
+    counts = backing + from_size(ids_max);
+
+  } else {
+    ids = (uint8_t *) &backing;
+    counts = ((uint8_t *) &backing) + from_size(0);
+  }
 
   memcpy(buf_ids, ids, ids_len);
   memcpy(buf_cnt, counts, counts_len);
@@ -68,20 +94,37 @@ size_t posting::save(uint8_t *buffer)
 void posting::reserve(size_t id, size_t cnt,
     std::function<uint8_t* (size_t)> allocator)
 {
-  if (ids_len + id > ids_max) {
-    ids_max = (ids_len + id) * 2;
+  size_t n_ids_max = ids_max;
+  size_t n_counts_max = counts_max;
 
-    uint8_t *n_ids = allocator(ids_max);
-    memcpy(n_ids, ids, ids_len);
-    ids = n_ids;
+  while (ids_len + id > from_size(n_ids_max)) {
+    n_ids_max++;
   }
 
-  if (counts_len + cnt > counts_max) {
-    counts_max = (counts_len + cnt) * 2;
+  while (counts_len + cnt > from_size(n_counts_max)) {
+    n_counts_max++;
+  }
 
-    uint8_t *n_counts = allocator(counts_max);
-    memcpy(n_counts, counts, counts_len);
-    counts = n_counts;
+  if (n_ids_max != ids_max || n_counts_max != counts_max) {
+    uint8_t *ids, *counts;
+
+    if (ids_max > 0 || counts_max > 0) {
+      ids = backing;
+      counts = backing + from_size(ids_max);
+
+    } else {
+      ids = (uint8_t *) &backing;
+      counts = ((uint8_t *) &backing) + from_size(0);
+    }
+
+    uint8_t *n_backing = allocator(from_size(n_ids_max) + from_size(n_counts_max));
+
+    memcpy(n_backing, ids, ids_len);
+    memcpy(n_backing + from_size(n_ids_max), counts, counts_len);
+
+    ids_max = n_ids_max;
+    counts_max = n_counts_max;
+    backing = n_backing;
   }
 }
 
@@ -101,18 +144,39 @@ void posting::append(uint32_t id, uint8_t count,
     std::function<uint8_t* (size_t)> allocator)
 {
   if (counts_len > 0 && id == last_id) {
-    if (counts[counts_len-1] < 255 - count) {
-      counts[counts_len-1] += count;
+
+    uint8_t *counts;
+    if (ids_max > 0 || counts_max > 0) {
+      counts = backing + ids_max;
     } else {
-      counts[counts_len-1] = 255;
+      counts = ((uint8_t *) &backing) + from_size(0);
+    }
+
+    if (counts[counts_len - 1] < 255 - count) {
+      counts[counts_len - 1] += count;
+    } else {
+      counts[counts_len - 1] = 255;
     }
 
     return;
   }
 
-  reserve(5, 1, allocator);
+  uint32_t value = id - last_id;
 
-  ids_len += vbyte_store(ids + ids_len, id - last_id);
+  reserve(vbyte_len(value), 1, allocator);
+
+  uint8_t *ids, *counts;
+
+  if (ids_max > 0 || counts_max > 0) {
+    ids = backing;
+    counts = backing + from_size(ids_max);
+
+  } else {
+    ids = (uint8_t *) &backing;
+    counts = ((uint8_t *) &backing) + from_size(0);
+  }
+
+  ids_len += vbyte_store(ids + ids_len, value);
   counts[counts_len++] = count;
   last_id = id;
 }

@@ -88,9 +88,9 @@ void indexer::index_site(crawl::site &site, char *file_buf, size_t file_buf_len)
     size_t len = pfile.gcount();
 
     if (usage() > 1024 * 1024 * 200) {
-      spdlog::info("indexer using {}", usage());
+      //spdlog::info("indexer using {}", usage());
 
-      flush();
+      //flush();
     }
 
     tok.init(file_buf, len);

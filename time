@@ -606,4 +606,115 @@ fuck the trines. this drops most of them. any words with
 numbers and any shorter than 4 chars do not get put into
 pairs or trines. Any longer than 30 also do not.
 ./indexer  22.46s user 0.46s system 241% cpu 9.484 total
+./indexer  22.92s user 0.47s system 240% cpu 9.725 total
+
+
+try reduce posting memory usage
+
+only one flush for testing
+
+use uint8 not uint32 for length
+chunks are still 64 byte...
+need to redo with time
+and with just one thread
+[2021-03-28 13:08:04.363] [info] usage meta/index_parts/1/part-words : key 1024 kb post 4096 kb pool 16384 kb page 0 kb -> 21 mb
+[2021-03-28 13:08:04.363] [info] usage meta/index_parts/1/part-pair : key 6144 kb post 7168 kb pool 49152 kb page 0 kb -> 61 mb
+[2021-03-28 13:08:04.363] [info] usage meta/index_parts/1/part-trine : key 9216 kb post 7168 kb pool 49152 kb page 0 kb -> 64 mb
+
+only one flush for testing and one thread
+v 600mb r 350mb
+./indexer  22.22s user 0.42s system 89% cpu 25.377 total
+
+why three? one for word, pair, trine
+[2021-03-28 13:10:21.397] [info] own memory pool init 64 131072 : 8192 kb chunks
+[2021-03-28 13:10:21.404] [info] own memory pool init 64 131072 : 8192 kb chunks
+[2021-03-28 13:10:21.412] [info] own memory pool init 64 131072 : 8192 kb chunks
+
+
+[2021-03-28 13:10:44.788] [info] usage meta/index_parts/0/part-words : key 3072 kb post 9216 kb pool 40960 kb page 0 kb -> 52 mb
+[2021-03-28 13:10:44.788] [info] usage meta/index_parts/0/part-pair : key 13312 kb post 13312 kb pool 114688 kb page 0 kb -> 138 mb
+[2021-03-28 13:10:44.788] [info] usage meta/index_parts/0/part-trine : key 20480 kb post 11264 kb pool 122880 kb page 0 kb -> 151 mb
+
+i've got the index sharing the pool even though. lets split those.
+
+terribel performance?
+virt 600, res 400
+
+./indexer  22.88s user 0.43s system 89% cpu 26.004 total
+
+[2021-03-28 13:18:34.049] [info] usage meta/index_parts/0/part-words : key 3072 kb post 9216 kb pool store 24576 kb pool index 12288 kb page 0 kb -> 48 mb
+[2021-03-28 13:18:34.049] [info] usage meta/index_parts/0/part-pair : key 13312 kb post 13312 kb pool store 57344 kb pool index 28672 kb page 0 kb -> 110 mb
+[2021-03-28 13:18:34.049] [info] usage meta/index_parts/0/part-trine : key 20480 kb post 11264 kb pool store 65536 kb pool index 32768 kb page 0 kb -> 127 mb
+
+[2021-03-28 13:18:09.818] [info] own memory pool init 64 131072 : 8192 kb chunks
+[2021-03-28 13:18:09.818] [info] own memory pool init 32 131072 : 4096 kb chunks
+[2021-03-28 13:18:09.825] [info] own memory pool init 64 131072 : 8192 kb chunks
+[2021-03-28 13:18:09.825] [info] own memory pool init 32 131072 : 4096 kb chunks
+[2021-03-28 13:18:09.832] [info] own memory pool init 64 131072 : 8192 kb chunks
+[2021-03-28 13:18:09.832] [info] own memory pool init 32 131072 : 4096 kb chunks
+
+so unless I can get a posting cut in half it will not help.
+
+./indexer  22.05s user 0.44s system 89% cpu 25.219 total
+./indexer  22.58s user 0.46s system 89% cpu 25.719 total
+
+and with cut down posting
+
+[2021-03-28 13:42:18.604] [info] own memory pool init 64 131072 : 8192 kb chunks
+[2021-03-28 13:42:18.604] [info] own memory pool init 32 131072 : 4096 kb chunks
+[2021-03-28 13:42:18.612] [info] own memory pool init 64 131072 : 8192 kb chunks
+[2021-03-28 13:42:18.612] [info] own memory pool init 32 131072 : 4096 kb chunks
+[2021-03-28 13:42:18.619] [info] own memory pool init 64 131072 : 8192 kb chunks
+[2021-03-28 13:42:18.619] [info] own memory pool init 32 131072 : 4096 kb chunks
+
+[2021-03-28 13:42:47.703] [info] usage meta/index_parts/0/part-words : key 3072 kb post 9216 kb pool store 24576 kb pool index 12288 kb page 0 kb -> 48 mb
+[2021-03-28 13:42:47.703] [info] usage meta/index_parts/0/part-pair : key 13312 kb post 13312 kb pool store 57344 kb pool index 28672 kb page 0 kb -> 110 mb
+[2021-03-28 13:42:47.703] [info] usage meta/index_parts/0/part-trine : key 20480 kb post 11264 kb pool store 65536 kb pool index 32768 kb page 0 kb -> 127 mb
+
+./indexer  25.04s user 0.48s system 82% cpu 30.873 total
+./indexer  25.03s user 0.43s system 89% cpu 28.345 total
+
+further compressing. use single buf for counts and ids
+
+[2021-03-28 13:59:24.523] [info] own memory pool init 56 131072 : 7168 kb chunks
+[2021-03-28 13:59:24.523] [info] own memory pool init 32 131072 : 4096 kb chunks
+[2021-03-28 13:59:24.532] [info] own memory pool init 56 131072 : 7168 kb chunks
+[2021-03-28 13:59:24.533] [info] own memory pool init 32 131072 : 4096 kb chunks
+[2021-03-28 13:59:24.542] [info] own memory pool init 56 131072 : 7168 kb chunks
+[2021-03-28 13:59:24.543] [info] own memory pool init 32 131072 : 4096 kb chunks
+
+its not powers of two... multiple of 8
+
+[2021-03-28 13:59:53.618] [info] usage meta/index_parts/0/part-words : key 3072 kb post 10240 kb pool store 21504 kb pool index 12288 kb page 0 kb -> 46 mb
+[2021-03-28 13:59:53.618] [info] usage meta/index_parts/0/part-pair : key 13312 kb post 17408 kb pool store 50176 kb pool index 28672 kb page 0 kb -> 107 mb
+[2021-03-28 13:59:53.618] [info] usage meta/index_parts/0/part-trine : key 20480 kb post 15360 kb pool store 57344 kb pool index 32768 kb page 0 kb -> 123 mb
+
+./indexer  27.34s user 0.55s system 90% cpu 30.949 total
+./indexer  28.91s user 0.59s system 90% cpu 32.532 total
+
+
+was broken
+
+[2021-03-28 14:09:34.472] [info] usage meta/index_parts/0/part-words : key 3072 kb post 15360 kb pool store 21504 kb pool index 12288 kb page 0 kb -> 51 mb
+[2021-03-28 14:09:34.472] [info] usage meta/index_parts/0/part-pair : key 13312 kb post 17408 kb pool store 50176 kb pool index 28672 kb page 0 kb -> 107 mb
+[2021-03-28 14:09:34.472] [info] usage meta/index_parts/0/part-trine : key 20480 kb post 15360 kb pool store 57344 kb pool index 32768 kb page 0 kb -> 123 mb
+
+./indexer  27.51s user 0.54s system 87% cpu 31.960 total
+
+what if we put small postings in the pointer?
+
+[2021-03-28 14:22:00.022] [info] usage meta/index_parts/0/part-words : key 3072 kb post 14336 kb pool store 21504 kb pool index 12288 kb page 0 kb -> 50 mb
+[2021-03-28 14:22:00.022] [info] usage meta/index_parts/0/part-pair : key 13312 kb post 15360 kb pool store 50176 kb pool index 28672 kb page 0 kb -> 105 mb
+[2021-03-28 14:22:00.022] [info] usage meta/index_parts/0/part-trine : key 20480 kb post 12288 kb pool store 57344 kb pool index 32768 kb page 0 kb -> 120 mb
+
+./indexer  24.11s user 0.46s system 89% cpu 27.549 total
+
+
+[2021-03-28 14:30:26.574] [info] usage meta/index_parts/0/part-words : key 3072 kb post 8192 kb pool store 21504 kb pool index 12288 kb page 0 kb -> 44 mb
+[2021-03-28 14:30:26.574] [info] usage meta/index_parts/0/part-pair : key 13312 kb post 4096 kb pool store 50176 kb pool index 28672 kb page 0 kb -> 94 mb
+[2021-03-28 14:30:26.574] [info] usage meta/index_parts/0/part-trine : key 20480 kb post 1024 kb pool store 57344 kb pool index 32768 kb page 0 kb -> 109 mb
+
+./indexer  22.01s user 0.39s system 89% cpu 25.141 total
+
+we're doing a good job at shrinking the already small parts...
 

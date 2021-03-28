@@ -134,7 +134,8 @@ std::pair<size_t, size_t> save_pages_to_buf(
 
 struct index_part {
 
-  own_memory_pool pool;
+  own_memory_pool pool_store;
+  own_memory_pool pool_index;
 
   index_type type;
   std::string path;
@@ -166,26 +167,32 @@ struct index_part {
 
   // For indexer
   index_part(std::vector<std::string> s_split)
-    : pool(list_node_size<std::pair<key, posting>>::value, 1024 * 128),
+    : pool_store(list_node_size<std::pair<key, posting>>::value, 1024 * 128),
+      pool_index(list_node_size<
+          std::pair<
+            uint8_t,
+            list<std::pair<key, posting>, own_memory_pool>::iterator
+          >>::value, 1024 * 128),
       post_backing(1024*1024),
       key_backing(1024*1024),
       store_split(s_split)
   {
     index.reserve(HTCAP);
     for (size_t i = 0; i < HTCAP; i++) {
-      index.emplace_back(pool);
+      index.emplace_back(pool_index);
     }
 
     stores.reserve(s_split.size());
     for (auto &s: s_split) {
-      stores.emplace_back(pool);
+      stores.emplace_back(pool_store);
     }
   }
 
   // For merger
   index_part(index_type t, std::string p,
       std::string s, std::optional<std::string> e)
-    : pool(list_node_size<std::pair<key, posting>>::value, 1024),
+    : pool_store(list_node_size<std::pair<key, posting>>::value, 1024 * 128),
+      pool_index(list_node_size<std::pair<uint8_t, list<std::pair<key, posting>, own_memory_pool>::iterator>>::value, 1024 * 128),
       post_backing(1024*1024),
       key_backing(1024*1024),
       type(t), path(p),
@@ -193,16 +200,17 @@ struct index_part {
   {
     index.reserve(HTCAP);
     for (size_t i = 0; i < HTCAP; i++) {
-      index.emplace_back(pool);
+      index.emplace_back(pool_index);
     }
 
-    stores.emplace_back(pool);
+    stores.emplace_back(pool_store);
   }
 
   index_part(index_part &&p)
     : type(p.type), path(p.path),
       start(p.start), end(p.end),
-      pool(std::move(p.pool)),
+      pool_store(std::move(p.pool_store)),
+      pool_index(std::move(p.pool_index)),
       key_backing(std::move(p.key_backing)),
       post_backing(std::move(p.post_backing)),
       stores(std::move(p.stores)),
@@ -232,18 +240,20 @@ struct index_part {
     key_backing.clear();
     post_backing.clear();
 
-    pool.clear();
+    pool_index.clear();
+    pool_store.clear();
 
     page_ids.clear();
   }
 
   void print_usage(std::string n)
   {
-    spdlog::info("usage {} : key {} kb post {} kb pool {} kb page {} kb -> {} mb",
+    spdlog::info("usage {} : key {} kb post {} kb pool store {} kb pool index {} kb page {} kb -> {} mb",
           n,
           key_backing.usage / 1024,
           post_backing.usage / 1024,
-          pool.usage / 1024,
+          pool_store.usage / 1024,
+          pool_index.usage / 1024,
           page_ids.size() * sizeof(uint64_t) / 1024,
           usage() / 1024 / 1024);
   }
@@ -251,7 +261,8 @@ struct index_part {
   size_t usage() {
     return key_backing.usage
          + post_backing.usage
-         + pool.usage
+         + pool_store.usage
+         + pool_index.usage
          + page_ids.size() * sizeof(uint64_t);
   }
 

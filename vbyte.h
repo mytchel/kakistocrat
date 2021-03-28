@@ -19,6 +19,9 @@
 #define VBYTE_H
 
 #include <stdint.h>
+#include <cstddef>
+
+size_t vbyte_len(uint32_t value);
 
 int vbyte_read(const uint8_t *p, uint32_t *out);
 int vbyte_store(uint8_t *p, uint32_t value);
