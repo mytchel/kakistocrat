@@ -119,8 +119,8 @@ void save_parts(std::string path, std::list<std::string>);
 void write_buf(std::string path, uint8_t *buf, size_t len);
 
 std::pair<size_t, size_t> save_postings_to_buf(
-    list<std::pair<key, posting>, own_memory_pool>::iterator start,
-    list<std::pair<key, posting>, own_memory_pool>::iterator end,
+    forward_list<std::pair<key, posting>, own_memory_pool>::iterator start,
+    forward_list<std::pair<key, posting>, own_memory_pool>::iterator end,
     uint8_t *buffer, size_t buffer_len);
 
 
@@ -151,11 +151,11 @@ struct index_part {
   buf_list post_backing;
 
   std::vector<
-    list<std::pair<key, posting>, own_memory_pool>
+    forward_list<std::pair<key, posting>, own_memory_pool>
     > stores;
 
-  std::vector<list<
-      std::pair<uint8_t, list<std::pair<key, posting>, own_memory_pool>::iterator>,
+  std::vector<forward_list<
+      std::pair<uint8_t, forward_list<std::pair<key, posting>, own_memory_pool>::iterator>,
       own_memory_pool
     >> index;
 
@@ -167,11 +167,11 @@ struct index_part {
 
   // For indexer
   index_part(std::vector<std::string> s_split)
-    : pool_store(list_node_size<std::pair<key, posting>>::value, 1024 * 128),
-      pool_index(list_node_size<
+    : pool_store(forward_list_node_size<std::pair<key, posting>>::value, 1024 * 128),
+      pool_index(forward_list_node_size<
           std::pair<
             uint8_t,
-            list<std::pair<key, posting>, own_memory_pool>::iterator
+            forward_list<std::pair<key, posting>, own_memory_pool>::iterator
           >>::value, 1024 * 128),
       post_backing(1024*1024),
       key_backing(1024*1024),
@@ -191,8 +191,8 @@ struct index_part {
   // For merger
   index_part(index_type t, std::string p,
       std::string s, std::optional<std::string> e)
-    : pool_store(list_node_size<std::pair<key, posting>>::value, 1024 * 128),
-      pool_index(list_node_size<std::pair<uint8_t, list<std::pair<key, posting>, own_memory_pool>::iterator>>::value, 1024 * 128),
+    : pool_store(forward_list_node_size<std::pair<key, posting>>::value, 1024 * 128),
+      pool_index(forward_list_node_size<std::pair<uint8_t, forward_list<std::pair<key, posting>, own_memory_pool>::iterator>>::value, 1024 * 128),
       post_backing(1024*1024),
       key_backing(1024*1024),
       type(t), path(p),
@@ -274,7 +274,7 @@ struct index_part {
   void merge(index_part &other);
   void insert(std::string key, uint32_t val);
 
-  list<std::pair<key, posting>, own_memory_pool> * get_store(key s)
+  forward_list<std::pair<key, posting>, own_memory_pool> * get_store(key s)
   {
     auto store_it = stores.begin();
     auto split_it = store_split.begin();
@@ -291,24 +291,24 @@ struct index_part {
     throw std::invalid_argument("key does not fit into split store");
   }
 
-  void update_index(list<std::pair<key, posting>, own_memory_pool>::iterator);
-  list<std::pair<key, posting>, own_memory_pool>::iterator find(std::string);
+  void update_index(forward_list<std::pair<key, posting>, own_memory_pool>::iterator);
+  forward_list<std::pair<key, posting>, own_memory_pool>::iterator find(std::string);
 
   std::tuple<
     bool,
 
-    list<
+    forward_list<
       std::pair<
         uint8_t,
-        list<std::pair<key, posting>, own_memory_pool>::iterator
+        forward_list<std::pair<key, posting>, own_memory_pool>::iterator
       >,
       own_memory_pool
     > *,
 
-    list<
+    forward_list<
       std::pair<
         uint8_t,
-        list<std::pair<key, posting>, own_memory_pool>::iterator
+        forward_list<std::pair<key, posting>, own_memory_pool>::iterator
       >,
       own_memory_pool
     >::iterator>

@@ -56,9 +56,9 @@ void index_part::load()
     posting p(backing + offset);
     offset += p.size();
 
-    stores[0].emplace_back(k, std::move(p));
+    stores[0].emplace_front(k, std::move(p));
 
-    update_index(std::prev(stores[0].end()));
+    update_index(stores[0].begin());
   }
 }
 
@@ -80,8 +80,8 @@ void write_buf(std::string path, uint8_t *buf, size_t len)
 }
 
 std::pair<size_t, size_t> save_postings_to_buf(
-    list<std::pair<key, posting>, own_memory_pool>::iterator start,
-    list<std::pair<key, posting>, own_memory_pool>::iterator end,
+    forward_list<std::pair<key, posting>, own_memory_pool>::iterator start,
+    forward_list<std::pair<key, posting>, own_memory_pool>::iterator end,
     uint8_t *buffer, size_t buffer_len)
 {
   size_t count = 0;
@@ -221,19 +221,22 @@ void index_part::insert(std::string s, uint32_t val) {
 
   uint32_t hash_key = hash(s);
 
-  auto it = index[hash_key].begin();
+  auto it = index[hash_key].before_begin();
   auto end = index[hash_key].end();
 
-  while (it != end) {
-    if (it->first == key_len) {
-      if (it->second->first == s) {
-        return it->second->second.append(val, 1,
+  while (true) {
+    auto i = std::next(it);
+
+    if (i == end) {
+      break;
+    } else if (i->first == key_len) {
+      if (i->second->first == s) {
+        return i->second->second.append(val, 1,
             [this](size_t len) {
               return post_backing.get(len);
             });
       }
-
-    } else if (it->first > key_len) {
+    } else if (i->first > key_len) {
       break;
     }
 
@@ -243,53 +246,58 @@ void index_part::insert(std::string s, uint32_t val) {
   key k(key_backing.get(key_len), s);
 
   auto store  = get_store(k);
-  store->emplace_back(k, posting());
+  store->emplace_front(k, posting());
 
-  auto ref = std::prev(store->end());
+  auto ref = store->begin();
 
   ref->second.append(val, 1,
       [this](size_t len) {
         return post_backing.get(len);
       });
 
-  index[hash_key].emplace(it, key_len, ref);
+  index[hash_key].emplace_after(it, key_len, ref);
 }
 
-void index_part::update_index(list<std::pair<key, posting>, own_memory_pool>::iterator ref)
+void index_part::update_index(forward_list<std::pair<key, posting>, own_memory_pool>::iterator ref)
 {
   uint32_t hash_key = hash(ref->first.c_str(), ref->first.len());
   size_t key_len = ref->first.len();
 
   size_t l = ref->first.size();
 
-  auto it = index[hash_key].begin();
+  auto it = index[hash_key].before_begin();
   auto end = index[hash_key].end();
-  while (it != end) {
-    if (it->first >= l) {
+
+  while (true) {
+    auto i = std::next(it);
+
+    if (i == end) {
+      break;
+    } else if (i->first >= key_len) {
       break;
     }
 
     it++;
   }
 
-  index[hash_key].emplace(it, l, ref);
+  index[hash_key].emplace_after(it, l, ref);
 }
 
 
 std::tuple<
   bool,
 
-  list<
+  forward_list<
     std::pair<
       uint8_t,
-      list<std::pair<key, posting>, own_memory_pool>::iterator
+      forward_list<std::pair<key, posting>, own_memory_pool>::iterator
     >,
     own_memory_pool
   > *,
 
-  list<
+  forward_list<
     std::pair<uint8_t,
-      list<std::pair<key, posting>, own_memory_pool>::iterator
+      forward_list<std::pair<key, posting>, own_memory_pool>::iterator
     >,
     own_memory_pool
   >::iterator
@@ -298,16 +306,23 @@ index_part::find(key k)
 {
   uint32_t hash_key = hash(k.c_str(), k.len());
 
+  auto key_len = k.size();
+
   auto in = &index[hash_key];
 
-  auto it = in->begin();
+  auto it = in->before_begin();
   auto end = in->end();
-  while (it != end) {
-    if (it->first == k.size()) {
-      if (it->second->first == k) {
-        return std::make_tuple(true, in, it);
+
+  while (true) {
+    auto i = std::next(it);
+
+    if (i == end) {
+      break;
+    } else if (i->first == key_len) {
+      if (i->second->first == k) {
+        return std::make_tuple(true, in, i);
       }
-    } else if (it->first > k.size()) {
+    } else if (i->first > key_len) {
       break;
     }
 
@@ -317,7 +332,7 @@ index_part::find(key k)
   return std::make_tuple(false, in, it);
 }
 
-list<std::pair<key, posting>, own_memory_pool>::iterator index_part::find(std::string s)
+forward_list<std::pair<key, posting>, own_memory_pool>::iterator index_part::find(std::string s)
 {
   uint32_t hash_key = hash(s);
   size_t l = key_size(s);
@@ -337,8 +352,6 @@ list<std::pair<key, posting>, own_memory_pool>::iterator index_part::find(std::s
 
 void index_part::merge(index_part &other)
 {
-  auto o_it = other.stores[0].begin();
-
   size_t added = 0;
 
   size_t key_buf_size = 1024 * 1024;
@@ -350,6 +363,7 @@ void index_part::merge(index_part &other)
     page_ids.push_back(p);
   }
 
+  auto o_it = other.stores[0].begin();
   while (o_it != other.stores[0].end()) {
     if (o_it->first < start) {
       o_it++;
@@ -391,8 +405,8 @@ void index_part::merge(index_part &other)
 
       memcpy(c_buf, o_it->first.data(), c_len);
 
-      stores[0].emplace_back(key(c_buf), posting());
-      auto n_it = std::prev(stores[0].end());
+      stores[0].emplace_front(key(c_buf), posting());
+      auto n_it = stores[0].begin();
 
       n_it->second.merge(o_it->second, page_id_offset,
           [this](size_t s) {
@@ -401,7 +415,7 @@ void index_part::merge(index_part &other)
 
       auto in = std::get<1>(f);
       auto it = std::get<2>(f);
-      in->emplace(it, c_len, n_it);
+      in->emplace_after(it, c_len, n_it);
 
       auto end = std::chrono::system_clock::now();
       index_total += end - start;

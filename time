@@ -727,3 +727,52 @@ we're doing a good job at shrinking the already small parts...
 well...
 ./merger  11.67s user 0.55s system 270% cpu 4.518 total
 
+./indexer  24.32s user 0.44s system 90% cpu 27.468 total
+./merger  11.87s user 0.59s system 269% cpu 4.630 total
+
+./indexer  23.37s user 0.43s system 89% cpu 26.557 total
+[2021-03-28 15:14:13.085] [info] usage meta/index_parts/0/part-words : key 3072 kb post 8192 kb pool store 21504 kb pool index 12288 kb page 0 kb -> 44 mb
+[2021-03-28 15:14:13.085] [info] usage meta/index_parts/0/part-pair : key 13312 kb post 4096 kb pool store 50176 kb pool index 28672 kb page 0 kb -> 94 mb
+[2021-03-28 15:14:13.085] [info] usage meta/index_parts/0/part-trine : key 20480 kb post 1024 kb pool store 57344 kb pool index 32768 kb page 0 kb -> 109 mb
+
+removing the cached len in the index
+
+[2021-03-28 15:25:23.839] [info] usage meta/index_parts/0/part-words : key 3072 kb post 8192 kb pool store 21504 kb pool index 9216 kb page 0 kb -> 41 mb
+[2021-03-28 15:25:23.839] [info] usage meta/index_parts/0/part-pair : key 13312 kb post 4096 kb pool store 50176 kb pool index 21504 kb page 0 kb -> 87 mb
+[2021-03-28 15:25:23.839] [info] usage meta/index_parts/0/part-trine : key 20480 kb post 1024 kb pool store 57344 kb pool index 24576 kb page 0 kb -> 101 mb
+
+
+./indexer  28.06s user 0.43s system 91% cpu 31.181 total
+
+so no.
+
+
+use forward lists
+
+[2021-04-02 10:11:39.456] [info] usage meta/index_parts/0/part-words : key 3072 kb post 8192 kb pool store 18432 kb pool index 9216 kb page 0 kb -> 38 mb
+[2021-04-02 10:11:39.456] [info] usage meta/index_parts/0/part-pair : key 13312 kb post 4096 kb pool store 43008 kb pool index 21504 kb page 0 kb -> 80 mb
+[2021-04-02 10:11:39.456] [info] usage meta/index_parts/0/part-trine : key 20480 kb post 1024 kb pool store 49152 kb pool index 24576 kb page 0 kb -> 93 mb
+
+./indexer  23.87s user 0.51s system 87% cpu 27.727 total
+
+dont be silly with std::next
+
+[2021-04-02 10:22:23.063] [info] usage meta/index_parts/0/part-words : key 3072 kb post 8192 kb pool store 18432 kb pool index 9216 kb page 0 kb -> 38 mb
+[2021-04-02 10:22:23.063] [info] usage meta/index_parts/0/part-pair : key 13312 kb post 4096 kb pool store 43008 kb pool index 21504 kb page 0 kb -> 80 mb
+[2021-04-02 10:22:23.063] [info] usage meta/index_parts/0/part-trine : key 20480 kb post 1024 kb pool store 49152 kb pool index 24576 kb page 0 kb -> 93 mb
+
+
+./indexer  22.54s user 0.40s system 89% cpu 25.714 total
+./indexer  22.22s user 0.34s system 89% cpu 25.273 total
+./indexer  22.06s user 0.39s system 89% cpu 25.124 total
+
+3 threads
+./indexer  25.37s user 0.45s system 239% cpu 10.763 total
+
+baseline
+
+[2021-04-02 10:19:40.542] [info] usage meta/index_parts/0/part-words : key 3072 kb post 8192 kb pool store 21504 kb pool index 12288 kb page 0 kb -> 44 mb
+[2021-04-02 10:19:40.542] [info] usage meta/index_parts/0/part-pair : key 13312 kb post 4096 kb pool store 50176 kb pool index 28672 kb page 0 kb -> 94 mb
+[2021-04-02 10:19:40.542] [info] usage meta/index_parts/0/part-trine : key 20480 kb post 1024 kb pool store 57344 kb pool index 32768 kb page 0 kb -> 109 mb
+
+./indexer  22.03s user 0.39s system 88% cpu 25.323 total
