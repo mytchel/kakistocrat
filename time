@@ -776,3 +776,9 @@ baseline
 [2021-04-02 10:19:40.542] [info] usage meta/index_parts/0/part-trine : key 20480 kb post 1024 kb pool store 57344 kb pool index 32768 kb page 0 kb -> 109 mb
 
 ./indexer  22.03s user 0.39s system 88% cpu 25.323 total
+
+
+without all the improvements
+./indexer  45.96s user 0.98s system 261% cpu 17.940 total
+and with just one flush like the improvements testing
+./indexer  47.14s user 1.10s system 244% cpu 19.763 total

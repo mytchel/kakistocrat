@@ -88,9 +88,9 @@ void indexer::index_site(crawl::site &site, char *file_buf, size_t file_buf_len)
     size_t len = pfile.gcount();
 
     if (usage() > 1024 * 1024 * 200) {
-      //spdlog::info("indexer using {}", usage());
+      spdlog::info("indexer using {}", usage());
 
-      //flush();
+      flush();
     }
 
     tok.init(file_buf, len);
@@ -358,7 +358,7 @@ void index_info::load()
   j.at("trine_parts").get_to(trine_parts);
 }
 
-void save_part(
+void index_part_save(
     std::string path,
     std::list<std::pair<uint64_t, uint32_t>> &pages,
     forward_list<std::pair<key, posting>, own_memory_pool> &store,
@@ -386,19 +386,12 @@ void save_part(
   write_buf(path, buffer, offset);
 }
 
-std::vector<index_part_info> index_part_save(
-    std::list<std::pair<uint64_t, uint32_t>> &pages,
+std::vector<index_part_info> indexer::save_part(
     index_part &t, std::string base_path)
 {
   std::vector<index_part_info> parts;
 
   spdlog::info("save part {}", base_path);
-
-  uint8_t *buffer = (uint8_t *) malloc(max_index_part_size);
-  if (buffer == NULL) {
-    spdlog::warn("part buffer malloc failed");
-    throw std::bad_alloc();
-  }
 
   auto start = t.store_split.begin();
   for (auto &store: t.stores) {
@@ -408,8 +401,7 @@ std::vector<index_part_info> index_part_save(
 
       auto path = fmt::format("{}.{}.dat", base_path, *start);
 
-      save_part(path, pages, store,
-          buffer, max_index_part_size);
+      index_part_save(path, pages, store, file_buf, file_buf_size);
 
       std::optional<std::string> end;
       if (start + 1 != t.store_split.end()) {
@@ -425,8 +417,6 @@ std::vector<index_part_info> index_part_save(
     start++;
   }
 
-  free(buffer);
-
   return parts;
 }
 
@@ -437,9 +427,9 @@ std::string indexer::save()
   auto trines_path = fmt::format("{}.{}.trines", base_path, flush_count);
   auto meta_path = fmt::format("{}.{}.meta.json", base_path, flush_count);
 
-  auto word_parts = index_part_save(pages, word_t, words_path);
-  auto pair_parts = index_part_save(pages, pair_t, pairs_path);
-  auto trine_parts = index_part_save(pages, trine_t, trines_path);
+  auto word_parts = save_part(word_t, words_path);
+  auto pair_parts = save_part(pair_t, pairs_path);
+  auto trine_parts = save_part(trine_t, trines_path);
 
   index_info info(meta_path);
 

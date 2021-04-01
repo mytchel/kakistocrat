@@ -315,14 +315,53 @@ struct index_part {
       find(key);
 };
 
+struct index_part_info {
+  std::string path;
+
+  std::string start;
+  std::optional<std::string> end;
+
+  index_part_info() {}
+
+  index_part_info(std::string p) : path(p) {}
+
+  index_part_info(std::string p, std::string s,
+      std::optional<std::string> e)
+    : path(p), start(s), end(e) {}
+};
+
+void to_json(nlohmann::json &j, const index_part_info &i);
+void from_json(const nlohmann::json &j, index_part_info &i);
+
+struct index_info {
+  std::string path;
+
+  uint32_t average_page_length;
+  std::map<uint64_t, uint32_t> page_lengths;
+
+  std::vector<index_part_info> word_parts;
+  std::vector<index_part_info> pair_parts;
+  std::vector<index_part_info> trine_parts;
+
+  index_info(std::string p) : path(p) {}
+
+  void load();
+  void save();
+};
 
 struct indexer {
   std::list<std::pair<uint64_t, uint32_t>> pages;
   index_part word_t, pair_t, trine_t;
 
+  uint8_t *file_buf{nullptr};
+  size_t file_buf_size{0};
+
   std::string base_path;
   size_t flush_count{0};
   std::list<std::string> paths;
+
+  std::vector<index_part_info> save_part(
+    index_part &t, std::string base_path);
 
   std::string save();
 
@@ -379,41 +418,19 @@ struct indexer {
       word_t(split_at),
       pair_t(split_at),
       trine_t(split_at)
-  {}
-};
+  {
+    file_buf_size = max_index_part_size;
+    file_buf = (uint8_t *) malloc(max_index_part_size);
+    if (file_buf == nullptr) {
+      throw std::bad_alloc();
+    }
+  }
 
-struct index_part_info {
-  std::string path;
-
-  std::string start;
-  std::optional<std::string> end;
-
-  index_part_info() {}
-
-  index_part_info(std::string p) : path(p) {}
-
-  index_part_info(std::string p, std::string s,
-      std::optional<std::string> e)
-    : path(p), start(s), end(e) {}
-};
-
-void to_json(nlohmann::json &j, const index_part_info &i);
-void from_json(const nlohmann::json &j, index_part_info &i);
-
-struct index_info {
-  std::string path;
-
-  uint32_t average_page_length;
-  std::map<uint64_t, uint32_t> page_lengths;
-
-  std::vector<index_part_info> word_parts;
-  std::vector<index_part_info> pair_parts;
-  std::vector<index_part_info> trine_parts;
-
-  index_info(std::string p) : path(p) {}
-
-  void load();
-  void save();
+  ~indexer() {
+    if (file_buf) {
+      free(file_buf);
+    }
+  }
 };
 
 struct index {
