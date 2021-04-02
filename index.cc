@@ -87,7 +87,7 @@ void indexer::index_site(crawl::site &site, char *file_buf, size_t file_buf_len)
     spdlog::debug("process page {} / {} : {}", page_id, index_id, page.url);
     size_t len = pfile.gcount();
 
-    if (usage() > 1024 * 1024 * 200) {
+    if (usage() > 1024 * 1024 * 500) {
       spdlog::info("indexer using {}", usage());
 
       flush();
@@ -481,11 +481,11 @@ void index::load()
   }
 
   for (auto &p: info.pair_parts) {
-    pair_parts.push_back(load_part(pairs, p));
+    //pair_parts.push_back(load_part(pairs, p));
   }
 
   for (auto &p: info.trine_parts) {
-    trine_parts.push_back(load_part(trines, p));
+    //trine_parts.push_back(load_part(trines, p));
   }
 }
 
@@ -614,11 +614,15 @@ rank(
 	double wt = log(page_lengths.size() / postings.size());
 	for (auto &p: postings) {
 		uint32_t index_id = p.first;
-    //spdlog::info("posting has id {} check from {}", index_id, page_ids.size());
-		uint64_t page_id = page_ids.at(index_id);
+		uint64_t page_id = 0;
 
-    spdlog::info("index id {} -. page id {}", index_id, page_id);
-    //spdlog::info("posting has page id {}", page_id);
+    try {
+      page_id = page_ids.at(index_id);
+    } catch (const std::exception& e) {
+      spdlog::info("bad index id {}", index_id);
+      continue;
+    }
+
     auto it = page_lengths.find(page_id);
     if (it == page_lengths.end()) {
       spdlog::info("didnt find page length for {}", page_id);

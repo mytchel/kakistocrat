@@ -107,7 +107,7 @@ struct own_memory_pool {
   {}
 };
 
-std::vector<std::string> get_split_at(size_t parts = 20);
+std::vector<std::string> get_split_at(size_t parts = 200);
 
 enum index_type{words, pairs, trines};
 

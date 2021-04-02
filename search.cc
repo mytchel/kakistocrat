@@ -41,16 +41,11 @@ static std::list<std::pair<uint64_t, double>> intersect_postings(
 {
   std::list<std::pair<uint64_t, double>> result;
 
+  spdlog::info("interset {}", postings.size());
+
+  try {
   if (postings.size() == 0) {
     return result;
-  }
-
-  size_t pp = 0;
-  for (auto &i: postings) {
-    for (auto &p: i) {
-      spdlog::info("intersect {} {} = {}", pp, p.first, p.second);
-    }
-    pp++;
   }
 
   std::vector<size_t> indexes(postings.size(), 0);
@@ -82,6 +77,9 @@ static std::list<std::pair<uint64_t, double>> intersect_postings(
 
 		indexes[0]++;
 	}
+  } catch (const std::exception& e) {
+    spdlog::warn("failed to intersect");
+    }
 
 	return result;
 }
