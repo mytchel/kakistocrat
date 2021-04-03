@@ -80,8 +80,8 @@ void write_buf(std::string path, uint8_t *buf, size_t len)
 }
 
 std::pair<size_t, size_t> save_postings_to_buf(
-    forward_list<std::pair<key, posting>, own_memory_pool>::iterator start,
-    forward_list<std::pair<key, posting>, own_memory_pool>::iterator end,
+    forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator start,
+    forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator end,
     uint8_t *buffer, size_t buffer_len)
 {
   size_t count = 0;
@@ -258,7 +258,7 @@ void index_part::insert(std::string s, uint32_t val) {
   index[hash_key].emplace_after(it, key_len, ref);
 }
 
-void index_part::update_index(forward_list<std::pair<key, posting>, own_memory_pool>::iterator ref)
+void index_part::update_index(forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator ref)
 {
   uint32_t hash_key = hash(ref->first.c_str(), ref->first.len());
   size_t key_len = ref->first.len();
@@ -290,16 +290,16 @@ std::tuple<
   forward_list<
     std::pair<
       uint8_t,
-      forward_list<std::pair<key, posting>, own_memory_pool>::iterator
+      forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator
     >,
-    own_memory_pool
+    fixed_memory_pool
   > *,
 
   forward_list<
     std::pair<uint8_t,
-      forward_list<std::pair<key, posting>, own_memory_pool>::iterator
+      forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator
     >,
-    own_memory_pool
+    fixed_memory_pool
   >::iterator
 >
 index_part::find(key k)
@@ -332,7 +332,7 @@ index_part::find(key k)
   return std::make_tuple(false, in, it);
 }
 
-forward_list<std::pair<key, posting>, own_memory_pool>::iterator index_part::find(std::string s)
+forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator index_part::find(std::string s)
 {
   uint32_t hash_key = hash(s);
   size_t l = key_size(s);

@@ -782,3 +782,7 @@ without all the improvements
 ./indexer  45.96s user 0.98s system 261% cpu 17.940 total
 and with just one flush like the improvements testing
 ./indexer  47.14s user 1.10s system 244% cpu 19.763 total
+
+( ./indexer && ./merger; )  30.42s user 0.72s system 246% cpu 12.617 total
+
+

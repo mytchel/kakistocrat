@@ -1,22 +1,12 @@
 #ifndef INDEX_H
 #define INDEX_H
 
+#include <stdint.h>
+#include <optional>
+#include <chrono>
+
 #include <nlohmann/json.hpp>
 
-#include <stdint.h>
-
-#include <foonathan/memory/container.hpp>
-#include <foonathan/memory/memory_pool.hpp>
-
-#include "foonathan/memory/detail/align.hpp"
-#include "foonathan/memory/detail/debug_helpers.hpp"
-#include "foonathan/memory/detail/assert.hpp"
-
-using namespace foonathan::memory;
-
-#include <optional>
-
-#include <chrono>
 using namespace std::chrono_literals;
 
 #include "crawl.h"
@@ -24,90 +14,11 @@ using namespace std::chrono_literals;
 #include "hash.h"
 #include "key.h"
 #include "buf_list.h"
+#include "fixed_memory_pool.h"
 
 namespace search {
 
-struct own_memory_pool {
-  size_t node_size, chunk_size;
-
-  size_t usage{0};
-  size_t offset{0};
-  uint8_t *head{nullptr};
-  std::list<void*> chunks;
-
-  own_memory_pool(size_t ns, size_t cs)
-    : node_size(ns), chunk_size(cs)
-  {
-    spdlog::info("own memory pool init {} {} : {} kb chunks", ns, cs, ns*cs/1024);
-  }
-
-  own_memory_pool(own_memory_pool &&o)
-    : chunks(std::move(o.chunks)),
-      node_size(o.node_size), chunk_size(o.chunk_size),
-      usage(o.usage), offset(o.offset),
-      head(o.head)
-  {}
-
-  ~own_memory_pool()
-  {
-    for (auto c: chunks) {
-      free(c);
-    }
-  }
-
-  void clear()
-  {
-    head = nullptr;
-    offset = 0;
-    usage = 0;
-
-    for (auto c: chunks) {
-      free(c);
-    }
-
-    chunks.clear();
-  }
-
-  allocator_info info() const noexcept
-  {
-    return {"::own_memory_pool", this};
-  }
-
-  void alloc_chunk()
-  {
-    offset = 0;
-    head = (uint8_t *) malloc(node_size * chunk_size);
-    if (head == nullptr) {
-      throw std::bad_alloc();
-    }
-
-    usage += node_size * chunk_size;
-
-    chunks.push_back(head);
-  }
-
-  void* allocate_node(size_t size, size_t alignment)
-  {
-    detail::check_allocation_size<bad_node_size>(size, node_size, info());
-    detail::check_allocation_size<bad_alignment>(
-        alignment, [&] { return node_size; }, info());
-
-    if (head == nullptr || offset >= chunk_size * node_size) {
-      alloc_chunk();
-    }
-
-    void *r = &head[offset];
-
-    offset += node_size;
-
-    return r;
-  }
-
-  void deallocate_node(void *node, size_t size, size_t alignment) noexcept
-  {}
-};
-
-std::vector<std::string> get_split_at(size_t parts = 200);
+std::vector<std::string> get_split_at(size_t parts = 4);
 
 enum index_type{words, pairs, trines};
 
@@ -119,8 +30,8 @@ void save_parts(std::string path, std::list<std::string>);
 void write_buf(std::string path, uint8_t *buf, size_t len);
 
 std::pair<size_t, size_t> save_postings_to_buf(
-    forward_list<std::pair<key, posting>, own_memory_pool>::iterator start,
-    forward_list<std::pair<key, posting>, own_memory_pool>::iterator end,
+    forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator start,
+    forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator end,
     uint8_t *buffer, size_t buffer_len);
 
 
@@ -134,8 +45,8 @@ std::pair<size_t, size_t> save_pages_to_buf(
 
 struct index_part {
 
-  own_memory_pool pool_store;
-  own_memory_pool pool_index;
+  fixed_memory_pool pool_store;
+  fixed_memory_pool pool_index;
 
   index_type type;
   std::string path;
@@ -151,12 +62,12 @@ struct index_part {
   buf_list post_backing;
 
   std::vector<
-    forward_list<std::pair<key, posting>, own_memory_pool>
+    forward_list<std::pair<key, posting>, fixed_memory_pool>
     > stores;
 
   std::vector<forward_list<
-      std::pair<uint8_t, forward_list<std::pair<key, posting>, own_memory_pool>::iterator>,
-      own_memory_pool
+      std::pair<uint8_t, forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator>,
+      fixed_memory_pool
     >> index;
 
   std::vector<uint64_t> page_ids;
@@ -167,14 +78,18 @@ struct index_part {
 
   // For indexer
   index_part(std::vector<std::string> s_split)
-    : pool_store(forward_list_node_size<std::pair<key, posting>>::value, 1024 * 128),
+    : pool_store(forward_list_node_size<std::pair<key, posting>>::value,
+            1024 * 128),
+
       pool_index(forward_list_node_size<
           std::pair<
             uint8_t,
-            forward_list<std::pair<key, posting>, own_memory_pool>::iterator
-          >>::value, 1024 * 128),
-      post_backing(1024*1024),
-      key_backing(1024*1024),
+            forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator
+          >>::value,
+          1024 * 128),
+
+      post_backing(1024 * 1024),
+      key_backing(1024 * 1024),
       store_split(s_split)
   {
     index.reserve(HTCAP);
@@ -191,10 +106,18 @@ struct index_part {
   // For merger
   index_part(index_type t, std::string p,
       std::string s, std::optional<std::string> e)
-    : pool_store(forward_list_node_size<std::pair<key, posting>>::value, 1024 * 128),
-      pool_index(forward_list_node_size<std::pair<uint8_t, forward_list<std::pair<key, posting>, own_memory_pool>::iterator>>::value, 1024 * 128),
-      post_backing(1024*1024),
-      key_backing(1024*1024),
+    : pool_store(forward_list_node_size<std::pair<key, posting>>::value,
+          1024 * 128),
+
+      pool_index(forward_list_node_size<
+          std::pair<
+            uint8_t,
+            forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator
+          >>::value,
+          1024 * 128),
+
+      post_backing(1024 * 1024),
+      key_backing(1024 * 1024),
       type(t), path(p),
       start(s), end(e)
   {
@@ -274,7 +197,7 @@ struct index_part {
   void merge(index_part &other);
   void insert(std::string key, uint32_t val);
 
-  forward_list<std::pair<key, posting>, own_memory_pool> * get_store(key s)
+  forward_list<std::pair<key, posting>, fixed_memory_pool> * get_store(key s)
   {
     auto store_it = stores.begin();
     auto split_it = store_split.begin();
@@ -291,8 +214,8 @@ struct index_part {
     throw std::invalid_argument("key does not fit into split store");
   }
 
-  void update_index(forward_list<std::pair<key, posting>, own_memory_pool>::iterator);
-  forward_list<std::pair<key, posting>, own_memory_pool>::iterator find(std::string);
+  void update_index(forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator);
+  forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator find(std::string);
 
   std::tuple<
     bool,
@@ -300,17 +223,17 @@ struct index_part {
     forward_list<
       std::pair<
         uint8_t,
-        forward_list<std::pair<key, posting>, own_memory_pool>::iterator
+        forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator
       >,
-      own_memory_pool
+      fixed_memory_pool
     > *,
 
     forward_list<
       std::pair<
         uint8_t,
-        forward_list<std::pair<key, posting>, own_memory_pool>::iterator
+        forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator
       >,
-      own_memory_pool
+      fixed_memory_pool
     >::iterator>
       find(key);
 };

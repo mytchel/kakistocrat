@@ -42,7 +42,7 @@ indexer_run(Channel<std::string*> &in,
   util::make_path(fmt::format("meta/index_parts/{}", tid));
 
   search::indexer indexer(fmt::format("meta/index_parts/{}/part", tid),
-      search::get_split_at());
+      search::get_split_at(4));
 
   char *file_buf = (char *) malloc(scrape::max_file_size);
   if (file_buf == NULL) {
@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
 
   util::make_path("meta/index_parts");
 
-  auto n_threads = std::thread::hardware_concurrency();
+  auto n_threads = 1;//std::thread::hardware_concurrency();
   if (n_threads > 1) n_threads--;
 
   spdlog::info("starting {} threads", n_threads);

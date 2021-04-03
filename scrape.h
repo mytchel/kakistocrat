@@ -1,6 +1,8 @@
 #ifndef SCRAPE_H
 #define SCRAPE_H
 
+#include <set>
+
 #include "channel.h"
 
 namespace scrape {

@@ -202,22 +202,17 @@ std::vector<std::string> get_split_at(size_t parts) {
   std::vector<std::string> total_split_at;
   auto a = alphabet();
 
-  while (parts > 0) {
+  while (parts > 1) {
     std::vector<std::string> split_at;
 
     if (parts > a.size()) {
       split_at = a;
 
-      parts /= a.size();
-
-    } else if (parts == 1) {
-      split_at.push_back(a[0]);
-
-      parts = 0;
+      parts = (parts / a.size()) + 1;
 
     } else {
       size_t step = a.size() / parts;
-      for (size_t i = 0; i < a.size(); i += step) {
+      for (size_t i = 0; i + step < a.size(); i += step) {
         split_at.push_back(a[i]);
       }
 
@@ -228,14 +223,12 @@ std::vector<std::string> get_split_at(size_t parts) {
       total_split_at = split_at;
 
     } else if (split_at.size() > 1) {
-
       std::vector<std::string> new_split_at;
 
       for (auto &s: total_split_at) {
         new_split_at.push_back(s);
 
-        auto ss = split_at.begin();
-        ss++;
+        auto ss = std::next(split_at.begin());
         while (ss != split_at.end()) {
           new_split_at.push_back(s + *ss++);
         }
@@ -243,6 +236,10 @@ std::vector<std::string> get_split_at(size_t parts) {
 
       total_split_at = new_split_at;
     }
+  }
+
+  if (total_split_at.empty()) {
+    total_split_at.push_back(a[0]);
   }
 
   return total_split_at;
@@ -361,7 +358,7 @@ void index_info::load()
 void index_part_save(
     std::string path,
     std::list<std::pair<uint64_t, uint32_t>> &pages,
-    forward_list<std::pair<key, posting>, own_memory_pool> &store,
+    forward_list<std::pair<key, posting>, fixed_memory_pool> &store,
     uint8_t *buffer, size_t buffer_len)
 {
   size_t page_count = 0;
@@ -395,11 +392,9 @@ std::vector<index_part_info> indexer::save_part(
 
   auto start = t.store_split.begin();
   for (auto &store: t.stores) {
-    spdlog::info("save part {} {}", base_path, *start);
+    auto path = fmt::format("{}.{}.dat", base_path, *start);
 
     if (!store.empty()) {
-
-      auto path = fmt::format("{}.{}.dat", base_path, *start);
 
       index_part_save(path, pages, store, file_buf, file_buf_size);
 
@@ -411,7 +406,7 @@ std::vector<index_part_info> indexer::save_part(
       parts.emplace_back(path, *start, end);
 
     } else {
-      spdlog::warn("save part {} {} part is empy", base_path, *start);
+      spdlog::warn("save part {} part is empy", path);
     }
 
     start++;
