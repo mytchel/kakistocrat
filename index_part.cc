@@ -35,10 +35,8 @@ void index_part::load()
     return;
   }
 
-  spdlog::info("loading");
   uint32_t page_count = ((uint32_t *)backing)[0];
   uint32_t posting_count = ((uint32_t *)backing)[1];
-  spdlog::info("loading {}, {}", page_count, posting_count);
 
   size_t offset = sizeof(uint32_t) * 2;
 

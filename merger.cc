@@ -41,7 +41,7 @@ void merge(
     Channel<size_t> &done_channel,
     size_t id)
 {
-  spdlog::info("starting");
+  spdlog::info("starting {}", start);
 
   search::index_part out_word(search::words, w_p, start, end);
   search::index_part out_pair(search::pairs, p_p, start, end);
@@ -59,16 +59,12 @@ void merge(
     search::index_info index(index_path);
     index.load();
 
-    spdlog::info("merge {} index", index_path);
-
     spdlog::info("index {} word part usage {} kb", start, out_word.usage() / 1024);
     spdlog::info("index {} pair part usage {} kb", start, out_pair.usage() / 1024);
     spdlog::info("index {} trine part usage {} kb", start, out_trine.usage() / 1024);
 
     for (auto &p: index.word_parts) {
-      if ((!end || p.start < *end) && start < p.end) {
-        spdlog::info("MERGE {}  from {}", start, p.start);
-
+      if ((!end || p.start < *end) && (!p.end || start < *p.end)) {
         auto tstart = std::chrono::system_clock::now();
         search::index_part in(search::words, p.path, p.start, p.end);
         in.load();
@@ -83,7 +79,7 @@ void merge(
     }
 
     for (auto &p: index.pair_parts) {
-      if ((!end || p.start < *end) && start < p.end) {
+      if ((!end || p.start < *end) && (!p.end || start < *p.end)) {
         auto tstart = std::chrono::system_clock::now();
         search::index_part in(search::pairs, p.path, p.start, p.end);
         in.load();
@@ -98,7 +94,7 @@ void merge(
     }
 
     for (auto &p: index.trine_parts) {
-      if ((!end || p.start < *end) && start < p.end) {
+      if ((!end || p.start < *end) && (!p.end || start < *p.end)) {
         auto tstart = std::chrono::system_clock::now();
         search::index_part in(search::trines, p.path, p.start, p.end);
         in.load();
@@ -125,25 +121,13 @@ void merge(
 
   save_total = tend - tstart;
 
-  spdlog::info("STAT load        took {}", load_total.count() / 1000000);
-  spdlog::info("STAT merge       took {}", merge_total.count() / 1000000);
-  spdlog::info("STAT save        took {}", save_total.count() / 1000000);
-
-  spdlog::info("STAT word index  took {}", out_word.index_total.count() / 1000000);
-  spdlog::info("STAT word merge  took {}", out_word.merge_total.count() / 1000000);
-  spdlog::info("STAT word find   took {}", out_word.find_total.count() / 1000000);
-
-  spdlog::info("STAT trine index took {}", out_trine.index_total.count() / 1000000);
-  spdlog::info("STAT trine merge took {}", out_trine.merge_total.count() / 1000000);
-  spdlog::info("STAT trine find  took {}", out_trine.find_total.count() / 1000000);
-
   id >> done_channel;
 }
 
 int main(int argc, char *argv[]) {
   spdlog::set_level(spdlog::level::debug);
 
-  auto n_threads = std::thread::hardware_concurrency();
+  auto n_threads = 1;//std::thread::hardware_concurrency();
   if (n_threads > 1) n_threads--;
 
   spdlog::info("starting {} threads", n_threads);

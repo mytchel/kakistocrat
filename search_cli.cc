@@ -42,10 +42,17 @@ int main(int argc, char *argv[]) {
 
 		auto results = searcher.search(line);
 
+    printf("found %i results\n", results.size());
+
+    size_t i = 0;
 		for (auto &result: results) {
 		  printf("%f %llu %s\n", result.score, result.page_id, result.path.c_str());
 			printf("    %s\n", result.url.c_str());
 			printf("    %s\n", result.title.c_str());
+
+      if (++i > 10) {
+        break;
+      }
 		}
 
     printf("\n");

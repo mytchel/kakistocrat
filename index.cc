@@ -476,11 +476,11 @@ void index::load()
   }
 
   for (auto &p: info.pair_parts) {
-    //pair_parts.push_back(load_part(pairs, p));
+    pair_parts.push_back(load_part(pairs, p));
   }
 
   for (auto &p: info.trine_parts) {
-    //trine_parts.push_back(load_part(trines, p));
+    trine_parts.push_back(load_part(trines, p));
   }
 }
 

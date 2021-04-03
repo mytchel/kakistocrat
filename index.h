@@ -167,6 +167,11 @@ struct index_part {
     pool_store.clear();
 
     page_ids.clear();
+
+    if (backing) {
+      free(backing);
+      backing = NULL;
+    }
   }
 
   void print_usage(std::string n)
@@ -191,6 +196,11 @@ struct index_part {
 
   bool load_backing();
   void load();
+
+  void unload() {
+    clear();
+  }
+
   void save();
   size_t save_to_buf(uint8_t *buffer, size_t len);
 
