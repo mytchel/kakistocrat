@@ -18,7 +18,7 @@ using namespace std::chrono_literals;
 
 namespace search {
 
-std::vector<std::string> get_split_at(size_t parts = 4);
+std::vector<std::string> get_split_at(size_t parts = 200);
 
 enum index_type{words, pairs, trines};
 

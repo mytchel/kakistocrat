@@ -84,8 +84,11 @@ void indexer::index_site(crawl::site &site, char *file_buf, size_t file_buf_len)
 
     pfile.read(file_buf, file_buf_len);
 
-    spdlog::debug("process page {} / {} : {}", page_id, index_id, page.url);
     size_t len = pfile.gcount();
+    
+    spdlog::debug("process page {} / {} : {} kb : {}",
+      page_id, index_id, 
+      len / 1024, page.url);
 
     if (usage() > 1024 * 1024 * 500) {
       spdlog::info("indexer using {}", usage());
@@ -614,7 +617,7 @@ rank(
     try {
       page_id = page_ids.at(index_id);
     } catch (const std::exception& e) {
-      spdlog::info("bad index id {}", index_id);
+      spdlog::info("bad index id {} / {}", index_id, page_ids.size());
       continue;
     }
 
