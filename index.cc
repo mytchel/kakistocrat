@@ -85,16 +85,12 @@ void indexer::index_site(crawl::site &site, char *file_buf, size_t file_buf_len)
     pfile.read(file_buf, file_buf_len);
 
     size_t len = pfile.gcount();
-    
+
     spdlog::debug("process page {} / {} : {} kb : {}",
-      page_id, index_id, 
+      page_id, index_id,
       len / 1024, page.url);
 
-    if (usage() > 1024 * 1024 * 500) {
-      spdlog::info("indexer using {}", usage());
-
-      flush();
-    }
+    check_usage();
 
     tok.init(file_buf, len);
 
@@ -369,13 +365,13 @@ void index_part_save(
   size_t offset = sizeof(uint32_t) * 2;
 
   auto rpage = save_pages_to_buf(pages,
-      buffer + offset, max_index_part_size - offset);
+      buffer + offset, buffer_len - offset);
 
   offset += rpage.first;
   page_count = rpage.second;
 
   auto rpost = save_postings_to_buf(store.begin(), store.end(),
-      buffer + offset, max_index_part_size - offset);
+      buffer + offset, buffer_len - offset);
 
   offset += rpost.first;
   post_count = rpost.second;
@@ -485,41 +481,6 @@ void index::load()
   for (auto &p: info.trine_parts) {
     trine_parts.push_back(load_part(trines, p));
   }
-}
-
-void index::save()
-{
-  index_info info(path);
-
-  size_t average_page_length = 0;
-
-  if (page_lengths.size() > 0) {
-    for (auto &p: page_lengths) {
-      average_page_length += p.second;
-    }
-
-    average_page_length /= page_lengths.size();
-  }
-
-  info.average_page_length = average_page_length;
-  info.page_lengths = page_lengths;
-
-  for (auto &p: word_parts) {
-    p.save();
-    info.word_parts.emplace_back(p.path, p.start, p.end);
-  }
-
-  for (auto &p: pair_parts) {
-    p.save();
-    info.pair_parts.emplace_back(p.path, p.start, p.end);
-  }
-
-  for (auto &p: trine_parts) {
-    p.save();
-    info.trine_parts.emplace_back(p.path, p.start, p.end);
-  }
-
-  info.save();
 }
 
 struct terms {

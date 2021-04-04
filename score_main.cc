@@ -22,21 +22,24 @@
 #include "spdlog/spdlog.h"
 
 #include "util.h"
+#include "config.h"
 #include "crawl.h"
 #include "scorer.h"
 
 int main(int argc, char *argv[]) {
-  crawl::crawler crawler;
+  config c = read_config();
+
+  crawl::crawler crawler(c);
   crawler.load();
 
-  scorer::scores scores(crawler);
+  scorer::scores scores(c.scores_path, crawler);
 
   for (int i = 0; i < 10; i++) {
     spdlog::debug("score iteration {}", i);
     scores.iteration();
   }
 
-  scores.save("meta/scores.json");
+  scores.save();
 
   return 0;
 }

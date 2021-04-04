@@ -5,12 +5,10 @@
 #include <cstring>
 
 #include <vector>
-#include <list>
 #include <set>
 #include <map>
 #include <string>
 #include <algorithm>
-#include <thread>
 #include <future>
 #include <optional>
 #include <iostream>
@@ -170,7 +168,10 @@ void crawler::update_site(
 
         site *o_site = find_site(host);
         if (o_site == NULL) {
-          sites.emplace_back(next_id++, isite->level + 1, host);
+          sites.emplace_back(
+                site_path(site_meta_path, host),
+                next_id++, host, isite->level + 1);
+
           o_site = &sites.back();
         }
 
@@ -193,7 +194,9 @@ void crawler::load_seed(std::vector<std::string> url)
 
     auto site = find_site(host);
     if (site == NULL) {
-      sites.emplace_back(next_id++, 0, host);
+      sites.emplace_back(
+          site_path(site_meta_path, host),
+          next_id++, host, 0);
       site = &sites.back();
     }
 
@@ -246,10 +249,6 @@ site* crawler::get_next_site()
 
 void crawler::crawl()
 {
-  auto n_threads = std::thread::hardware_concurrency();
-  // TODO: get from file limit
-  size_t max_con_per_thread = 50;//1000 / (2 * n_threads);
-
   spdlog::info("starting {} threads", n_threads);
 
   Channel<scrape::site*> in_channels[n_threads];
@@ -259,11 +258,11 @@ void crawler::crawl()
 
   std::vector<std::thread> threads;
   for (size_t i = 0; i < n_threads; i++) {
-    auto th = std::thread(scrape::scraper,
+    auto th = std::thread(scrape::scraper, i,
         std::ref(in_channels[i]),
         std::ref(out_channels[i]),
         std::ref(stat_channels[i]),
-        i, max_con_per_thread);
+        thread_max_sites, thread_max_con);
 
     threads.emplace_back(std::move(th));
   }
@@ -312,7 +311,16 @@ void crawler::crawl()
             pages.emplace_back(p.url, p.path, p.last_scanned);
           }
 
-          scrapping_sites.emplace_back(site->host, levels[site->level].max_pages, pages);
+          scrapping_sites.emplace_back(
+              site->host, pages,
+              fmt::format("{}/{}/{}",
+                  site_data_path,
+                  util::host_hash(site->host),
+                  site->host),
+              levels[site->level].max_pages,
+              max_site_part_size,
+              max_page_size);
+
           auto &s = scrapping_sites.back();
 
           &s >> in_channels[i];

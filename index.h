@@ -22,8 +22,6 @@ std::vector<std::string> get_split_at(size_t parts = 200);
 
 enum index_type{words, pairs, trines};
 
-const size_t max_index_part_size = 1024 * 1024 * 200;
-
 std::list<std::string> load_parts(std::string path);
 void save_parts(std::string path, std::list<std::string>);
 
@@ -201,8 +199,7 @@ struct index_part {
     clear();
   }
 
-  void save();
-  size_t save_to_buf(uint8_t *buffer, size_t len);
+  void save(uint8_t *buffer, size_t len);
 
   void merge(index_part &other);
   void insert(std::string key, uint32_t val);
@@ -289,7 +286,10 @@ struct indexer {
   uint8_t *file_buf{nullptr};
   size_t file_buf_size{0};
 
+  size_t max_usage;
+
   std::string base_path;
+
   size_t flush_count{0};
   std::list<std::string> paths;
 
@@ -326,6 +326,14 @@ struct indexer {
          + pages.size() * (16);
   }
 
+  void check_usage() {
+    if (usage() > max_usage) {
+      spdlog::info("indexer using {}", usage());
+
+      flush();
+    }
+  }
+
   void index_site(crawl::site &site, char *file_buf, size_t file_buf_len);
 
   void insert(index_type t, std::string s, uint32_t index_id) {
@@ -346,14 +354,18 @@ struct indexer {
     pages.emplace_back(page_id, size);
   }
 
-  indexer(std::string p, std::vector<std::string> split_at)
+  indexer(std::string p,
+      std::vector<std::string> split_at,
+      size_t max_u_mb = 50,
+      size_t max_p_mb = 10)
     : base_path(p),
+      max_usage(max_u_mb * 1024 * 1024),
+      file_buf_size(max_p_mb * 1024 * 1024),
       word_t(split_at),
       pair_t(split_at),
       trine_t(split_at)
   {
-    file_buf_size = max_index_part_size;
-    file_buf = (uint8_t *) malloc(max_index_part_size);
+    file_buf = (uint8_t *) malloc(file_buf_size);
     if (file_buf == nullptr) {
       throw std::bad_alloc();
     }
@@ -380,7 +392,6 @@ struct index {
   index(std::string p) : path(p) {}
 
   void load();
-  void save();
 
   void find_part_matches(index_part &p,
     std::list<std::string> &terms,

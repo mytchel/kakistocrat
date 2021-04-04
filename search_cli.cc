@@ -22,6 +22,7 @@
 #include <spdlog/spdlog.h>
 
 #include "util.h"
+#include "config.h"
 #include "crawl.h"
 #include "scorer.h"
 #include "search.h"
@@ -29,7 +30,9 @@
 int main(int argc, char *argv[]) {
   spdlog::set_level(spdlog::level::debug);
 
-  search::searcher searcher("meta/scores.json", "meta/index.json");
+  config c = read_config();
+
+  search::searcher searcher(c);
 
   searcher.load();
 

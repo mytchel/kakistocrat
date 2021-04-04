@@ -24,19 +24,18 @@
 #include "spdlog/spdlog.h"
 
 #include "util.h"
+#include "config.h"
 #include "crawl.h"
 
 int main(int argc, char *argv[]) {
   spdlog::set_level(spdlog::level::debug);
 
-  std::vector<std::string> blacklist = util::load_list("blacklist");
-  std::vector<std::string> initial_seed = util::load_list("seed");
+  config c = read_config();
 
-  //std::vector<crawl::level> levels = {{5000, 10000}, {100, 100}, {1, 0}};
-  std::vector<crawl::level> levels = {{10, 1}, {10, 0}};
-  //std::vector<crawl::level> levels = {{10, 0}};
+  std::vector<std::string> blacklist = util::load_list(c.blacklist_path);
+  std::vector<std::string> initial_seed = util::load_list(c.seed_path);
 
-  crawl::crawler crawler(levels);
+  crawl::crawler crawler(c);
 
   crawler.load();
 

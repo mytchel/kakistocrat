@@ -19,6 +19,7 @@
 
 #include "util.h"
 #include "crawl.h"
+#include "config.h"
 
 using nlohmann::json;
 
@@ -54,11 +55,19 @@ void from_json(const json &j, page &p) {
   j.at("s").get_to(p.last_scanned);
 }
 
+std::string site_path(std::string site_meta_path, std::string host)
+{
+  std::string dir_path = fmt::format("{}/{}/",
+      site_meta_path, util::host_hash(host));
+
+  util::make_path(dir_path);
+
+  return fmt::format("{}/{}.json", dir_path, host);
+}
+
 void site::load() {
   if (loaded) return;
   loaded = true;
-
-  std::string path = "meta/sites/" + util::host_hash(host) + "/" + host + "/map.json";
 
   std::ifstream file;
 
@@ -77,6 +86,7 @@ void site::load() {
     j.at("last_scanned").get_to(last_scanned);
     j.at("next_id").get_to(next_id);
     j.at("pages").get_to(pages);
+
   } catch (const std::exception& e) {
     spdlog::warn("failed to load {}", path);
   }
@@ -85,10 +95,6 @@ void site::load() {
 }
 
 void site::save() {
-  std::string dir_path = "meta/sites/" + util::host_hash(host) + "/" + host;
-  std::string path = dir_path + "/map.json";
-  util::make_path(dir_path);
-
   std::ofstream file;
 
   json j = {
@@ -112,9 +118,6 @@ void site::save() {
 
 void crawler::save()
 {
-  std::string path = "meta/map.json";
-  util::make_path("meta");
-
   std::ofstream file;
 
   std::vector<json> j_sites;
@@ -136,10 +139,10 @@ void crawler::save()
     {"sites", j_sites}
   };
 
-  file.open(path, std::ios::out | std::ios::trunc);
+  file.open(sites_path, std::ios::out | std::ios::trunc);
 
   if (!file.is_open()) {
-    spdlog::warn("error opening file {}", path);
+    spdlog::warn("error opening file {}", sites_path);
     return;
   }
 
@@ -150,13 +153,12 @@ void crawler::save()
 
 void crawler::load()
 {
-  std::string path = "meta/map.json";
   std::ifstream file;
 
-  file.open(path, std::ios::in);
+  file.open(sites_path, std::ios::in);
 
   if (!file.is_open()) {
-    spdlog::warn("error opening file {}", path);
+    spdlog::warn("error opening file {}", sites_path);
     return;
   }
 
@@ -168,16 +170,20 @@ void crawler::load()
     j.at("next_id").get_to(next_id);
 
     for (auto &s_j: j.at("sites")) {
+      std::string host;
+      s_j.at("host").get_to(host),
+
       sites.emplace_back(
+            site_path(site_meta_path, host),
             s_j.at("id").get<std::uint32_t>(),
-            s_j.at("host").get<std::string>(),
+            host,
             s_j.at("level").get<size_t>(),
             s_j.at("max_pages").get<size_t>(),
             s_j.at("last_scanned").get<time_t>());
     }
 
   } catch (const std::exception& e) {
-    spdlog::warn("failed to load {}", path);
+    spdlog::warn("failed to load {}", sites_path);
   }
 
   file.close();

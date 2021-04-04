@@ -29,7 +29,7 @@ namespace search {
 
 void searcher::load()
 {
-  scores.load(score_path);
+  scores.load();
   index.load();
 }
 

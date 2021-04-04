@@ -3,7 +3,12 @@
 
 #include <nlohmann/json.hpp>
 
+#include <thread>
+#include <vector>
+#include <list>
+
 #include "scrape.h"
+#include "config.h"
 
 namespace crawl {
 
@@ -64,9 +69,12 @@ struct page {
 void to_json(nlohmann::json &j, const page &s);
 void from_json(const nlohmann::json &j, page &s);
 
+std::string site_path(std::string sites_meta_path, std::string h);
+
 struct site {
   std::uint32_t id;
   std::string host;
+  std::string path;
 
   // Scanned data
   time_t last_scanned{0};
@@ -97,16 +105,22 @@ struct site {
   void load();
   void save();
 
-  site(std::string h) : host(h) {}
+  site(std::string p, std::string h) : path(p), host(h) {}
 
-  site(uint32_t i, std::string h, size_t l, size_t m, time_t ls) :
-    id(i), host(h), level(l), max_pages(m), last_scanned(ls) {
+  site(std::string p, uint32_t i, std::string h, size_t l, size_t m, time_t ls)
+    : path(p), id(i), host(h),
+      level(l), max_pages(m),
+      last_scanned(ls)
+  {
       scraped = last_scanned > 0;
   }
 
   // For creating new sites
-  site(uint32_t i, size_t l, std::string h) :
-    id(i), level(l), host(h), loaded(true), changed(true) {}
+  site(std::string p, uint32_t i, std::string h, size_t l)
+    : path(p), id(i), host(h),
+      level(l),
+      loaded(true),
+      changed(true) {}
 
   page* find_page(uint32_t id);
   page* find_page(std::string url);
@@ -116,19 +130,41 @@ struct site {
 void to_json(nlohmann::json &j, const site &s);
 void from_json(const nlohmann::json &j, site &s);
 
-struct level {
-  size_t max_pages;
-  size_t max_add_sites;
-};
-
 struct crawler {
-  std::list<site> sites;
-  std::uint32_t next_id{1};
-  std::vector<std::string> blacklist;
-  std::vector<level> levels;
+  std::string site_data_path;
+  std::string site_meta_path;
+  std::string sites_path;
 
-  crawler() {}
-  crawler(std::vector<level> l) : levels(l) {}
+  size_t n_threads;
+  size_t thread_max_sites;
+  size_t thread_max_con;
+  size_t max_site_part_size;
+  size_t max_page_size;
+
+  std::vector<crawl_level> levels;
+
+  std::uint32_t next_id{1};
+
+  std::list<site> sites;
+
+  std::vector<std::string> blacklist;
+
+  crawler(config &c)
+    : site_data_path(c.crawler.site_data_path),
+      site_meta_path(c.crawler.site_meta_path),
+      sites_path(c.crawler.sites_path),
+      levels(c.crawler.levels),
+      thread_max_sites(5),
+      thread_max_con(c.crawler.thread_max_connections),
+      max_site_part_size(c.crawler.max_site_part_size),
+      max_page_size(c.crawler.max_page_size)
+  {
+    if (c.crawler.n_threads) {
+      n_threads = *c.crawler.n_threads;
+    } else {
+      n_threads = std::thread::hardware_concurrency();
+    }
+  }
 
   site* find_site(std::string host);
   site* find_site(uint32_t id);

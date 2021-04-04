@@ -140,16 +140,11 @@ std::pair<size_t, size_t> save_pages_to_buf(
   return std::make_pair(offset, pages.size());
 }
 
-void index_part::save()
+void index_part::save(uint8_t *buffer, size_t buffer_len)
 {
   if (store_split.size() > 0) {
     spdlog::critical("index_part::save not implimented for split stores");
     return;
-  }
-
-  uint8_t *buffer = (uint8_t *) malloc(max_index_part_size);
-  if (buffer == NULL) {
-    throw std::bad_alloc();
   }
 
   size_t page_count = 0;
@@ -157,14 +152,14 @@ void index_part::save()
   size_t offset = sizeof(uint32_t) * 2;
 
   auto rpage = save_pages_to_buf(page_ids,
-      buffer + offset, max_index_part_size - offset);
+      buffer + offset, buffer_len - offset);
 
   offset += rpage.first;
   page_count = rpage.second;
 
   auto rpost = save_postings_to_buf(
       stores[0].begin(), stores[0].end(),
-      buffer + offset, max_index_part_size - offset);
+      buffer + offset, buffer_len - offset);
 
   offset += rpost.first;
   post_count = rpost.second;
@@ -173,8 +168,6 @@ void index_part::save()
   ((uint32_t *) buffer)[1] = post_count;
 
   write_buf(path, buffer, offset);
-
-  free(buffer);
 }
 
 bool index_part::load_backing()

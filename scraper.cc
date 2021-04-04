@@ -94,12 +94,12 @@ size_t curl_cb_buffer_write(void *contents, size_t sz, size_t nmemb, void *ctx)
   curl_data *d = (curl_data *) ctx;
   size_t realsize = sz * nmemb;
 
-  if (max_file_size < d->size + realsize) {
+  if (d->m_site->max_page_size < d->size + realsize) {
     return 0;
   }
 
   if (d->buf == NULL) {
-    d->buf = (char *) malloc(max_file_size);
+    d->buf = (char *) malloc(d->m_site->max_page_size);
     if (d->buf == NULL) {
       return 0;
     }
@@ -553,12 +553,18 @@ CURL *make_handle_other(site* s, request_type r, std::string url)
   return curl_handle;
 }
 
+
 void
-scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, size_t max_con)
+scraper(int tid,
+    Channel<site*> &in,
+    Channel<site*> &out,
+    Channel<bool> &stat,
+    size_t max_sites,
+    size_t max_con)
 {
   spdlog::info("thread {} started with {} max concurrent connections", tid, max_con);
 
-  size_t max_con_per_host = 4;
+  size_t max_con_per_host = 5;
 
   CURLM *multi_handle = curl_multi_init();
   curl_multi_setopt(multi_handle, CURLMOPT_MAX_TOTAL_CONNECTIONS, max_con);
@@ -572,7 +578,8 @@ scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat, int tid, s
   auto last_accepting = std::chrono::system_clock::now() - 100s;
 
   while (true) {
-    bool accepting = max_con - active_connections > max_con_per_host * 2;
+    bool accepting = max_con - active_connections > max_con_per_host * 2
+        && sites.size() + 1 < max_sites;
 
     if (accepting && last_accepting + 5s < std::chrono::system_clock::now()) {
       spdlog::info("thread {} has {} connections for {} sites",

@@ -24,6 +24,7 @@
 #include <crow.h>
 
 #include "util.h"
+#include "config.h"
 #include "crawl.h"
 #include "scorer.h"
 #include "tokenizer.h"
@@ -32,7 +33,9 @@
 using namespace nlohmann;
 
 int main(int argc, char *argv[]) {
-  search::searcher searcher("meta/scores.json", "meta/index.json");
+  config c = read_config();
+
+  search::searcher searcher(c);
 
   searcher.load();
 

@@ -43,6 +43,12 @@ void merge(
 {
   spdlog::info("starting {}", start);
 
+  size_t buf_len = 200 * 1024 * 1024;
+  uint8_t *buf = (uint8_t *) malloc(buf_len);
+  if (buf == nullptr) {
+    throw std::bad_alloc();
+  }
+
   search::index_part out_word(search::words, w_p, start, end);
   search::index_part out_pair(search::pairs, p_p, start, end);
   search::index_part out_trine(search::trines, t_p, start, end);
@@ -112,9 +118,11 @@ void merge(
   spdlog::info("saving");
   auto tstart = std::chrono::system_clock::now();
 
-  out_word.save();
-  out_pair.save();
-  out_trine.save();
+  out_word.save(buf, buf_len);
+  out_pair.save(buf, buf_len);
+  out_trine.save(buf, buf_len);
+
+  free(buf);
 
   auto tend = std::chrono::system_clock::now();
   spdlog::info("saved");
@@ -127,19 +135,28 @@ void merge(
 int main(int argc, char *argv[]) {
   spdlog::set_level(spdlog::level::debug);
 
-  auto n_threads = std::thread::hardware_concurrency();
-  if (n_threads > 1) n_threads--;
+  config c = read_config();
+
+  size_t n_threads;
+  if (c.indexer.n_threads) {
+    n_threads = *c.indexer.n_threads;
+  } else {
+    n_threads = std::thread::hardware_concurrency();
+    if (n_threads > 1) n_threads--;
+  }
 
   spdlog::info("starting {} threads", n_threads);
 
   std::vector<std::thread> threads(n_threads);
   Channel<size_t> done_channel;
 
-  auto split_at = search::get_split_at();
+  auto split_at = search::get_split_at(c.index_parts);
 
-  auto part_paths = search::load_parts("meta/index_parts.json");
+  auto part_paths = search::load_parts(c.indexer.meta_path);
 
-  search::index_info info("meta/index.json");
+  search::index_info info(c.merger.meta_path);
+
+  util::make_path(c.merger.parts_path);
 
   auto it = split_at.begin();
   while (it != split_at.end()) {
@@ -173,9 +190,9 @@ int main(int argc, char *argv[]) {
       end = *it;
     }
 
-    auto w_p = fmt::format("meta/index.words.{}.dat", start);
-    auto p_p = fmt::format("meta/index.pairs.{}.dat", start);
-    auto t_p = fmt::format("meta/index.trines.{}.dat", start);
+    auto w_p = fmt::format("{}/index.words.{}.dat", c.merger.parts_path, start);
+    auto p_p = fmt::format("{}/index.pairs.{}.dat", c.merger.parts_path, start);
+    auto t_p = fmt::format("{}/index.trines.{}.dat", c.merger.parts_path, start);
 
     auto th = std::thread(merge, part_paths,
           w_p, p_p, t_p,

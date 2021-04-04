@@ -21,11 +21,10 @@ struct searcher {
   scorer::scores scores;
   search::index index;
 
-  std::string score_path;
-
-  searcher(std::string s, std::string i) :
-    index(i),
-    score_path(s) {}
+  searcher(config &c)
+    : index(c.merger.meta_path),
+      scores(c.scores_path)
+  {}
 
   void load();
 

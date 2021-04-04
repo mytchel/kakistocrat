@@ -100,7 +100,8 @@ void scores::iteration()
   }
 }
 
-scores::scores(crawl::crawler &crawler)
+scores::scores(std::string p, crawl::crawler &crawler)
+  : path(p)
 {
   pages.clear();
   size_t n_pages = 0;
@@ -193,7 +194,7 @@ scores::scores(crawl::crawler &crawler)
   spdlog::debug("total score = {}", sum);
 }
 
-void scores::save(std::string path)
+void scores::save()
 {
   std::ofstream file;
 
@@ -213,7 +214,7 @@ void scores::save(std::string path)
   file.close();
 }
 
-void scores::load(std::string path)
+void scores::load()
 {
   std::ifstream file;
 

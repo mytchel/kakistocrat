@@ -31,18 +31,16 @@
 
 namespace scrape {
 
-std::string make_path(const std::string &url) {
+std::string make_path(const std::string output_dir, const std::string &url) {
   auto host = util::get_host(url);
   if (host.empty()) {
     return "junk_path";
   }
 
-  auto h = util::host_hash(host);
-
   auto path = util::get_path(url);
   auto path_parts = util::split_path(path);
 
-  auto file_path = "scrape_output/" + h + "/" + host;
+  auto file_path = output_dir;
 
   util::make_path(file_path);
 
@@ -218,7 +216,7 @@ void site::process_sitemap_entry(
     return;
   }
 
-  auto p = make_path(url);
+  auto p = make_path(output_dir, url);
 
   if (index_check_path(url_scanned, p)) {
     return;
@@ -300,7 +298,7 @@ void site::finish(
         continue;
       }
 
-      auto p = make_path(u);
+      auto p = make_path(output_dir, u);
 
       if (index_check_path(url_scanned, p)) {
         continue;
@@ -471,7 +469,7 @@ bool site::disallow_url(std::string u) {
 void site::init_paths() {
   for (auto &i: url_pending) {
     if (i.path == "") {
-      i.path = make_path(i.url);
+      i.path = make_path(output_dir, i.url);
     }
   }
 }

@@ -32,19 +32,24 @@
 using nlohmann::json;
 
 void
-indexer_run(Channel<std::string*> &in,
+indexer_run(
+    config settings,
+    Channel<std::string*> &in,
     Channel<bool> &out_ready,
     Channel<std::string*> &out,
     int tid)
 {
   spdlog::info("thread {} started", tid);
 
-  util::make_path(fmt::format("meta/index_parts/{}", tid));
+  util::make_path(fmt::format("{}/{}",
+        settings.indexer.parts_path, tid));
 
-  search::indexer indexer(fmt::format("meta/index_parts/{}/part", tid),
-      search::get_split_at());
+  search::indexer indexer(
+      fmt::format("{}/{}/part", settings.indexer.parts_path, tid),
+      search::get_split_at(settings.index_parts));
 
-  char *file_buf = (char *) malloc(scrape::max_file_size);
+  size_t file_buf_len = settings.crawler.max_page_size;
+  char *file_buf = (char *) malloc(file_buf_len);
   if (file_buf == NULL) {
     throw std::bad_alloc();
   }
@@ -60,12 +65,16 @@ indexer_run(Channel<std::string*> &in,
       break;
     }
 
-    crawl::site site(*name);
+    crawl::site site(
+        crawl::site_path(settings.crawler.site_meta_path, *name),
+        *name);
+
     spdlog::info("{} load  {}", tid, site.host);
     site.load();
 
     spdlog::info("{} index {}", tid, site.host);
-    indexer.index_site(site, file_buf, scrape::max_file_size);
+    indexer.index_site(site, file_buf, file_buf_len);
+
     spdlog::info("{} done  {}", tid, site.host);
   }
 
@@ -91,15 +100,20 @@ indexer_run(Channel<std::string*> &in,
 int main(int argc, char *argv[]) {
   spdlog::set_level(spdlog::level::debug);
 
+  config settings = read_config();
+
   spdlog::info("loading");
 
-  crawl::crawler crawler;
+  crawl::crawler crawler(settings);
   crawler.load();
 
-  util::make_path("meta/index_parts");
-
-  auto n_threads = std::thread::hardware_concurrency();
-  if (n_threads > 1) n_threads--;
+  size_t n_threads;
+  if (settings.indexer.n_threads) {
+    n_threads = *settings.indexer.n_threads;
+  } else {
+    n_threads = std::thread::hardware_concurrency();
+    if (n_threads > 1) n_threads--;
+  }
 
   spdlog::info("starting {} threads", n_threads);
 
@@ -112,6 +126,7 @@ int main(int argc, char *argv[]) {
   for (size_t i = 0; i < n_threads; i++) {
     auto th = std::thread(
         indexer_run,
+        settings,
         std::ref(in_channels[i]),
         std::ref(out_ready_channels[i]),
         std::ref(out_channels[i]),
@@ -169,7 +184,7 @@ int main(int argc, char *argv[]) {
 
   spdlog::info("wait for threads");
 
-  search::save_parts("meta/index_parts.json", index_parts);
+  search::save_parts(settings.indexer.meta_path, index_parts);
 
   for (auto &t: threads) {
     t.join();

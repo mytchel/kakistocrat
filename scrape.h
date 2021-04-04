@@ -7,8 +7,6 @@
 
 namespace scrape {
 
-const size_t max_file_size = 1024 * 1024 * 10;
-
 struct page {
   std::string url;
   std::string path;
@@ -48,14 +46,27 @@ struct site {
   std::set<std::string> sitemap_url_got;
   size_t sitemap_count{0};
 
+  std::string output_dir;
   size_t max_pages;
+  size_t max_part_size;
+  size_t max_page_size;
+
+  // This probably doesn't work very well.
   size_t max_active{5};
+
   size_t fail{0};
 
-  site() : host(""), max_pages(0) {}
-  site(std::string h, size_t m) : host(h), max_pages(m) {}
-  site(std::string h, size_t m, std::list<page> s)
-    : host(h), max_pages(m), url_pending(s) {}
+  site(std::string h, std::list<page> s,
+      std::string n_output,
+      size_t n_max_pages,
+      size_t n_max_part_size,
+      size_t n_max_page_size)
+    : host(h), url_pending(s),
+      output_dir(n_output),
+      max_pages(n_max_pages),
+      max_part_size(n_max_part_size),
+      max_page_size(n_max_page_size)
+  {}
 
   void init_paths();
 
@@ -81,8 +92,12 @@ bool bad_suffix(std::string path);
 bool bad_prefix(std::string path);
 
 void
-scraper(Channel<site*> &in, Channel<site*> &out, Channel<bool> &stat,
-    int i, size_t max_con);
+scraper(int i,
+    Channel<site*> &in,
+    Channel<site*> &out,
+    Channel<bool> &stat,
+    size_t max_sites,
+    size_t max_con);
 
 }
 

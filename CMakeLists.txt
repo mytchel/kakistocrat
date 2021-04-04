@@ -36,7 +36,8 @@ add_executable(crawl crawl_main.cc
     scrape.cc
     util.cc
     tokenizer.cc
-    str.c)
+    str.c
+    config.cc)
 
 target_include_directories(crawl PUBLIC ${CURL_INCLUDE_DIRS})
 
@@ -45,7 +46,11 @@ target_link_libraries(crawl Threads::Threads)
 target_link_libraries(crawl nlohmann_json::nlohmann_json)
 target_link_libraries(crawl spdlog::spdlog)
 
-add_executable(scorer score_main.cc scorer.cc crawl.cc util.cc)
+add_executable(scorer score_main.cc
+    scorer.cc
+    crawl.cc
+    util.cc
+    config.cc)
 
 target_link_libraries(scorer nlohmann_json::nlohmann_json)
 target_link_libraries(scorer spdlog::spdlog)
@@ -59,27 +64,13 @@ add_executable(indexer indexer.cc
 	posting.cc
 	vbyte.cc
     index_part.cc
-    index.cc)
+    index.cc
+    config.cc)
 
 target_link_libraries(indexer nlohmann_json::nlohmann_json)
 target_link_libraries(indexer Threads::Threads)
 target_link_libraries(indexer spdlog::spdlog)
 target_link_libraries(indexer foonathan_memory)
-
-add_executable(indexer_single indexer_single.cc
-    crawl.cc
-    tokenizer.cc
-    util.cc
-    str.c
-	hash.cc
-	posting.cc
-	vbyte.cc
-    index_part.cc
-    index.cc)
-
-target_link_libraries(indexer_single nlohmann_json::nlohmann_json)
-target_link_libraries(indexer_single spdlog::spdlog)
-target_link_libraries(indexer_single foonathan_memory)
 
 add_executable(merger merger.cc
     crawl.cc
@@ -89,9 +80,9 @@ add_executable(merger merger.cc
 	hash.cc
 	posting.cc
 	vbyte.cc
-	vbyte.cc
     index_part.cc
-    index.cc)
+    index.cc
+    config.cc)
 
 target_link_libraries(merger nlohmann_json::nlohmann_json)
 target_link_libraries(merger Threads::Threads)
@@ -107,9 +98,10 @@ add_executable(search_cli search_cli.cc
     str.c
 	hash.cc
 	posting.cc
+	vbyte.cc
     index_part.cc
     index.cc
-	vbyte.cc)
+    config.cc)
 
 target_include_directories(search_cli PUBLIC ${CURL_INCLUDE_DIRS})
 
@@ -126,9 +118,10 @@ add_executable(search_server search_server.cc
     str.c
 	hash.cc
 	posting.cc
+	vbyte.cc
     index_part.cc
     index.cc
-	vbyte.cc)
+    config.cc)
 
 target_include_directories(search_server PUBLIC ${Boost_INCLUDE_DIR})
 target_include_directories(search_server PUBLIC ${OPENSSL_INCLUDE_DIR})

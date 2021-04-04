@@ -29,14 +29,16 @@ void from_json(const nlohmann::json &j, page &p);
 struct scores {
   std::map<uint64_t, page> pages;
 
+  std::string path;
+
   page* find_page(uint64_t id);
 
-  scores(crawl::crawler &crawler);
-  scores() {}
+  scores(std::string p) : path(p) {}
+  scores(std::string p, crawl::crawler &crawler);
   void iteration();
 
-  void save(std::string path);
-  void load(std::string path);
+  void save();
+  void load();
 };
 
 }
