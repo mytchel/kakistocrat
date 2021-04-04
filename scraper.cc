@@ -564,11 +564,9 @@ scraper(int tid,
 {
   spdlog::info("thread {} started with {} max concurrent connections", tid, max_con);
 
-  size_t max_con_per_host = 5;
-
   CURLM *multi_handle = curl_multi_init();
   curl_multi_setopt(multi_handle, CURLMOPT_MAX_TOTAL_CONNECTIONS, max_con);
-  curl_multi_setopt(multi_handle, CURLMOPT_MAX_HOST_CONNECTIONS, max_con_per_host);
+  curl_multi_setopt(multi_handle, CURLMOPT_MAX_HOST_CONNECTIONS, 32); // Handled by site seperatly
   curl_multi_setopt(multi_handle, CURLMOPT_PIPELINING, CURLPIPE_MULTIPLEX);
 
   std::list<site*> sites;
@@ -578,7 +576,7 @@ scraper(int tid,
   auto last_accepting = std::chrono::system_clock::now() - 100s;
 
   while (true) {
-    bool accepting = max_con - active_connections > max_con_per_host * 2
+    bool accepting = max_con - active_connections > 32
         && sites.size() + 1 < max_sites;
 
     if (accepting && last_accepting + 5s < std::chrono::system_clock::now()) {

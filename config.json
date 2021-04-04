@@ -1,0 +1,32 @@
+{
+    "seed": "seed",
+    "blacklist": "blacklist",
+    "crawler": {
+        "n_threads": 3,
+        "site_data_path": "out/site_data",
+        "site_meta_path": "out/site_meta",
+        "sites_path": "out/sites.json",
+        "thread_max_sites": 5,
+        "thread_max_connections": 100,
+        "site_max_connections": 5,
+        "max_site_part_size_mb": 200,
+        "max_page_size_mb": 10,
+        "levels": [ { "p": 2, "s": 1 }, { "p": 1, "s": 0 } ]
+    },
+    "index_parts": 4,
+    "indexer": {
+        "n_threads": 3,
+        "thread_max_mem_mb": 500,
+        "max_index_part_size_mb": 10,
+        "parts_path": "out/index_parts/",
+        "meta_path": "out/index_parts.json"
+    },
+    "merger": {
+        "n_threads": 3,
+        "max_index_part_size_mb": 200,
+        "parts_path": "out/index_mergeed/",
+        "meta_path": "out/index.json"
+    },
+    "scores_path": "out/scores.json"
+}
+

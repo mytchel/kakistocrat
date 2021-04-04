@@ -57,17 +57,15 @@ indexer_run(
   while (true) {
     true >> out_ready;
 
-    std::string *name;
-    name << in;
+    std::string *path;
+    path << in;
 
-    if (name == NULL) {
+    if (path == NULL) {
       spdlog::info("{} got fin", tid);
       break;
     }
 
-    crawl::site site(
-        crawl::site_path(settings.crawler.site_meta_path, *name),
-        *name);
+    crawl::site site(*path);
 
     spdlog::info("{} load  {}", tid, site.host);
     site.load();
@@ -148,7 +146,7 @@ int main(int argc, char *argv[]) {
         found = true;
 
         if (site != crawler.sites.end()) {
-          &site->host >> in_channels[i];
+          &site->path >> in_channels[i];
           site++;
         }
 

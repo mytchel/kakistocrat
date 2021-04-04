@@ -29,6 +29,8 @@ add_subdirectory(x_memory)
 configure_file(x_seed/seed seed COPYONLY)
 configure_file(x_seed/blacklist blacklist COPYONLY)
 
+configure_file(config.json config.json COPYONLY)
+
 add_executable(crawl crawl_main.cc
     crawler.cc
     crawl.cc

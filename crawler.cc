@@ -31,6 +31,27 @@ using namespace std::chrono_literals;
 
 namespace crawl {
 
+static std::string host_hash(const std::string &host) {
+	uint32_t result = 0;
+
+  for (auto &c: host)
+		result = (c + 31 * result);
+
+	result = result & ((1<<15) - 1);
+
+  return std::to_string(result);
+}
+
+static std::string site_path(std::string base_dir, std::string host)
+{
+  std::string dir_path = fmt::format("{}/{}",
+      base_dir, host_hash(host));
+
+  util::make_path(dir_path);
+
+  return fmt::format("{}/{}.json", dir_path, host);
+}
+
 bool crawler::check_blacklist(
       std::string host)
 {
@@ -313,10 +334,8 @@ void crawler::crawl()
 
           scrapping_sites.emplace_back(
               site->host, pages,
-              fmt::format("{}/{}/{}",
-                  site_data_path,
-                  util::host_hash(site->host),
-                  site->host),
+              site_path(site_data_path, site->host),
+              site_max_con,
               levels[site->level].max_pages,
               max_site_part_size,
               max_page_size);

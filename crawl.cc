@@ -55,16 +55,6 @@ void from_json(const json &j, page &p) {
   j.at("s").get_to(p.last_scanned);
 }
 
-std::string site_path(std::string site_meta_path, std::string host)
-{
-  std::string dir_path = fmt::format("{}/{}/",
-      site_meta_path, util::host_hash(host));
-
-  util::make_path(dir_path);
-
-  return fmt::format("{}/{}.json", dir_path, host);
-}
-
 void site::load() {
   if (loaded) return;
   loaded = true;
@@ -124,6 +114,7 @@ void crawler::save()
 
   for (auto &s: sites) {
     json j = {
+      {"path", s.path},
       {"id", s.id},
       {"host", s.host},
       {"level", s.level},
@@ -170,13 +161,10 @@ void crawler::load()
     j.at("next_id").get_to(next_id);
 
     for (auto &s_j: j.at("sites")) {
-      std::string host;
-      s_j.at("host").get_to(host),
-
       sites.emplace_back(
-            site_path(site_meta_path, host),
+            s_j.at("path").get<std::string>(),
             s_j.at("id").get<std::uint32_t>(),
-            host,
+            s_j.at("host").get<std::string>(),
             s_j.at("level").get<size_t>(),
             s_j.at("max_pages").get<size_t>(),
             s_j.at("last_scanned").get<time_t>());

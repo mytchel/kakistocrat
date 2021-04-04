@@ -218,17 +218,6 @@ std::string get_dir(const std::string &path) {
   return dir;
 }
 
-std::string host_hash(const std::string &host) {
-	uint32_t result = 0;
-
-  for (auto &c: host)
-		result = (c + 31 * result);
-
-	result = result & ((1<<15) - 1);
-
-  return std::to_string(result);
-}
-
 void make_path(const std::string &path) {
   auto path_parts = split_path(path);
 

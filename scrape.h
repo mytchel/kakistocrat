@@ -51,18 +51,19 @@ struct site {
   size_t max_part_size;
   size_t max_page_size;
 
-  // This probably doesn't work very well.
-  size_t max_active{5};
+  size_t max_active;
 
   size_t fail{0};
 
   site(std::string h, std::list<page> s,
       std::string n_output,
+      size_t n_max_connections,
       size_t n_max_pages,
       size_t n_max_part_size,
       size_t n_max_page_size)
     : host(h), url_pending(s),
       output_dir(n_output),
+      max_active(n_max_connections),
       max_pages(n_max_pages),
       max_part_size(n_max_part_size),
       max_page_size(n_max_page_size)

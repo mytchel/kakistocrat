@@ -69,12 +69,10 @@ struct page {
 void to_json(nlohmann::json &j, const page &s);
 void from_json(const nlohmann::json &j, page &s);
 
-std::string site_path(std::string sites_meta_path, std::string h);
-
 struct site {
+  std::string path;
   std::uint32_t id;
   std::string host;
-  std::string path;
 
   // Scanned data
   time_t last_scanned{0};
@@ -105,7 +103,7 @@ struct site {
   void load();
   void save();
 
-  site(std::string p, std::string h) : path(p), host(h) {}
+  site(std::string p) : path(p) {}
 
   site(std::string p, uint32_t i, std::string h, size_t l, size_t m, time_t ls)
     : path(p), id(i), host(h),
@@ -138,6 +136,7 @@ struct crawler {
   size_t n_threads;
   size_t thread_max_sites;
   size_t thread_max_con;
+  size_t site_max_con;
   size_t max_site_part_size;
   size_t max_page_size;
 
@@ -156,6 +155,7 @@ struct crawler {
       levels(c.crawler.levels),
       thread_max_sites(5),
       thread_max_con(c.crawler.thread_max_connections),
+      site_max_con(c.crawler.site_max_connections),
       max_site_part_size(c.crawler.max_site_part_size),
       max_page_size(c.crawler.max_page_size)
   {

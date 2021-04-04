@@ -23,6 +23,7 @@ struct config {
     std::optional<size_t> n_threads;
     size_t thread_max_sites;
     size_t thread_max_connections;
+    size_t site_max_connections;
     size_t max_site_part_size;
     size_t max_page_size;
 
