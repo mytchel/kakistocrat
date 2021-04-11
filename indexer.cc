@@ -46,7 +46,9 @@ indexer_run(
 
   search::indexer indexer(
       fmt::format("{}/{}/part", settings.indexer.parts_path, tid),
-      search::get_split_at(settings.index_parts));
+      search::get_split_at(settings.index_parts),
+      settings.indexer.thread_max_mem,
+      settings.indexer.max_index_part_size);
 
   size_t file_buf_len = settings.crawler.max_page_size;
   char *file_buf = (char *) malloc(file_buf_len);
