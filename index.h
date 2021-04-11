@@ -18,7 +18,7 @@ using namespace std::chrono_literals;
 
 namespace search {
 
-std::vector<std::string> get_split_at(size_t parts = 200);
+std::vector<std::string> get_split_at(size_t parts);
 
 enum index_type{words, pairs, trines};
 
@@ -355,11 +355,11 @@ struct indexer {
 
   indexer(std::string p,
       std::vector<std::string> split_at,
-      size_t max_u_mb = 50,
-      size_t max_p_mb = 10)
+      size_t max_u,
+      size_t max_p)
     : base_path(p),
-      max_usage(max_u_mb * 1024 * 1024),
-      file_buf_size(max_p_mb * 1024 * 1024),
+      max_usage(max_u),
+      file_buf_size(max_p),
       word_t(split_at),
       pair_t(split_at),
       trine_t(split_at)

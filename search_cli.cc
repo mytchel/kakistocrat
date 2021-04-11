@@ -45,7 +45,7 @@ int main(int argc, char *argv[]) {
 
 		auto results = searcher.search(line);
 
-    printf("found %i results\n", results.size());
+    printf("found %zu results\n", results.size());
 
     size_t i = 0;
 		for (auto &result: results) {
