@@ -1,22 +1,37 @@
 TODO:
 
 Better memory management to avoid crashes.
+  This is getting there. It is likely to be a slow process.
 
 Save page output to an archive format.
-cleanup scraper.
+
+Save links as urls, not pages ids.
+Do away with page ids all together.
 
 Roadmap:
-
-Support other protocols, gemeni, gopher.
-
-Might help to group by domain rather than host. Possibly with exceptions.
-
-Scores from a domain should count for less.
-    Scores for sitemap pages should be lower
 
 Distributed crawl
 Distributed index
 Concurrent/Distributed search
 
 Scorer that works properly.
-  * Will need to start with a users seed and expand.
+    Will need to start with a users seed and expand.
+
+    Lower scores for longer urls?
+
+    Definatly lower for query params.
+
+    Needs to not rule out results that are not in all postings.
+
+
+
+
+Far Future:
+    Support other protocols, gemeni, gopher.
+
+    Might help to group by domain rather than host. Possibly with exceptions.
+
+    Scores from a domain should count for less.
+        Scores for sitemap pages should be lower
+
+
