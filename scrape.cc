@@ -425,6 +425,7 @@ std::optional<site_op *> site::get_next() {
     if (getting_robots) {
       return {};
     } else {
+      getting_robots = true;
       return new site_op_robots(this, buf, buf_max);
     }
   }

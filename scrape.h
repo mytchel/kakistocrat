@@ -41,6 +41,8 @@ struct site_op {
     : m_site(s), buf(b), buf_max(max)
   {}
 
+  ~site_op() {};
+
   virtual void setup_handle(CURL *) = 0;
 
   virtual void finish(std::string effective_url) = 0;
@@ -55,6 +57,8 @@ struct site_op_page : public site_op {
     : site_op(s, b, max),
       m_page(p)
   {}
+
+  ~site_op_page() {};
 
   void save();
 
@@ -73,6 +77,8 @@ struct site_op_robots : public site_op {
     : site_op(s, b, max)
   {}
 
+  ~site_op_robots() {};
+
   void setup_handle(CURL *);
 
   void finish(std::string effective_url);
@@ -86,6 +92,8 @@ struct site_op_sitemap : public site_op {
     : site_op(s, b, max),
       m_url(u)
   {}
+
+  ~site_op_sitemap() {};
 
   void setup_handle(CURL *);
 

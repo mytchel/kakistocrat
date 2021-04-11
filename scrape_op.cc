@@ -402,7 +402,7 @@ void site_op_robots::setup_handle(CURL *curl_handle)
   curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 2L);
 
   char c_url[util::max_url_len];
-  snprintf(c_url, sizeof(c_url), "https://%s/robots.txt", m_site->host);
+  snprintf(c_url, sizeof(c_url), "https://%s/robots.txt", m_site->host.c_str());
 
   curl_easy_setopt(curl_handle, CURLOPT_URL, c_url);
 }
