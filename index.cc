@@ -63,7 +63,6 @@ void indexer::index_site(crawl::site &site, char *file_buf, size_t file_buf_len)
 	str_init(&tok_buffer_trine, trine_buffer, sizeof(trine_buffer));
 
 	tokenizer::token_type token;
-  tokenizer::tokenizer tok;
 
   spdlog::info("process pages for {}", site.host);
   for (auto &page: site.pages) {
@@ -92,7 +91,7 @@ void indexer::index_site(crawl::site &site, char *file_buf, size_t file_buf_len)
 
     check_usage();
 
-    tok.init(file_buf, len);
+    tokenizer::tokenizer tok(file_buf, len);
 
     bool in_head = false, in_title = false;
 
@@ -472,9 +471,7 @@ static terms split_terms(char *line)
 	str_init(&tok_buffer_trine, trine_buffer, sizeof(trine_buffer));
 
   tokenizer::token_type token;
-  tokenizer::tokenizer tok;
-
-  tok.init(line, strlen(line));
+  tokenizer::tokenizer tok(line, strlen(line));
 
   terms t;
 

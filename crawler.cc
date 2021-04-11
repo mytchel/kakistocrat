@@ -283,7 +283,7 @@ void crawler::crawl()
         std::ref(in_channels[i]),
         std::ref(out_channels[i]),
         std::ref(stat_channels[i]),
-        thread_max_sites, thread_max_con);
+        thread_max_con);
 
     threads.emplace_back(std::move(th));
   }

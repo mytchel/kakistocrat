@@ -3,9 +3,13 @@
 
 #include <set>
 
+#include <curl/curl.h>
+
 #include "channel.h"
 
 namespace scrape {
+
+struct site;
 
 struct page {
   std::string url;
@@ -25,6 +29,68 @@ struct page {
 
 struct sitemap_url {
   std::string url;
+};
+
+struct site_op {
+  site *m_site;
+  uint8_t *buf;
+  size_t buf_max;
+  size_t size{0};
+
+  site_op(site *s, uint8_t *b, size_t max)
+    : m_site(s), buf(b), buf_max(max)
+  {}
+
+  virtual void setup_handle(CURL *) = 0;
+
+  virtual void finish(std::string effective_url) = 0;
+  virtual void finish_bad(CURLcode res, int http_code) = 0;
+};
+
+struct site_op_page : public site_op {
+  page *m_page;
+  bool unchanged{false};
+
+  site_op_page(site *s, uint8_t *b, size_t max, page *p)
+    : site_op(s, b, max),
+      m_page(p)
+  {}
+
+  void save();
+
+  void process_page(std::string page_url,
+      std::list<std::string> &links,
+      std::string &title);
+
+  void setup_handle(CURL *);
+
+  void finish(std::string effective_url);
+  void finish_bad(CURLcode res, int http_code);
+};
+
+struct site_op_robots : public site_op {
+  site_op_robots(site *s, uint8_t *b, size_t max)
+    : site_op(s, b, max)
+  {}
+
+  void setup_handle(CURL *);
+
+  void finish(std::string effective_url);
+  void finish_bad(CURLcode res, int http_code);
+};
+
+struct site_op_sitemap : public site_op {
+  std::string m_url;
+
+  site_op_sitemap(site *s, uint8_t *b, size_t max, std::string u)
+    : site_op(s, b, max),
+      m_url(u)
+  {}
+
+  void setup_handle(CURL *);
+
+  void finish(std::string effective_url);
+  void finish_bad(CURLcode res, int http_code);
 };
 
 struct site {
@@ -51,9 +117,10 @@ struct site {
   size_t max_part_size;
   size_t max_page_size;
 
-  size_t max_active;
-
   size_t fail{0};
+
+  uint8_t *buf;
+  size_t buf_max;
 
   site(std::string h, std::list<page> s,
       std::string n_output,
@@ -63,11 +130,22 @@ struct site {
       size_t n_max_page_size)
     : host(h), url_pending(s),
       output_dir(n_output),
-      max_active(n_max_connections),
       max_pages(n_max_pages),
       max_part_size(n_max_part_size),
       max_page_size(n_max_page_size)
-  {}
+  {
+    buf_max = 10 * 1024 * 1024;
+    buf = (uint8_t *) malloc(buf_max);
+    if (buf == nullptr) {
+      throw std::bad_alloc();
+    }
+  }
+
+  ~site() {
+    if (buf) {
+      free(buf);
+    }
+  }
 
   void init_paths();
 
@@ -81,7 +159,7 @@ struct site {
   bool should_finish();
   bool finished();
 
-  std::optional<page*> get_next();
+  std::optional<site_op*> get_next();
 
   bool disallow_url(std::string u);
 };
@@ -97,7 +175,6 @@ scraper(int i,
     Channel<site*> &in,
     Channel<site*> &out,
     Channel<bool> &stat,
-    size_t max_sites,
     size_t max_con);
 
 }

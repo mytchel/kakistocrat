@@ -420,17 +420,38 @@ bool site::should_finish() {
   return false;
 }
 
-std::optional<page*> site::get_next() {
-  if (url_unchanged.size() + url_scanned.size() + url_scanning.size() >= max_pages) {
+std::optional<site_op *> site::get_next() {
+  if (!got_robots) {
+    if (getting_robots) {
+      return {};
+    } else {
+      return new site_op_robots(this, buf, buf_max);
+    }
+  }
+
+  if (!sitemap_url_getting.empty()) {
+    return {};
+  }
+
+  if (!sitemap_url_pending.empty() && sitemap_count < 1 + max_pages / 10) {
+    std::string url = *sitemap_url_pending.begin();
+
+    sitemap_url_pending.erase(url);
+    sitemap_url_getting.insert(url);
+
+    return new site_op_sitemap(this, buf, buf_max, url);
+  }
+
+  if (!url_scanning.empty()) {
     return {};
 
-  } else if (url_scanning.size() >= max_active) {
-    return {};
-
-  } else if (should_finish()) {
+  } else if (url_unchanged.size() + url_scanned.size() + url_scanning.size() >= max_pages) {
     return {};
 
   } else if (url_pending.empty()) {
+    return {};
+
+  } else if (should_finish()) {
     return {};
   }
 
@@ -439,10 +460,14 @@ std::optional<page*> site::get_next() {
   url_scanning.splice(url_scanning.end(),
     url_pending, url_pending.begin());
 
-  return &url_scanning.back();
+  return new site_op_page(this, buf, buf_max, &url_scanning.back());
 }
 
 bool site::finished() {
+  if (!got_robots) {
+    return false;
+  }
+
   if (!url_scanning.empty()) {
     return false;
   }

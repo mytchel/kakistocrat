@@ -35,6 +35,7 @@ add_executable(crawl crawl_main.cc
     crawler.cc
     crawl.cc
     scraper.cc
+    scrape_op.cc
     scrape.cc
     util.cc
     tokenizer.cc
