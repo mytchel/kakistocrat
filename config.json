@@ -16,7 +16,7 @@
     "index_parts": 4,
     "indexer": {
         "n_threads": 3,
-        "thread_max_mem_mb": 500,
+        "thread_max_mem_mb": 200,
         "max_index_part_size_mb": 10,
         "parts_path": "out/index_parts/",
         "meta_path": "out/index_parts.json"
@@ -24,7 +24,7 @@
     "merger": {
         "n_threads": 3,
         "max_index_part_size_mb": 200,
-        "parts_path": "out/index_mergeed/",
+        "parts_path": "out/index_merged/",
         "meta_path": "out/index.json"
     },
     "scores_path": "out/scores.json"
