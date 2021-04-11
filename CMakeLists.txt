@@ -55,6 +55,9 @@ add_executable(scorer score_main.cc
     util.cc
     config.cc)
 
+target_include_directories(scorer PUBLIC ${CURL_INCLUDE_DIRS})
+
+target_link_libraries(scorer ${CURL_LIBRARIES})
 target_link_libraries(scorer nlohmann_json::nlohmann_json)
 target_link_libraries(scorer spdlog::spdlog)
 
@@ -63,13 +66,16 @@ add_executable(indexer indexer.cc
     tokenizer.cc
     util.cc
     str.c
-	hash.cc
-	posting.cc
-	vbyte.cc
+    hash.cc
+    posting.cc
+    vbyte.cc
     index_part.cc
     index.cc
     config.cc)
 
+target_include_directories(indexer PUBLIC ${CURL_INCLUDE_DIRS})
+
+target_link_libraries(indexer ${CURL_LIBRARIES})
 target_link_libraries(indexer nlohmann_json::nlohmann_json)
 target_link_libraries(indexer Threads::Threads)
 target_link_libraries(indexer spdlog::spdlog)
@@ -80,13 +86,16 @@ add_executable(merger merger.cc
     tokenizer.cc
     util.cc
     str.c
-	hash.cc
-	posting.cc
-	vbyte.cc
+    hash.cc
+	  posting.cc
+	  vbyte.cc
     index_part.cc
     index.cc
     config.cc)
 
+target_include_directories(merger PUBLIC ${CURL_INCLUDE_DIRS})
+
+target_link_libraries(merger ${CURL_LIBRARIES})
 target_link_libraries(merger nlohmann_json::nlohmann_json)
 target_link_libraries(merger Threads::Threads)
 target_link_libraries(merger spdlog::spdlog)
@@ -99,15 +108,16 @@ add_executable(search_cli search_cli.cc
     tokenizer.cc
     util.cc
     str.c
-	hash.cc
-	posting.cc
-	vbyte.cc
+	  hash.cc
+	  posting.cc
+	  vbyte.cc
     index_part.cc
     index.cc
     config.cc)
 
 target_include_directories(search_cli PUBLIC ${CURL_INCLUDE_DIRS})
 
+target_link_libraries(search_cli ${CURL_LIBRARIES})
 target_link_libraries(search_cli nlohmann_json::nlohmann_json)
 target_link_libraries(search_cli spdlog::spdlog)
 target_link_libraries(search_cli foonathan_memory)
@@ -129,7 +139,9 @@ add_executable(search_server search_server.cc
 target_include_directories(search_server PUBLIC ${Boost_INCLUDE_DIR})
 target_include_directories(search_server PUBLIC ${OPENSSL_INCLUDE_DIR})
 target_include_directories(search_server PUBLIC x_crow/include)
+target_include_directories(search_server PUBLIC ${CURL_INCLUDE_DIRS})
 
+target_link_libraries(search_server ${CURL_LIBRARIES})
 target_link_libraries(search_server nlohmann_json::nlohmann_json)
 target_link_libraries(search_server ${Boost_LIBRARIES})
 target_link_libraries(search_server z)

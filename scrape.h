@@ -41,7 +41,7 @@ struct site_op {
     : m_site(s), buf(b), buf_max(max)
   {}
 
-  ~site_op() {};
+  virtual ~site_op() {};
 
   virtual void setup_handle(CURL *) = 0;
 
