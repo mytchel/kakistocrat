@@ -49,9 +49,9 @@ void merge(
     throw std::bad_alloc();
   }
 
-  search::index_part out_word(search::words, w_p, start, end);
-  search::index_part out_pair(search::pairs, p_p, start, end);
-  search::index_part out_trine(search::trines, t_p, start, end);
+  search::index_part out_word(w_p, start, end);
+  search::index_part out_pair(p_p, start, end);
+  search::index_part out_trine(t_p, start, end);
 
   using namespace std::chrono_literals;
 
@@ -72,7 +72,7 @@ void merge(
     for (auto &p: index.word_parts) {
       if ((!end || p.start < *end) && (!p.end || start < *p.end)) {
         auto tstart = std::chrono::system_clock::now();
-        search::index_part in(search::words, p.path, p.start, p.end);
+        search::index_part in(p.path, p.start, p.end);
         in.load();
         auto tmid = std::chrono::system_clock::now();
 
@@ -87,7 +87,7 @@ void merge(
     for (auto &p: index.pair_parts) {
       if ((!end || p.start < *end) && (!p.end || start < *p.end)) {
         auto tstart = std::chrono::system_clock::now();
-        search::index_part in(search::pairs, p.path, p.start, p.end);
+        search::index_part in(p.path, p.start, p.end);
         in.load();
 
         auto tmid = std::chrono::system_clock::now();
@@ -102,7 +102,7 @@ void merge(
     for (auto &p: index.trine_parts) {
       if ((!end || p.start < *end) && (!p.end || start < *p.end)) {
         auto tstart = std::chrono::system_clock::now();
-        search::index_part in(search::trines, p.path, p.start, p.end);
+        search::index_part in(p.path, p.start, p.end);
         in.load();
 
         auto tmid = std::chrono::system_clock::now();

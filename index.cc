@@ -449,40 +449,6 @@ std::string indexer::save()
   return meta_path;
 }
 
-static index_part load_part(index_type type, index_part_info &info)
-{
-  index_part part(type, info.path, info.start, info.end);
-
-  part.load();
-
-  return part;
-}
-
-void index::load()
-{
-  std::ifstream file;
-
-  index_info info(path);
-
-  info.load();
-
-  page_lengths = info.page_lengths;
-
-  average_page_length = info.average_page_length;
-
-  for (auto &p: info.word_parts) {
-    word_parts.push_back(load_part(words, p));
-  }
-
-  for (auto &p: info.pair_parts) {
-    pair_parts.push_back(load_part(pairs, p));
-  }
-
-  for (auto &p: info.trine_parts) {
-    trine_parts.push_back(load_part(trines, p));
-  }
-}
-
 struct terms {
   std::list<std::string> words;
   std::list<std::string> pairs;
@@ -614,25 +580,68 @@ rank(
 
 void index::find_part_matches(
     search::index_part &part,
+    std::string &term,
+    std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
+{
+  spdlog::info("find term {} in {}", term, part.path);
+
+  auto pair = part.find(term);
+  if (pair != part.stores[0].end()) {
+    auto pairs = pair->second.decompress();
+    spdlog::info("have pair {} with {} docs", pair->first.str(), pairs.size());
+    auto pairs_ranked = rank(pairs, part.page_ids, info.page_lengths, info.average_page_length);
+
+    spdlog::info("have ranked {} with {} docs", pair->first.str(), pairs_ranked.size());
+    postings.push_back(pairs_ranked);
+	}
+}
+
+static index_part load_part(index_part_info &info)
+{
+  index_part part(info.path, info.start, info.end);
+
+  part.load();
+
+  return part;
+}
+
+void index::find_matches(
+    std::vector<index_part_info> &part_info,
     std::list<std::string> &terms,
     std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
 {
-	for (auto &term: terms) {
-    if ((term < part.start || (part.end && term > *part.end)))
+  terms.sort();
+
+  auto term = terms.begin();
+
+  // This does not support index parts overlapping.
+  // Index parts must be ordered.
+
+  for (auto &part: part_info) {
+    if (term == terms.end()) {
+      break;
+    }
+
+    if (*term < part.start) {
+      term++;
+    }
+
+    if (part.end && *term > *part.end) {
       continue;
+    }
 
-    spdlog::info("find term {} in {}", term, part.path);
+    auto index = load_part(part);
 
-		auto pair = part.find(term);
-    if (pair != part.stores[0].end()) {
-      auto pairs = pair->second.decompress();
-      spdlog::info("have pair {} with {} docs", pair->first.str(), pairs.size());
-      auto pairs_ranked = rank(pairs, part.page_ids, page_lengths, average_page_length);
+    while (term != terms.end()) {
+      if (part.start <= *term && (part.end && *term < *part.end)) {
+        find_part_matches(index, *term, postings);
+      } else {
+        break;
+      }
 
-      spdlog::info("have ranked {} with {} docs", pair->first.str(), pairs_ranked.size());
-      postings.push_back(pairs_ranked);
-		}
-	}
+      term++;
+    }
+  }
 }
 
 std::vector<std::vector<std::pair<uint64_t, double>>> index::find_matches(char *line)
@@ -643,17 +652,9 @@ std::vector<std::vector<std::pair<uint64_t, double>>> index::find_matches(char *
 
   std::vector<std::vector<std::pair<uint64_t, double>>> postings;
 
-  for (auto &p: word_parts) {
-    find_part_matches(p, terms.words, postings);
-  }
-
-  for (auto &p: pair_parts) {
-    find_part_matches(p, terms.pairs, postings);
-  }
-
-  for (auto &p: trine_parts) {
-    find_part_matches(p, terms.trines, postings);
-  }
+  find_matches(info.word_parts, terms.words, postings);
+  find_matches(info.pair_parts, terms.pairs, postings);
+  find_matches(info.trine_parts, terms.trines, postings);
 
   return postings;
 }

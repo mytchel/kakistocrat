@@ -46,7 +46,6 @@ struct index_part {
   fixed_memory_pool pool_store;
   fixed_memory_pool pool_index;
 
-  index_type type;
   std::string path;
 
   std::string start;
@@ -102,7 +101,7 @@ struct index_part {
   }
 
   // For merger
-  index_part(index_type t, std::string p,
+  index_part(std::string p,
       std::string s, std::optional<std::string> e)
     : pool_store(forward_list_node_size<std::pair<key, posting>>::value,
           1024 * 128),
@@ -116,7 +115,7 @@ struct index_part {
 
       post_backing(1024 * 1024),
       key_backing(1024 * 1024),
-      type(t), path(p),
+      path(p),
       start(s), end(e)
   {
     index.reserve(HTCAP);
@@ -128,7 +127,7 @@ struct index_part {
   }
 
   index_part(index_part &&p)
-    : type(p.type), path(p.path),
+    : path(p.path),
       start(p.start), end(p.end),
       pool_store(std::move(p.pool_store)),
       pool_index(std::move(p.pool_index)),
@@ -379,21 +378,20 @@ struct indexer {
 };
 
 struct index {
-  uint32_t average_page_length{0};
+  index_info info;
 
-  std::map<uint64_t, uint32_t> page_lengths;
+  index(std::string p) : info(p) {}
 
-  std::vector<index_part> word_parts;
-  std::vector<index_part> pair_parts;
-  std::vector<index_part> trine_parts;
-
-  std::string path;
-
-  index(std::string p) : path(p) {}
-
-  void load();
+  void load() {
+    info.load();
+  }
 
   void find_part_matches(index_part &p,
+    std::string &term,
+    std::vector<std::vector<std::pair<uint64_t, double>>> &postings);
+
+  void find_matches(
+    std::vector<index_part_info> &part_info,
     std::list<std::string> &terms,
     std::vector<std::vector<std::pair<uint64_t, double>>> &postings);
 

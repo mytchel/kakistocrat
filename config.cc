@@ -94,9 +94,9 @@ config read_config(std::string path) {
   j.at("crawler").at("thread_max_connections").get_to(c.crawler.thread_max_connections);
   j.at("crawler").at("site_max_connections").get_to(c.crawler.site_max_connections);
   j.at("crawler").at("max_site_part_size_mb").get_to(s_mb);
-  c.crawler.max_site_part_size + s_mb * 1024 * 1024;
+  c.crawler.max_site_part_size = s_mb * 1024 * 1024;
   j.at("crawler").at("max_page_size_mb").get_to(s_mb);
-  c.crawler.max_page_size + s_mb * 1024 * 1024;
+  c.crawler.max_page_size = s_mb * 1024 * 1024;
 
   j.at("crawler").at("levels").get_to(c.crawler.levels);
 
