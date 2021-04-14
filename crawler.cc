@@ -52,8 +52,7 @@ static std::string site_path(std::string base_dir, std::string host)
   return fmt::format("{}/{}.json", dir_path, host);
 }
 
-bool crawler::check_blacklist(
-      std::string host)
+bool crawler::check_blacklist(const std::string &host)
 {
   for (auto &b: blacklist) {
     if (host.find(b) != std::string::npos) {
@@ -151,26 +150,26 @@ static void add_link(page *p, page_id id, size_t count)
 
 void crawler::update_site(
     site *isite,
-    std::list<scrape::page> &page_list)
+    std::list<scrape::page *> &page_list)
 {
   spdlog::info("update {} info", isite->host);
 
   for (auto &u: page_list) {
-    auto p = site_find_add_page(isite, u.url, isite->level, u.path);
+    auto p = site_find_add_page(isite, u->url, isite->level, u->path);
 
     p->links.clear();
 
-    p->title = u.title;
+    p->title = u->title;
 
-    p->path = u.path;
-    p->last_scanned = u.last_scanned;
+    p->path = u->path;
+    p->last_scanned = u->last_scanned;
   }
 
   for (auto &u: page_list) {
-    auto p = isite->find_page(u.url);
+    auto p = isite->find_page(u->url);
     if (p == NULL) continue;
 
-    for (auto &l: u.links) {
+    for (auto &l: u->links) {
       auto host = util::get_host(l.first);
       if (host == "") continue;
 
@@ -396,8 +395,6 @@ void crawler::crawl()
     }
 
     if (scrapping_sites.empty() && !have_next_site()) {
-      spdlog::debug("got nothing, search for new");
-
       time_t now = time(NULL);
 
       bool have_something = false;
@@ -413,9 +410,15 @@ void crawler::crawl()
             if (s.level == 0) {
               spdlog::info("give site {} at level 0 more pages", s.host);
               s.max_pages = levels[0].max_pages;
+
+              have_something = true;
             }
           }
         }
+      }
+
+      if (!have_something) {
+        std::this_thread::sleep_for(60s);
       }
     }
 

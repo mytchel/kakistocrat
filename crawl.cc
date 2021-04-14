@@ -193,7 +193,7 @@ void crawler::load()
   spdlog::debug("load {} finished", sites_path);
 }
 
-site * crawler::find_site(std::string host)
+site * crawler::find_site(const std::string &host)
 {
   for (auto &i: sites) {
     if (i.host == host) {
@@ -229,7 +229,7 @@ page* crawler::find_page(uint64_t id)
   return find_page(page_id(id));
 }
 
-page* site::find_page(std::string url)
+page* site::find_page(const std::string &url)
 {
   for (auto &p: pages) {
     if (p.url == url) {
@@ -240,7 +240,7 @@ page* site::find_page(std::string url)
   return NULL;
 }
 
-page* site::find_page_by_path(std::string path)
+page* site::find_page_by_path(const std::string &path)
 {
   for (auto &p: pages) {
     if (p.path == path) {

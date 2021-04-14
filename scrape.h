@@ -2,6 +2,8 @@
 #define SCRAPE_H
 
 #include <set>
+#include <list>
+#include <vector>
 
 #include <curl/curl.h>
 
@@ -18,12 +20,12 @@ struct page {
 
   time_t last_scanned{0};
 
-  std::list<std::pair<std::string, size_t>> links;
+  std::vector<std::pair<std::string, size_t>> links;
 
-  page(std::string u, std::string p) :
+  page(const std::string &u, const std::string &p) :
     url(u), path(p) {}
 
-  page(std::string u, std::string p, time_t t) :
+  page(const std::string &u, const std::string &p, time_t t) :
     url(u), path(p), last_scanned(t) {}
 };
 
@@ -41,7 +43,7 @@ struct site_op {
 
   virtual void setup_handle(CURL *) = 0;
 
-  virtual void finish(std::string effective_url) = 0;
+  virtual void finish(const std::string &effective_url) = 0;
   virtual void finish_bad(CURLcode res, int http_code) = 0;
 };
 
@@ -58,13 +60,13 @@ struct site_op_page : public site_op {
 
   void save();
 
-  void process_page(std::string page_url,
-      std::list<std::string> &links,
+  void process_page(const std::string &page_url,
+      std::vector<std::string> &links,
       std::string &title);
 
   void setup_handle(CURL *);
 
-  void finish(std::string effective_url);
+  void finish(const std::string &effective_url);
   void finish_bad(CURLcode res, int http_code);
 };
 
@@ -77,7 +79,7 @@ struct site_op_robots : public site_op {
 
   void setup_handle(CURL *);
 
-  void finish(std::string effective_url);
+  void finish(const std::string &effective_url);
   void finish_bad(CURLcode res, int http_code);
 };
 
@@ -93,19 +95,21 @@ struct site_op_sitemap : public site_op {
 
   void setup_handle(CURL *);
 
-  void finish(std::string effective_url);
+  void finish(const std::string &effective_url);
   void finish_bad(CURLcode res, int http_code);
 };
 
 struct site {
   std::string host;
 
-  std::list<page> url_pending;
-  std::list<page> url_scanning;
+  std::vector<page> pages;
 
-  std::list<page> url_scanned;
-  std::list<page> url_unchanged;
-  std::list<page> url_bad;
+  std::list<page *> url_pending;
+  std::list<page *> url_scanning;
+
+  std::list<page *> url_scanned;
+  std::list<page *> url_unchanged;
+  std::list<page *> url_bad;
 
   std::set<std::string> disallow_path;
   bool getting_robots{false};
@@ -114,10 +118,10 @@ struct site {
   std::set<std::string> sitemap_url_pending;
   std::set<std::string> sitemap_url_getting;
   std::set<std::string> sitemap_url_got;
-  size_t sitemap_count{0};
 
   std::string output_dir;
   size_t max_pages;
+  size_t max_links;
   size_t max_part_size;
   size_t max_page_size;
 
@@ -127,18 +131,27 @@ struct site {
   std::vector<uint8_t *> using_bufs;
   size_t buf_max;
 
-  site(std::string h, std::list<page> s,
-      std::string n_output,
+  site(const std::string &h,
+      std::list<page> s,
+      const std::string &n_output,
       size_t n_max_connections,
       size_t n_max_pages,
       size_t n_max_part_size,
       size_t n_max_page_size)
-    : host(h), url_pending(s),
-      output_dir(n_output),
+    : host(h), output_dir(n_output),
       max_pages(n_max_pages),
+      max_links(n_max_pages * 5),
       max_part_size(n_max_part_size),
       max_page_size(n_max_page_size)
   {
+    pages.reserve(n_max_pages * 3);
+
+    for (auto &u: s) {
+      pages.emplace_back(u);
+
+      url_pending.push_back(&pages.back());
+    }
+
     buf_max = n_max_page_size;
 
     for (size_t i = 0; i < n_max_connections; i++) {
@@ -194,10 +207,11 @@ struct site {
 
   void init_paths();
 
-  void process_sitemap_entry(std::string url, std::optional<time_t> lastmod);
-  void add_disallow(std::string &path);
+  void add_sitemap(const std::string &url);
+  void process_sitemap_entry(const std::string &url, std::optional<time_t> lastmod);
+  void add_disallow(const std::string &path);
 
-  void finish(page *u, std::list<std::string> &links, std::string &title);
+  void finish(page *u, std::vector<std::string> &links, std::string &title);
   void finish_unchanged(page *u);
   void finish_bad(page *u, bool actually_bad);
 
@@ -206,14 +220,14 @@ struct site {
 
   std::optional<site_op*> get_next();
 
-  bool disallow_url(std::string u);
+  bool disallow_url(const std::string &u);
 };
 
-bool want_proto(std::string proto);
+bool want_proto(const std::string &proto);
 
-bool bad_suffix(std::string path);
+bool bad_suffix(const std::string &path);
 
-bool bad_prefix(std::string path);
+bool bad_prefix(const std::string &path);
 
 void
 scraper(int i,

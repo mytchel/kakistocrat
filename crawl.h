@@ -57,10 +57,10 @@ struct page {
 
   page() {}
 
-  page(uint32_t i, std::string u, std::string p)
+  page(uint32_t i, const std::string &u, const std::string &p)
     : id(i), url(u), path(p) {}
 
-  page(uint32_t i, std::string u, std::string p,
+  page(uint32_t i, const std::string &u, const std::string &p,
       std::string tt, time_t t)
     : id(i), url(u), path(p),
       title(tt), last_scanned(t) {}
@@ -103,9 +103,10 @@ struct site {
   void load();
   void save();
 
-  site(std::string p) : path(p) {}
+  site(const std::string &p) : path(p) {}
 
-  site(std::string p, uint32_t i, std::string h, size_t l, size_t m, time_t ls)
+  site(const std::string &p, uint32_t i, const std::string &h,
+      size_t l, size_t m, time_t ls)
     : path(p), id(i), host(h),
       level(l), max_pages(m),
       last_scanned(ls)
@@ -114,15 +115,15 @@ struct site {
   }
 
   // For creating new sites
-  site(std::string p, uint32_t i, std::string h, size_t l)
+  site(const std::string &p, uint32_t i, const std::string &h, size_t l)
     : path(p), id(i), host(h),
       level(l),
       loaded(true),
       changed(true) {}
 
   page* find_page(uint32_t id);
-  page* find_page(std::string url);
-  page* find_page_by_path(std::string path);
+  page* find_page(const std::string &url);
+  page* find_page_by_path(const std::string &path);
 };
 
 void to_json(nlohmann::json &j, const site &s);
@@ -166,7 +167,7 @@ struct crawler {
     }
   }
 
-  site* find_site(std::string host);
+  site* find_site(const std::string &host);
   site* find_site(uint32_t id);
 
   page* find_page(uint64_t id);
@@ -178,13 +179,12 @@ struct crawler {
     blacklist = b;
   }
 
-  bool check_blacklist(std::string host);
+  bool check_blacklist(const std::string &host);
 
   bool have_next_site();
   site* get_next_site();
 
-  void update_site(site *isite,
-      std::list<scrape::page> &page_list);
+  void update_site(site *isite, std::list<scrape::page *> &page_list);
 
   void enable_references(
     site *isite,

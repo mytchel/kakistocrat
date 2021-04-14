@@ -31,7 +31,7 @@
 
 namespace scrape {
 
-std::string make_path(const std::string output_dir, const std::string &url) {
+std::string make_path(const std::string &output_dir, const std::string &url) {
   auto host = util::get_host(url);
   if (host.empty()) {
     return "junk_path";
@@ -92,11 +92,11 @@ std::string make_path(const std::string output_dir, const std::string &url) {
   return file_path;
 }
 
-bool want_proto(std::string proto) {
+bool want_proto(const std::string &proto) {
   return proto.empty() || proto == "http" || proto == "https";
 }
 
-bool bad_suffix(std::string path) {
+bool bad_suffix(const std::string &path) {
   return
       util::has_suffix(path, "?share=twitter") ||
       util::has_suffix(path, ".txt") ||
@@ -135,7 +135,7 @@ bool bad_suffix(std::string path) {
       util::has_suffix(path, ".pdf");
 }
 
-bool bad_prefix(std::string path) {
+bool bad_prefix(const std::string &path) {
   return
       util::has_prefix(path, "/api") ||
       util::has_prefix(path, "/signup") ||
@@ -155,11 +155,11 @@ bool bad_prefix(std::string path) {
 }
 
 bool index_check(
-    std::list<page> &url_index,
-    std::string url)
+    std::list<page *> &url_index,
+    const std::string &url)
 {
   for (auto &i: url_index) {
-    if (i.url == url) {
+    if (i->url == url) {
       return true;
     }
   }
@@ -168,11 +168,11 @@ bool index_check(
 }
 
 bool index_check_path(
-    std::list<page> &url_index,
-    std::string path)
+    std::list<page *> &url_index,
+    const std::string &path)
 {
   for (auto &i: url_index) {
-    if (i.path == path) {
+    if (i->path == path) {
       return true;
     }
   }
@@ -180,21 +180,52 @@ bool index_check_path(
   return false;
 }
 
-void site::add_disallow(std::string &path) {
+void site::add_disallow(const std::string &path) {
   disallow_path.emplace(path);
 
   auto u = url_pending.begin();
   while (u != url_pending.end()) {
-    if (util::has_prefix(u->url, path)) {
+    if (util::has_prefix((*u)->url, path)) {
       u = url_pending.erase(u);
     } else {
       u++;
     }
   }
+
+  auto p = pages.begin();
+  while (p != pages.end()) {
+    if (util::has_prefix(p->url, path)) {
+      p = pages.erase(p);
+    } else {
+      p++;
+    }
+  }
+}
+
+void site::add_sitemap(const std::string &url) {
+  auto count = sitemap_url_pending.size() + sitemap_url_getting.size() + sitemap_url_got.size();
+
+  if (count >  max_pages / 10) {
+    return;
+  }
+
+  if (sitemap_url_pending.find(url) != sitemap_url_pending.end()) {
+    return;
+  }
+
+  if (sitemap_url_getting.find(url) != sitemap_url_getting.end()) {
+    return;
+  }
+
+  if (sitemap_url_got.find(url) != sitemap_url_got.end()) {
+    return;
+  }
+
+  sitemap_url_pending.insert(url);
 }
 
 void site::process_sitemap_entry(
-    std::string url, std::optional<time_t> lastmod)
+    const std::string &url, std::optional<time_t> lastmod)
 {
   if (url.empty()) return;
 
@@ -205,9 +236,10 @@ void site::process_sitemap_entry(
 
   auto u = url_pending.begin();
   while (u != url_pending.end()) {
-    if (u->url == url) {
-      if (lastmod && *lastmod < u->last_scanned) {
-        url_unchanged.push_back(*u);
+    auto uu = *u;
+    if (uu->url == url) {
+      if (lastmod && *lastmod < uu->last_scanned) {
+        url_unchanged.push_back(uu);
         url_pending.erase(u);
       }
 
@@ -217,7 +249,7 @@ void site::process_sitemap_entry(
     u++;
   }
 
-  if (url_pending.size() > 4 * max_pages) {
+  if (pages.size() + 1 >= pages.capacity()) {
     return;
   }
 
@@ -239,7 +271,8 @@ void site::process_sitemap_entry(
     return;
   }
 
-  url_pending.emplace_back(url, p);
+  pages.emplace_back(url, p);
+  url_pending.push_back(&pages.back());
 }
 
 bool add_link(page *p, std::string &n) {
@@ -256,7 +289,7 @@ bool add_link(page *p, std::string &n) {
 
 void site::finish(
       page *url,
-      std::list<std::string> &links,
+      std::vector<std::string> &links,
       std::string &title)
 {
   spdlog::debug("{} bad={} uc={} c={} s={} p={} finish {}",
@@ -274,7 +307,7 @@ void site::finish(
 
     bool is_new = add_link(url, u);
 
-    if (is_new && u_host == host) {
+    if (is_new && u_host == host && pages.size() + 1 < pages.capacity()) {
       if (url_pending.size() > max_pages) {
         continue;
       }
@@ -321,7 +354,8 @@ void site::finish(
         continue;
       }
 
-      url_pending.emplace_back(u, p);
+      pages.emplace_back(u, p);
+      url_pending.push_back(&pages.back());
     }
   }
 
@@ -368,7 +402,8 @@ void site::finish(
 
   auto it = url_scanning.begin();
   while (it != url_scanning.end()) {
-    if (it->url == url->url) {
+    auto u = *it;
+    if (u->url == url->url) {
       url_scanned.splice(url_scanned.end(), url_scanning, it);
       break;
     } else {
@@ -380,7 +415,8 @@ void site::finish(
 void site::finish_unchanged(page *url) {
   auto it = url_scanning.begin();
   while (it != url_scanning.end()) {
-    if (it->url == url->url) {
+    auto u = *it;
+    if (u->url == url->url) {
       url_unchanged.splice(url_unchanged.end(), url_scanning, it);
       break;
     } else {
@@ -392,7 +428,8 @@ void site::finish_unchanged(page *url) {
 void site::finish_bad(page *url, bool actually_bad) {
   auto it = url_scanning.begin();
   while (it != url_scanning.end()) {
-    if (it->url == url->url) {
+    auto u = *it;
+    if (u->url == url->url) {
       url_bad.splice(url_bad.end(), url_scanning, it);
       break;
     } else {
@@ -436,26 +473,17 @@ std::optional<site_op *> site::get_next() {
     }
   }
 
-  if (!sitemap_url_getting.empty()) {
-    return {};
-  }
-
   if (!sitemap_url_pending.empty()) {
-    if (sitemap_count < 1 + max_pages / 10) {
-      auto buf = pop_buf();
-      if (buf) {
-        std::string url = *sitemap_url_pending.begin();
+    auto buf = pop_buf();
+    if (buf) {
+      std::string url = *sitemap_url_pending.begin();
 
-        sitemap_url_pending.erase(url);
-        sitemap_url_getting.insert(url);
+      sitemap_url_pending.erase(url);
+      sitemap_url_getting.insert(url);
 
-        return new site_op_sitemap(this, buf, buf_max, url);
-      } else {
-        return {};
-      }
+      return new site_op_sitemap(this, buf, buf_max, url);
     } else {
-      spdlog::debug("{} purge sitemaps that are not going to be processed", host);
-      sitemap_url_pending.clear();
+      return {};
     }
   }
 
@@ -474,12 +502,13 @@ std::optional<site_op *> site::get_next() {
 
   auto buf = pop_buf();
   if (buf) {
-    spdlog::debug("{} get next {}", host, url_pending.front().url);
+    spdlog::debug("{} get next {}", host, url_pending.front()->url);
 
     url_scanning.splice(url_scanning.end(),
       url_pending, url_pending.begin());
 
-    return new site_op_page(this, buf, buf_max, &url_scanning.back());
+    return new site_op_page(this, buf, buf_max, url_scanning.back());
+
   } else {
     spdlog::debug("{} no bufs for request", host);
     return {};
@@ -507,7 +536,7 @@ bool site::finished() {
   return should_finish();
 }
 
-bool site::disallow_url(std::string u) {
+bool site::disallow_url(const std::string &u) {
   auto path = util::get_path(u);
 
   for (auto disallow: disallow_path) {
@@ -521,8 +550,8 @@ bool site::disallow_url(std::string u) {
 
 void site::init_paths() {
   for (auto &i: url_pending) {
-    if (i.path == "") {
-      i.path = make_path(output_dir, i.url);
+    if (i->path == "") {
+      i->path = make_path(output_dir, i->url);
     }
   }
 }

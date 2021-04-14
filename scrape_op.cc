@@ -11,10 +11,6 @@
 
 #include <curl/curl.h>
 
-#include <list>
-#include <vector>
-#include <set>
-#include <map>
 #include <string>
 #include <iostream>
 #include <fstream>
@@ -132,8 +128,8 @@ std::optional<std::string> process_link(
   return proto + "://" + host + path;
 }
 
-void site_op_page::process_page(std::string page_url,
-    std::list<std::string> &links,
+void site_op_page::process_page(const std::string &page_url,
+    std::vector<std::string> &links,
     std::string &title)
 {
   char tok_buffer_store[1024];
@@ -169,6 +165,11 @@ void site_op_page::process_page(std::string page_url,
           auto s = process_link(page_proto, page_host, page_dir, std::string(attr));
           if (s.has_value()) {
             links.push_back(*s);
+
+            if (links.size() == links.capacity()) {
+              spdlog::warn("hit max links for page {}", page_url);
+              return;
+            }
           }
         }
 
@@ -192,7 +193,7 @@ void site_op_page::process_page(std::string page_url,
   } while (token != tokenizer::END);
 }
 
-void site_op_page::finish(std::string effective_url)
+void site_op_page::finish(const std::string &effective_url)
 {
   spdlog::debug("process page {}", effective_url);
 
@@ -204,8 +205,9 @@ void site_op_page::finish(std::string effective_url)
     m_site->finish_bad(m_page, false);
   }
 
-  std::list<std::string> links;
   std::string title = "";
+  std::vector<std::string> links;
+  links.reserve(m_site->max_links);
 
   process_page(effective_url, links, title);
 
@@ -214,7 +216,7 @@ void site_op_page::finish(std::string effective_url)
   save();
 }
 
-void site_op_robots::finish(std::string effective_url) {
+void site_op_robots::finish(const std::string &effective_url) {
   spdlog::debug("process robots {}", effective_url);
 
   m_site->getting_robots = false;
@@ -257,12 +259,12 @@ void site_op_robots::finish(std::string effective_url) {
       }
 
     } else if (key == "Sitemap") {
-      m_site->sitemap_url_pending.insert(value);
+      m_site->add_sitemap(value);
     }
   }
 }
 
-void site_op_sitemap::finish(std::string effective_url) {
+void site_op_sitemap::finish(const std::string &effective_url) {
   spdlog::debug("process sitemap {}", effective_url);
 
   m_site->sitemap_url_got.insert(m_url);
@@ -330,18 +332,7 @@ void site_op_sitemap::finish(std::string effective_url) {
 
           auto s = std::string(str_c(&tok_buffer));
 
-          bool found = false;
-
-          found |= m_site->sitemap_url_getting.find(s)
-            != m_site->sitemap_url_getting.end();
-
-          found |= m_site->sitemap_url_got.find(s)
-            != m_site->sitemap_url_got.end();
-
-          if (!found && m_site->sitemap_count < 5) {
-            m_site->sitemap_count++;
-            m_site->sitemap_url_pending.insert(s);
-          }
+          m_site->add_sitemap(s);
         }
       }
     }

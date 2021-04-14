@@ -24,7 +24,7 @@
 
 namespace util {
 
-bool has_suffix(std::string const &s, std::string const &suffix) {
+bool has_suffix(const std::string &s, const std::string &suffix) {
   if (s.length() >= suffix.length()) {
     return (0 == s.compare(s.length() - suffix.length(), suffix.length(), suffix));
   } else {
@@ -32,7 +32,7 @@ bool has_suffix(std::string const &s, std::string const &suffix) {
   }
 }
 
-bool has_prefix(std::string const &s, std::string const &prefix) {
+bool has_prefix(const std::string &s, const std::string &prefix) {
   if (s.length() >= prefix.length()) {
     return (0 == s.compare(0, prefix.length(), prefix));
   } else {
@@ -268,7 +268,7 @@ bool bare_minimum_valid_url(const std::string &url) {
   return true;
 }
 
-std::vector<std::string> load_list(std::string path) {
+std::vector<std::string> load_list(const std::string &path) {
   std::ifstream file;
   std::vector<std::string> values;
 
