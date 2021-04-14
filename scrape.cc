@@ -198,6 +198,11 @@ void site::process_sitemap_entry(
 {
   if (url.empty()) return;
 
+  // TODO: support compressed?
+  if (!util::has_suffix(url, "xml")) {
+    return;
+  }
+
   auto u = url_pending.begin();
   while (u != url_pending.end()) {
     if (u->url == url) {
@@ -406,14 +411,10 @@ bool site::should_finish() {
   }
 
   if (url_unchanged.size() + url_scanned.size() >= max_pages) {
-    spdlog::info("site {} has reached max pages: {} + {} >= {}",
-          host, url_unchanged.size(), url_scanned.size(), max_pages);
     return true;
   }
 
   if (fail > 10 && fail > url_scanned.size() / 2) {
-    spdlog::warn("site {} has reached max errors: {} > {} / 2",
-        host, fail, url_scanned.size());
     return true;
   }
 
@@ -469,11 +470,11 @@ bool site::finished() {
     return false;
   }
 
-  if (!url_scanning.empty()) {
+  if (!sitemap_url_getting.empty() || !sitemap_url_pending.empty()) {
     return false;
   }
 
-  if (!sitemap_url_getting.empty() || !sitemap_url_pending.empty()) {
+  if (!url_scanning.empty()) {
     return false;
   }
 

@@ -134,6 +134,7 @@ struct crawler {
   std::string sites_path;
 
   size_t n_threads;
+  size_t thread_max_sites;
   size_t thread_max_con;
   size_t site_max_con;
   size_t max_site_part_size;
@@ -152,6 +153,7 @@ struct crawler {
       site_meta_path(c.crawler.site_meta_path),
       sites_path(c.crawler.sites_path),
       levels(c.crawler.levels),
+      thread_max_sites(c.crawler.thread_max_sites),
       thread_max_con(c.crawler.thread_max_connections),
       site_max_con(c.crawler.site_max_connections),
       max_site_part_size(c.crawler.max_site_part_size),

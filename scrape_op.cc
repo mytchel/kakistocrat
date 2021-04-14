@@ -365,6 +365,7 @@ void site_op_page::finish_bad(CURLcode res, int code) {
   if (res == CURLE_OK) {
     // http error
     m_site->finish_bad(m_page, true);
+    return;
   }
 
   if (res != CURLE_OPERATION_TIMEDOUT) {

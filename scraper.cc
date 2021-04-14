@@ -76,6 +76,7 @@ scraper(int tid,
     Channel<site*> &in,
     Channel<site*> &out,
     Channel<bool> &stat,
+    size_t max_sites,
     size_t max_con)
 {
   spdlog::info("thread {} started with {} max concurrent connections", tid, max_con);
@@ -92,7 +93,7 @@ scraper(int tid,
   auto last_accepting = std::chrono::system_clock::now() - 100s;
 
   while (true) {
-    bool accepting = ops.size() < max_op;
+    bool accepting = ops.size() < max_op && sites.size() < max_sites;
 
     if (accepting && last_accepting + 5s < std::chrono::system_clock::now()) {
       spdlog::info("thread {} has {} ops for {} sites",

@@ -60,6 +60,8 @@ void site::load() {
   loaded = true;
 
   std::ifstream file;
+    
+  spdlog::debug("load {}", path);
 
   file.open(path, std::ios::in);
 
@@ -82,9 +84,13 @@ void site::load() {
   }
 
   file.close();
+
+  spdlog::debug("load {} finished", path);
 }
 
 void site::save() {
+  spdlog::debug("save {}", path);
+
   std::ofstream file;
 
   json j = {
@@ -104,10 +110,14 @@ void site::save() {
   file << j;
 
   file.close();
+  
+  spdlog::debug("save {} finished", path);
 }
 
 void crawler::save()
 {
+  spdlog::debug("save {}", sites_path);
+
   std::ofstream file;
 
   std::vector<json> j_sites;
@@ -140,10 +150,14 @@ void crawler::save()
   file << j;
 
   file.close();
+  
+  spdlog::debug("save {} finished", sites_path);
 }
 
 void crawler::load()
 {
+  spdlog::debug("load {}", sites_path);
+
   std::ifstream file;
 
   file.open(sites_path, std::ios::in);
@@ -175,6 +189,8 @@ void crawler::load()
   }
 
   file.close();
+  
+  spdlog::debug("load {} finished", sites_path);
 }
 
 site * crawler::find_site(std::string host)

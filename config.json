@@ -6,17 +6,17 @@
         "site_data_path": "out/site_data",
         "site_meta_path": "out/site_meta",
         "sites_path": "out/sites.json",
-        "thread_max_sites": 5,
-        "thread_max_connections": 100,
+        "thread_max_sites": 10,
+        "thread_max_connections": 50,
         "site_max_connections": 5,
-        "max_site_part_size_mb": 200,
+        "max_site_part_size_mb": 50,
         "max_page_size_mb": 10,
-        "levels": [ { "p": 2, "s": 1 }, { "p": 1, "s": 0 } ]
+        "levels": [ { "p": 5000, "s": 1000 }, { "p": 10, "s": 10 }, { "p": 1, "s": 0 } ]
     },
-    "index_parts": 4,
+    "index_parts": 200,
     "indexer": {
         "n_threads": 3,
-        "thread_max_mem_mb": 200,
+        "thread_max_mem_mb": 400,
         "max_index_part_size_mb": 10,
         "parts_path": "out/index_parts/",
         "meta_path": "out/index_parts.json"

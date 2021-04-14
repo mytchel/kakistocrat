@@ -204,10 +204,12 @@ void crawler::update_site(
   }
 }
 
-void crawler::load_seed(std::vector<std::string> url)
+void crawler::load_seed(std::vector<std::string> urls)
 {
-  for (auto &o: url) {
+  for (auto &o: urls) {
     auto host = util::get_host(o);
+
+    spdlog::info("load seed site {}", o);
 
     if (check_blacklist(host)) {
       continue;
@@ -283,6 +285,7 @@ void crawler::crawl()
         std::ref(in_channels[i]),
         std::ref(out_channels[i]),
         std::ref(stat_channels[i]),
+        thread_max_sites,
         thread_max_con);
 
     threads.emplace_back(std::move(th));
@@ -290,7 +293,7 @@ void crawler::crawl()
 
   std::list<scrape::site> scrapping_sites;
 
-  auto last_save = std::chrono::system_clock::now() - 100s;
+  auto last_save = std::chrono::system_clock::now();
   bool have_changes = true;
 
   while (true) {

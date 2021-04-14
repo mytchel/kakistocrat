@@ -27,18 +27,14 @@ struct page {
     url(u), path(p), last_scanned(t) {}
 };
 
-struct sitemap_url {
-  std::string url;
-};
-
 struct site_op {
   site *m_site;
-  uint8_t *buf;
+  uint8_t *buf{NULL};
   size_t buf_max;
   size_t size{0};
 
-  site_op(site *s, uint8_t *b, size_t max)
-    : m_site(s), buf(b), buf_max(max)
+  site_op(site *s, size_t max)
+    : m_site(s), buf_max(max)
   {}
 
   virtual ~site_op() {};
@@ -183,6 +179,7 @@ scraper(int i,
     Channel<site*> &in,
     Channel<site*> &out,
     Channel<bool> &stat,
+    size_t max_sites,
     size_t max_con);
 
 }
