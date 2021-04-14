@@ -63,6 +63,10 @@ size_t curl_cb_header_write(char *buffer, size_t size, size_t nitems, void *ctx)
   return nitems * size;
 }
 
+site_op::~site_op() {
+  m_site->push_buf(buf);
+}
+
 void site_op_page::save()
 {
   std::ofstream file;

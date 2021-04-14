@@ -426,8 +426,13 @@ std::optional<site_op *> site::get_next() {
     if (getting_robots) {
       return {};
     } else {
-      getting_robots = true;
-      return new site_op_robots(this, buf, buf_max);
+      auto buf = pop_buf();
+      if (buf) {
+        getting_robots = true;
+        return new site_op_robots(this, buf, buf_max);
+      } else {
+        return {};
+      }
     }
   }
 
@@ -436,12 +441,17 @@ std::optional<site_op *> site::get_next() {
   }
 
   if (!sitemap_url_pending.empty() && sitemap_count < 1 + max_pages / 10) {
-    std::string url = *sitemap_url_pending.begin();
+    auto buf = pop_buf();
+    if (buf) {
+      std::string url = *sitemap_url_pending.begin();
 
-    sitemap_url_pending.erase(url);
-    sitemap_url_getting.insert(url);
+      sitemap_url_pending.erase(url);
+      sitemap_url_getting.insert(url);
 
-    return new site_op_sitemap(this, buf, buf_max, url);
+      return new site_op_sitemap(this, buf, buf_max, url);
+    } else {
+      return {};
+    }
   }
 
   if (!url_scanning.empty()) {
@@ -457,12 +467,17 @@ std::optional<site_op *> site::get_next() {
     return {};
   }
 
-  spdlog::debug("{} get next {}", host, url_pending.front().url);
+  auto buf = pop_buf();
+  if (buf) {
+    spdlog::debug("{} get next {}", host, url_pending.front().url);
 
-  url_scanning.splice(url_scanning.end(),
-    url_pending, url_pending.begin());
+    url_scanning.splice(url_scanning.end(),
+      url_pending, url_pending.begin());
 
-  return new site_op_page(this, buf, buf_max, &url_scanning.back());
+    return new site_op_page(this, buf, buf_max, &url_scanning.back());
+  } else {
+    return {};
+  }
 }
 
 bool site::finished() {

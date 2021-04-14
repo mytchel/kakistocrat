@@ -227,6 +227,8 @@ void crawler::load_seed(std::vector<std::string> urls)
 
     site->changed = true;
     site->max_pages = levels[0].max_pages;
+
+    site->flush();
   }
 }
 

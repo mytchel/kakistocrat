@@ -29,15 +29,15 @@ struct page {
 
 struct site_op {
   site *m_site;
-  uint8_t *buf{NULL};
+  uint8_t *buf;
   size_t buf_max;
   size_t size{0};
 
-  site_op(site *s, size_t max)
-    : m_site(s), buf_max(max)
+  site_op(site *s, uint8_t *b, size_t max)
+    : m_site(s), buf(b), buf_max(max)
   {}
 
-  virtual ~site_op() {};
+  virtual ~site_op();
 
   virtual void setup_handle(CURL *) = 0;
 
@@ -123,7 +123,8 @@ struct site {
 
   size_t fail{0};
 
-  uint8_t *buf;
+  std::vector<uint8_t *> free_bufs;
+  std::vector<uint8_t *> using_bufs;
   size_t buf_max;
 
   site(std::string h, std::list<page> s,
@@ -138,17 +139,49 @@ struct site {
       max_part_size(n_max_part_size),
       max_page_size(n_max_page_size)
   {
-    buf_max = 10 * 1024 * 1024;
-    buf = (uint8_t *) malloc(buf_max);
-    if (buf == nullptr) {
-      throw std::bad_alloc();
+    buf_max = 1 * 1024 * 1024;
+
+    for (size_t i = 0; i < n_max_connections; i++) {
+      uint8_t *buf = (uint8_t *) malloc(buf_max);
+      if (buf == nullptr) {
+        throw std::bad_alloc();
+      }
+
+      free_bufs.push_back(buf);
     }
   }
 
   ~site() {
-    if (buf) {
-      free(buf);
+    for (auto b: free_bufs) {
+      free(b);
     }
+
+    for (auto b: using_bufs) {
+      free(b);
+    }
+  }
+
+  uint8_t *pop_buf() {
+    if (free_bufs.empty()) {
+      return nullptr;
+    }
+
+    uint8_t *b = free_bufs.back();
+    using_bufs.push_back(b);
+
+    return b;
+  }
+
+  void push_buf(uint8_t *b) {
+    auto it = using_bufs.begin();
+    while (it != using_bufs.end()) {
+      if (*it == b) {
+        using_bufs.erase(it);
+        break;
+      }
+    }
+
+    free_bufs.push_back(b);
   }
 
   void init_paths();

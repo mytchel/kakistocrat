@@ -6,7 +6,7 @@
         "site_data_path": "out/site_data",
         "site_meta_path": "out/site_meta",
         "sites_path": "out/sites.json",
-        "thread_max_sites": 10,
+        "thread_max_sites": 5,
         "thread_max_connections": 50,
         "site_max_connections": 5,
         "max_site_part_size_mb": 50,
