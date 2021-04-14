@@ -93,7 +93,9 @@ scraper(int tid,
   auto last_accepting = std::chrono::system_clock::now() - 100s;
 
   while (true) {
-    bool accepting = ops.size() < max_op && sites.size() < max_sites;
+    spdlog::debug("scrape loop");
+
+    bool accepting = ops.size() * 5 < max_op && sites.size() < max_sites;
 
     if (accepting && last_accepting + 5s < std::chrono::system_clock::now()) {
       spdlog::info("thread {} has {} ops for {} sites",
@@ -103,28 +105,35 @@ scraper(int tid,
       last_accepting = std::chrono::system_clock::now();
     }
 
-    bool adding = true;
-    while (ops.size() < max_op && adding) {
-      adding = false;
-      auto s = sites.begin();
-      while (s != sites.end()) {
-        if ((*s)->finished()) {
-          *s >> out;
-          s = sites.erase(s);
-          continue;
+    spdlog::debug("check sites");
 
-        } else {
-          auto op = (*s)->get_next();
-          if (op) {
-            ops.emplace_back(*op);
+    auto s = sites.begin();
+    while (s != sites.end() && ops.size() < max_op) {
+      spdlog::debug("site check {}", (*s)->host);
 
-            curl_multi_add_handle(multi_handle, make_handle(ops.back()));
-            adding = true;
-          }
+      if ((*s)->finished()) {
+        spdlog::debug("site finished");
+
+        *s >> out;
+        s = sites.erase(s);
+
+        continue;
+      }
+
+      spdlog::debug("site get next {}", (*s)->host);
+      while (ops.size() < max_op) {
+        auto op = (*s)->get_next();
+        if (!op) {
+          break;
         }
 
-        s++;
+        spdlog::debug("site got next {}", (*s)->host);
+        ops.emplace_back(*op);
+
+        curl_multi_add_handle(multi_handle, make_handle(ops.back()));
       }
+
+      s++;
     }
 
     if (!in.empty()) {
@@ -142,8 +151,18 @@ scraper(int tid,
     }
 
     if (sites.empty()) {
+      spdlog::debug("scraper sleep");
       std::this_thread::sleep_for(100ms);
+      continue;
     }
+
+    if (ops.empty()) {
+      spdlog::debug("scraper sleep why no ops?");
+      std::this_thread::sleep_for(100ms);
+      continue;
+    }
+
+    spdlog::debug("scraper curl wait");
 
     curl_multi_wait(multi_handle, NULL, 0, 1000, NULL);
     int still_running = 0;
@@ -153,6 +172,8 @@ scraper(int tid,
     CURLMsg *m = NULL;
     while ((m = curl_multi_info_read(multi_handle, &msgs_left))) {
       if (m->msg == CURLMSG_DONE) {
+        spdlog::debug("scraper finished op");
+
         CURL *handle = m->easy_handle;
         site_op *op;
         char *url;
@@ -175,6 +196,7 @@ scraper(int tid,
         }
 
         ops.remove(op);
+        spdlog::debug("scraper delete op");
         delete op;
 
         curl_multi_remove_handle(multi_handle, handle);

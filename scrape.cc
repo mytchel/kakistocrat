@@ -440,30 +440,35 @@ std::optional<site_op *> site::get_next() {
     return {};
   }
 
-  if (!sitemap_url_pending.empty() && sitemap_count < 1 + max_pages / 10) {
-    auto buf = pop_buf();
-    if (buf) {
-      std::string url = *sitemap_url_pending.begin();
+  if (!sitemap_url_pending.empty()) {
+    if (sitemap_count < 1 + max_pages / 10) {
+      auto buf = pop_buf();
+      if (buf) {
+        std::string url = *sitemap_url_pending.begin();
 
-      sitemap_url_pending.erase(url);
-      sitemap_url_getting.insert(url);
+        sitemap_url_pending.erase(url);
+        sitemap_url_getting.insert(url);
 
-      return new site_op_sitemap(this, buf, buf_max, url);
+        return new site_op_sitemap(this, buf, buf_max, url);
+      } else {
+        return {};
+      }
     } else {
-      return {};
+      spdlog::debug("{} purge sitemaps that are not going to be processed", host);
+      sitemap_url_pending.clear();
     }
   }
 
-  if (!url_scanning.empty()) {
-    return {};
-
-  } else if (url_unchanged.size() + url_scanned.size() + url_scanning.size() >= max_pages) {
+  if (url_unchanged.size() + url_scanned.size() + url_scanning.size() >= max_pages) {
+    spdlog::debug("{} over max", host);
     return {};
 
   } else if (url_pending.empty()) {
+    spdlog::debug("{} no pending", host);
     return {};
 
   } else if (should_finish()) {
+    spdlog::debug("{} should finish", host);
     return {};
   }
 
@@ -476,20 +481,26 @@ std::optional<site_op *> site::get_next() {
 
     return new site_op_page(this, buf, buf_max, &url_scanning.back());
   } else {
+    spdlog::debug("{} no bufs for request", host);
     return {};
   }
 }
 
 bool site::finished() {
+  spdlog::debug("{} check finished", host);
+
   if (!got_robots) {
+    spdlog::debug("{} not finished, no robots", host);
     return false;
   }
 
   if (!sitemap_url_getting.empty() || !sitemap_url_pending.empty()) {
+    spdlog::debug("{} not finished, pending sitemaps", host);
     return false;
   }
 
   if (!url_scanning.empty()) {
+    spdlog::debug("{} has active", host);
     return false;
   }
 

@@ -139,7 +139,7 @@ struct site {
       max_part_size(n_max_part_size),
       max_page_size(n_max_page_size)
   {
-    buf_max = 1 * 1024 * 1024;
+    buf_max = n_max_page_size;
 
     for (size_t i = 0; i < n_max_connections; i++) {
       uint8_t *buf = (uint8_t *) malloc(buf_max);
@@ -155,10 +155,6 @@ struct site {
     for (auto b: free_bufs) {
       free(b);
     }
-
-    for (auto b: using_bufs) {
-      free(b);
-    }
   }
 
   uint8_t *pop_buf() {
@@ -167,12 +163,24 @@ struct site {
     }
 
     uint8_t *b = free_bufs.back();
+    free_bufs.pop_back();
+
     using_bufs.push_back(b);
+
+    spdlog::debug("give out  {}", (size_t) b);
 
     return b;
   }
 
   void push_buf(uint8_t *b) {
+    spdlog::debug("take back {}", (size_t) b);
+
+    if (b == nullptr) {
+      throw std::invalid_argument("push_buf with null");
+    }
+
+    free_bufs.push_back(b);
+
     auto it = using_bufs.begin();
     while (it != using_bufs.end()) {
       if (*it == b) {
@@ -180,8 +188,6 @@ struct site {
         break;
       }
     }
-
-    free_bufs.push_back(b);
   }
 
   void init_paths();

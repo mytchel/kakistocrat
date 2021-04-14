@@ -252,6 +252,8 @@ site* crawler::get_next_site()
 
   auto start = std::chrono::steady_clock::now();
 
+  spdlog::debug("get next site");
+
   for (auto &site: sites) {
     if (site.scraping) continue;
     if (site.scraped) continue;
@@ -265,8 +267,9 @@ site* crawler::get_next_site()
 
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<double, std::milli> elapsed = end - start;
+  spdlog::debug("get next site took {}ms", elapsed.count());
   if (elapsed.count() > 100) {
-    spdlog::info("get next site took {}ms", elapsed.count());
+    spdlog::warn("get next site took {}ms", elapsed.count());
   }
 
   return s;
@@ -310,6 +313,8 @@ void crawler::crawl()
       // all the work that has been done
       save();
 
+      spdlog::info("periodic save finished");
+
       have_changes = false;
       last_save = std::chrono::system_clock::now();
     }
@@ -320,6 +325,8 @@ void crawler::crawl()
       }
 
       if (thread_stats[i]) {
+        spdlog::info("try give out next site");
+
         auto site = get_next_site();
         if (site != NULL) {
           thread_stats[i] = false;
@@ -394,6 +401,8 @@ void crawler::crawl()
     }
 
     if (scrapping_sites.empty() && !have_next_site()) {
+      spdlog::debug("got nothing, search for new");
+
       time_t now = time(NULL);
 
       bool have_something = false;
@@ -415,6 +424,7 @@ void crawler::crawl()
       }
     }
 
+    spdlog::debug("sleep");
     std::this_thread::sleep_for(100ms);
   }
 }

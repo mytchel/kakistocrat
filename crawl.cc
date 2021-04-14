@@ -60,7 +60,7 @@ void site::load() {
   loaded = true;
 
   std::ifstream file;
-    
+
   spdlog::debug("load {}", path);
 
   file.open(path, std::ios::in);
@@ -110,7 +110,7 @@ void site::save() {
   file << j;
 
   file.close();
-  
+
   spdlog::debug("save {} finished", path);
 }
 
@@ -150,7 +150,7 @@ void crawler::save()
   file << j;
 
   file.close();
-  
+
   spdlog::debug("save {} finished", sites_path);
 }
 
@@ -189,7 +189,7 @@ void crawler::load()
   }
 
   file.close();
-  
+
   spdlog::debug("load {} finished", sites_path);
 }
 

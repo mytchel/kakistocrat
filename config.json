@@ -2,18 +2,18 @@
     "seed": "seed",
     "blacklist": "blacklist",
     "crawler": {
-        "n_threads": 3,
+        "n_threads": 1,
         "site_data_path": "out/site_data",
         "site_meta_path": "out/site_meta",
         "sites_path": "out/sites.json",
-        "thread_max_sites": 5,
+        "thread_max_sites": 1,
         "thread_max_connections": 50,
-        "site_max_connections": 5,
+        "site_max_connections": 1,
         "max_site_part_size_mb": 50,
-        "max_page_size_mb": 10,
-        "levels": [ { "p": 5000, "s": 1000 }, { "p": 10, "s": 10 }, { "p": 1, "s": 0 } ]
+        "max_page_size_mb": 1,
+        "levels": [ { "p": 10, "s": 1 }, { "p": 1, "s": 0 } ]
     },
-    "index_parts": 200,
+    "index_parts": 4,
     "indexer": {
         "n_threads": 3,
         "thread_max_mem_mb": 400,
