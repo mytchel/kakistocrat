@@ -187,6 +187,8 @@ struct site {
         using_bufs.erase(it);
         break;
       }
+
+      it++;
     }
   }
 

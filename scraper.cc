@@ -81,23 +81,23 @@ scraper(int tid,
 {
   spdlog::info("thread {} started with {} max concurrent connections", tid, max_con);
 
+  size_t max_op = max_con / 2;
+
   CURLM *multi_handle = curl_multi_init();
-  curl_multi_setopt(multi_handle, CURLMOPT_MAX_TOTAL_CONNECTIONS, max_con);
+  curl_multi_setopt(multi_handle, CURLMOPT_MAX_TOTAL_CONNECTIONS, max_op);
   curl_multi_setopt(multi_handle, CURLMOPT_PIPELINING, CURLPIPE_MULTIPLEX);
 
   std::list<site*> sites;
   std::list<site_op*> ops;
-
-  size_t max_op = max_con / 2;
 
   auto last_accepting = std::chrono::system_clock::now() - 100s;
 
   while (true) {
     spdlog::debug("scrape loop");
 
-    bool accepting = ops.size() * 5 < max_op && sites.size() < max_sites;
+    bool accepting = ops.size() < max_op && sites.size() < max_sites;
 
-    if (accepting && last_accepting + 5s < std::chrono::system_clock::now()) {
+    if (accepting && last_accepting + 100ms < std::chrono::system_clock::now()) {
       spdlog::info("thread {} has {} ops for {} sites",
                tid, ops.size(), sites.size());
 
@@ -164,43 +164,47 @@ scraper(int tid,
 
     spdlog::debug("scraper curl wait");
 
-    curl_multi_wait(multi_handle, NULL, 0, 1000, NULL);
-    int still_running = 0;
-    curl_multi_perform(multi_handle, &still_running);
+    auto start = std::chrono::steady_clock::now();
 
-    int msgs_left;
-    CURLMsg *m = NULL;
-    while ((m = curl_multi_info_read(multi_handle, &msgs_left))) {
-      if (m->msg == CURLMSG_DONE) {
-        spdlog::debug("scraper finished op");
+    int still_running = 1;
+    while (still_running && std::chrono::steady_clock::now() < start + 1s) {
+      curl_multi_wait(multi_handle, NULL, 0, 1000, NULL);
+      curl_multi_perform(multi_handle, &still_running);
 
-        CURL *handle = m->easy_handle;
-        site_op *op;
-        char *url;
+      int msgs_left;
+      CURLMsg *m = NULL;
+      while ((m = curl_multi_info_read(multi_handle, &msgs_left))) {
+        if (m->msg == CURLMSG_DONE) {
+          spdlog::debug("scraper finished op");
 
-        curl_easy_getinfo(handle, CURLINFO_PRIVATE, &op);
-        curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &url);
+          CURL *handle = m->easy_handle;
+          site_op *op;
+          char *url;
 
-        CURLcode res = m->data.result;
+          curl_easy_getinfo(handle, CURLINFO_PRIVATE, &op);
+          curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &url);
 
-        if (res == CURLE_OK) {
-          long res_status;
-          curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &res_status);
-          if (res_status == 200) {
-            op->finish(std::string(url));
+          CURLcode res = m->data.result;
+
+          if (res == CURLE_OK) {
+            long res_status;
+            curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &res_status);
+            if (res_status == 200) {
+              op->finish(std::string(url));
+            } else {
+              op->finish_bad(CURLE_OK, (int) res_status);
+            }
           } else {
-            op->finish_bad(CURLE_OK, (int) res_status);
+            op->finish_bad(res, 0);
           }
-        } else {
-          op->finish_bad(res, 0);
+
+          ops.remove(op);
+          spdlog::debug("scraper delete op");
+          delete op;
+
+          curl_multi_remove_handle(multi_handle, handle);
+          curl_easy_cleanup(handle);
         }
-
-        ops.remove(op);
-        spdlog::debug("scraper delete op");
-        delete op;
-
-        curl_multi_remove_handle(multi_handle, handle);
-        curl_easy_cleanup(handle);
       }
     }
   }
