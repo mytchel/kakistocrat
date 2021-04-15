@@ -246,5 +246,16 @@ page* scores::find_page(uint64_t id)
   }
 }
 
+page* scores::find_page(const std::string &url)
+{
+  for (auto &p: pages) {
+    if (p.second.url == url) {
+      return &p.second;
+    }
+  }
+
+  return NULL;
+}
+
 }
 
