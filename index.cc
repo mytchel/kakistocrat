@@ -19,7 +19,6 @@
 
 #include "util.h"
 #include "posting.h"
-#include "hash.h"
 #include "index.h"
 #include "tokenizer.h"
 
@@ -583,7 +582,7 @@ void index::find_part_matches(
   spdlog::info("find term {} in {}", term, part.path);
 
   auto pair = part.find(term);
-  if (pair != part.stores[0].end()) {
+  if (pair != nullptr) {
     auto pairs = pair->second.decompress();
     spdlog::info("have pair {} with {} docs", pair->first.str(), pairs.size());
     auto pairs_ranked = rank(pairs, part.page_ids, info.page_lengths, info.average_page_length);
@@ -593,9 +592,9 @@ void index::find_part_matches(
 	}
 }
 
-static index_part load_part(index_part_info &info)
+static index_part load_part(index_part_info &info, size_t htcap)
 {
-  index_part part(info.path, info.start, info.end);
+  index_part part(info.path, htcap, info.start, info.end);
 
   part.load();
 
@@ -627,7 +626,7 @@ void index::find_matches(
       continue;
     }
 
-    auto index = load_part(part);
+    auto index = load_part(part, htcap);
 
     while (term != terms.end()) {
       if (part.start <= *term && (part.end && *term < *part.end)) {

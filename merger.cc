@@ -33,6 +33,7 @@ using nlohmann::json;
 
 void merge(
     std::list<std::string> part_paths,
+    size_t htcap,
     std::string w_p,
     std::string p_p,
     std::string t_p,
@@ -49,9 +50,9 @@ void merge(
     throw std::bad_alloc();
   }
 
-  search::index_part out_word(w_p, start, end);
-  search::index_part out_pair(p_p, start, end);
-  search::index_part out_trine(t_p, start, end);
+  search::index_part out_word(w_p, htcap, start, end);
+  search::index_part out_pair(p_p, htcap, start, end);
+  search::index_part out_trine(t_p, htcap, start, end);
 
   using namespace std::chrono_literals;
 
@@ -72,7 +73,7 @@ void merge(
     for (auto &p: index.word_parts) {
       if ((!end || p.start < *end) && (!p.end || start < *p.end)) {
         auto tstart = std::chrono::system_clock::now();
-        search::index_part in(p.path, p.start, p.end);
+        search::index_part in(p.path, htcap, p.start, p.end);
         in.load();
         auto tmid = std::chrono::system_clock::now();
 
@@ -87,7 +88,7 @@ void merge(
     for (auto &p: index.pair_parts) {
       if ((!end || p.start < *end) && (!p.end || start < *p.end)) {
         auto tstart = std::chrono::system_clock::now();
-        search::index_part in(p.path, p.start, p.end);
+        search::index_part in(p.path, htcap,  p.start, p.end);
         in.load();
 
         auto tmid = std::chrono::system_clock::now();
@@ -102,7 +103,7 @@ void merge(
     for (auto &p: index.trine_parts) {
       if ((!end || p.start < *end) && (!p.end || start < *p.end)) {
         auto tstart = std::chrono::system_clock::now();
-        search::index_part in(p.path, p.start, p.end);
+        search::index_part in(p.path, htcap,  p.start, p.end);
         in.load();
 
         auto tmid = std::chrono::system_clock::now();
@@ -195,6 +196,7 @@ int main(int argc, char *argv[]) {
     auto t_p = fmt::format("{}/index.trines.{}.dat", c.merger.parts_path, start);
 
     auto th = std::thread(merge, part_paths,
+          c.merger.htcap,
           w_p, p_p, t_p,
           start, end,
           std::ref(done_channel), free_thread);

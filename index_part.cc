@@ -56,7 +56,7 @@ void index_part::load()
 
     stores[0].emplace_front(k, std::move(p));
 
-    update_index(stores[0].begin());
+    update_index(&(*stores[0].begin()));
   }
 }
 
@@ -210,7 +210,7 @@ void index_part::insert(std::string s, uint32_t val) {
 
   size_t key_len = key_size(s);
 
-  uint32_t hash_key = hash(s);
+  uint32_t hash_key = hash(s, htcap);
 
   auto it = index[hash_key].before_begin();
   auto end = index[hash_key].end();
@@ -239,22 +239,21 @@ void index_part::insert(std::string s, uint32_t val) {
   auto store  = get_store(k);
   store->emplace_front(k, posting());
 
-  auto ref = store->begin();
+  auto &ref = store->front();
 
-  ref->second.append(val, 1,
+  ref.second.append(val, 1,
       [this](size_t len) {
         return post_backing.get(len);
       });
 
-  index[hash_key].emplace_after(it, key_len, ref);
+  index[hash_key].emplace_after(it, key_len, &ref);
 }
 
-void index_part::update_index(forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator ref)
+void index_part::update_index(std::pair<key, posting> *ref)
 {
-  uint32_t hash_key = hash(ref->first.c_str(), ref->first.len());
-  size_t key_len = ref->first.len();
+  uint32_t hash_key = hash(ref->first.c_str(), ref->first.len(), htcap);
 
-  size_t l = ref->first.size();
+  size_t s = ref->first.size();
 
   auto it = index[hash_key].before_begin();
   auto end = index[hash_key].end();
@@ -264,14 +263,14 @@ void index_part::update_index(forward_list<std::pair<key, posting>, fixed_memory
 
     if (i == end) {
       break;
-    } else if (i->first >= key_len) {
+    } else if (i->first >= s) {
       break;
     }
 
     it++;
   }
 
-  index[hash_key].emplace_after(it, l, ref);
+  index[hash_key].emplace_after(it, s, ref);
 }
 
 
@@ -279,25 +278,20 @@ std::tuple<
   bool,
 
   forward_list<
-    std::pair<
-      uint8_t,
-      forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator
-    >,
+    std::pair<uint8_t, std::pair<key, posting> *>,
     fixed_memory_pool
   > *,
 
   forward_list<
-    std::pair<uint8_t,
-      forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator
-    >,
+    std::pair<uint8_t, std::pair<key, posting> *>,
     fixed_memory_pool
   >::iterator
 >
 index_part::find(key k)
 {
-  uint32_t hash_key = hash(k.c_str(), k.len());
+  uint32_t hash_key = hash(k.c_str(), k.len(), htcap);
 
-  auto key_len = k.size();
+  auto s = k.size();
 
   auto in = &index[hash_key];
 
@@ -309,11 +303,11 @@ index_part::find(key k)
 
     if (i == end) {
       break;
-    } else if (i->first == key_len) {
+    } else if (i->first == s) {
       if (i->second->first == k) {
         return std::make_tuple(true, in, i);
       }
-    } else if (i->first > key_len) {
+    } else if (i->first > s) {
       break;
     }
 
@@ -323,22 +317,22 @@ index_part::find(key k)
   return std::make_tuple(false, in, it);
 }
 
-forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator index_part::find(std::string s)
+std::pair<key, posting> * index_part::find(std::string ss)
 {
-  uint32_t hash_key = hash(s);
-  size_t l = key_size(s);
+  uint32_t hash_key = hash(ss, htcap);
+  size_t s = key_size(ss);
 
   for (auto &i: index[hash_key]) {
-    if (i.first == l) {
-      if (i.second->first == s) {
+    if (i.first == s) {
+      if (i.second->first == ss) {
         return i.second;
       }
-    } else if (i.first > l) {
+    } else if (i.first > s) {
       break;
     }
   }
 
-  return stores[0].end();
+  return nullptr;
 }
 
 void index_part::merge(index_part &other)
@@ -390,23 +384,23 @@ void index_part::merge(index_part &other)
     } else {
       auto start = std::chrono::system_clock::now();
 
-      size_t c_len = o_it->first.size();
+      size_t c_size = o_it->first.size();
 
-      uint8_t *c_buf = key_backing.get(c_len);
+      uint8_t *c_buf = key_backing.get(c_size);
 
-      memcpy(c_buf, o_it->first.data(), c_len);
+      memcpy(c_buf, o_it->first.data(), c_size);
 
       stores[0].emplace_front(key(c_buf), posting());
-      auto n_it = stores[0].begin();
+      auto &n_it = stores[0].front();
 
-      n_it->second.merge(o_it->second, page_id_offset,
+      n_it.second.merge(o_it->second, page_id_offset,
           [this](size_t s) {
             return post_backing.get(s);
           });
 
       auto in = std::get<1>(f);
       auto it = std::get<2>(f);
-      in->emplace_after(it, c_len, n_it);
+      in->emplace_after(it, c_size, &n_it);
 
       auto end = std::chrono::system_clock::now();
       index_total += end - start;

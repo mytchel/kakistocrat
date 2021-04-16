@@ -18,12 +18,14 @@
         "n_threads": 3,
         "thread_max_mem_mb": 400,
         "max_index_part_size_mb": 10,
+        "htcap": 16,
         "parts_path": "out/index_parts/",
         "meta_path": "out/index_parts.json"
     },
     "merger": {
         "n_threads": 3,
         "max_index_part_size_mb": 200,
+        "htcap": 16,
         "parts_path": "out/index_merged/",
         "meta_path": "out/index.json"
     },

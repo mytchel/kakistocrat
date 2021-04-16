@@ -41,6 +41,8 @@ struct config {
     size_t thread_max_mem;
     size_t max_index_part_size;
 
+    size_t htcap;
+
     std::string meta_path;
     std::string parts_path;
   } indexer;
@@ -48,6 +50,8 @@ struct config {
   struct {
     std::optional<size_t> n_threads;
     size_t max_index_part_size;
+
+    size_t htcap;
 
     std::string meta_path;
     std::string parts_path;

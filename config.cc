@@ -47,10 +47,14 @@ config default_config() {
 
   c.indexer.thread_max_mem = 100 * 1024 * 1024;
   c.indexer.max_index_part_size = 10 * 1024 * 1024;
+  c.indexer.htcap = 1 << 16;
+
   c.indexer.parts_path = "out/index_parts/";
   c.indexer.meta_path = "out/index_parts.json";
 
   c.merger.max_index_part_size = 200 * 1024 * 1024;
+  c.merger.htcap = 1 << 16;
+
   c.merger.parts_path = "out/index_merged/";
   c.merger.meta_path = "out/index.json";
 
@@ -74,6 +78,7 @@ config read_config(std::string path) {
   }
 
   size_t s_mb;
+  size_t s;
 
   json j = json::parse(file);
 
@@ -113,6 +118,9 @@ config read_config(std::string path) {
   j.at("indexer").at("max_index_part_size_mb").get_to(s_mb);
   c.indexer.max_index_part_size = s_mb * 1024 * 1024;
 
+  j.at("indexer").at("htcap").get_to(s);
+  c.indexer.htcap = 1 << s;
+
   j.at("indexer").at("parts_path").get_to(c.indexer.parts_path);
   j.at("indexer").at("meta_path").get_to(c.indexer.meta_path);
 
@@ -124,6 +132,9 @@ config read_config(std::string path) {
 
   j.at("merger").at("max_index_part_size_mb").get_to(s_mb);
   c.merger.max_index_part_size = s_mb * 1024 * 1024;
+
+  j.at("merger").at("htcap").get_to(s);
+  c.merger.htcap = 1 << s;
 
   j.at("merger").at("parts_path").get_to(c.merger.parts_path);
   j.at("merger").at("meta_path").get_to(c.merger.meta_path);

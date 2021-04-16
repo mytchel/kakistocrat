@@ -43,6 +43,8 @@ std::pair<size_t, size_t> save_pages_to_buf(
 
 struct index_part {
 
+  size_t htcap;
+
   fixed_memory_pool pool_store;
   fixed_memory_pool pool_index;
 
@@ -62,10 +64,11 @@ struct index_part {
     forward_list<std::pair<key, posting>, fixed_memory_pool>
     > stores;
 
-  std::vector<forward_list<
-      std::pair<uint8_t, forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator>,
-      fixed_memory_pool
-    >> index;
+  std::vector<
+      forward_list<
+        std::pair<uint8_t, std::pair<key, posting> *>,
+      fixed_memory_pool>
+    > index;
 
   std::vector<uint64_t> page_ids;
 
@@ -74,23 +77,24 @@ struct index_part {
   std::chrono::nanoseconds find_total{0ms};
 
   // For indexer
-  index_part(std::vector<std::string> s_split)
-    : pool_store(forward_list_node_size<std::pair<key, posting>>::value,
+  index_part(std::vector<std::string> s_split, size_t cap)
+    : htcap(cap),
+
+      pool_store(forward_list_node_size<std::pair<key, posting>>::value,
             1024 * 128),
 
-      pool_index(forward_list_node_size<
-          std::pair<
-            uint8_t,
-            forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator
-          >>::value,
+      pool_index(
+          forward_list_node_size<
+            std::pair<uint8_t, std::pair<key, posting> *>
+          >::value,
           1024 * 128),
 
       post_backing(1024 * 1024),
       key_backing(1024 * 1024),
       store_split(s_split)
   {
-    index.reserve(HTCAP);
-    for (size_t i = 0; i < HTCAP; i++) {
+    index.reserve(htcap);
+    for (size_t i = 0; i < htcap; i++) {
       index.emplace_back(pool_index);
     }
 
@@ -101,16 +105,17 @@ struct index_part {
   }
 
   // For merger
-  index_part(std::string p,
+  index_part(std::string p, size_t cap,
       std::string s, std::optional<std::string> e)
-    : pool_store(forward_list_node_size<std::pair<key, posting>>::value,
+    : htcap(cap),
+
+      pool_store(forward_list_node_size<std::pair<key, posting>>::value,
           1024 * 128),
 
-      pool_index(forward_list_node_size<
-          std::pair<
-            uint8_t,
-            forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator
-          >>::value,
+      pool_index(
+          forward_list_node_size<
+            std::pair<uint8_t, std::pair<key, posting> *>
+          >::value,
           1024 * 128),
 
       post_backing(1024 * 1024),
@@ -118,8 +123,8 @@ struct index_part {
       path(p),
       start(s), end(e)
   {
-    index.reserve(HTCAP);
-    for (size_t i = 0; i < HTCAP; i++) {
+    index.reserve(htcap);
+    for (size_t i = 0; i < htcap; i++) {
       index.emplace_back(pool_index);
     }
 
@@ -128,6 +133,7 @@ struct index_part {
 
   index_part(index_part &&p)
     : path(p.path),
+      htcap(p.htcap),
       start(p.start), end(p.end),
       pool_store(std::move(p.pool_store)),
       pool_index(std::move(p.pool_index)),
@@ -220,8 +226,8 @@ struct index_part {
     throw std::invalid_argument("key does not fit into split store");
   }
 
-  void update_index(forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator);
-  forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator find(std::string);
+  void update_index(std::pair<key, posting> *);
+  std::pair<key, posting> * find(std::string);
 
   std::tuple<
     bool,
@@ -229,7 +235,7 @@ struct index_part {
     forward_list<
       std::pair<
         uint8_t,
-        forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator
+        std::pair<key, posting> *
       >,
       fixed_memory_pool
     > *,
@@ -237,7 +243,7 @@ struct index_part {
     forward_list<
       std::pair<
         uint8_t,
-        forward_list<std::pair<key, posting>, fixed_memory_pool>::iterator
+        std::pair<key, posting> *
       >,
       fixed_memory_pool
     >::iterator>
@@ -355,14 +361,15 @@ struct indexer {
 
   indexer(std::string p,
       std::vector<std::string> split_at,
+      size_t htcap,
       size_t max_u,
       size_t max_p)
     : base_path(p),
       max_usage(max_u),
       file_buf_size(max_p),
-      word_t(split_at),
-      pair_t(split_at),
-      trine_t(split_at)
+      word_t(split_at, htcap),
+      pair_t(split_at, htcap),
+      trine_t(split_at, htcap)
   {
     file_buf = (uint8_t *) malloc(file_buf_size);
     if (file_buf == nullptr) {
@@ -379,8 +386,9 @@ struct indexer {
 
 struct index {
   index_info info;
+  size_t htcap;
 
-  index(std::string p) : info(p) {}
+  index(std::string p, size_t cap) : info(p), htcap(cap) {}
 
   void load() {
     info.load();

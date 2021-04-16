@@ -47,6 +47,7 @@ indexer_run(
   search::indexer indexer(
       fmt::format("{}/{}/part", settings.indexer.parts_path, tid),
       search::get_split_at(settings.index_parts),
+      settings.indexer.htcap,
       settings.indexer.thread_max_mem
         - settings.indexer.max_index_part_size
         - settings.crawler.max_page_size,

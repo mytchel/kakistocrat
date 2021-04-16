@@ -22,7 +22,7 @@ struct searcher {
   search::index index;
 
   searcher(config &c)
-    : index(c.merger.meta_path),
+    : index(c.merger.meta_path, c.merger.htcap),
       scores(c.scores_path)
   {}
 
