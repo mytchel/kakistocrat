@@ -220,14 +220,12 @@ void index_part::insert(std::string s, uint32_t val) {
 
     if (i == end) {
       break;
-    } else if (i->first == key_len) {
-      if (i->second->first == s) {
-        return i->second->second.append(val, 1,
-            [this](size_t len) {
-              return post_backing.get(len);
-            });
-      }
-    } else if (i->first > key_len) {
+    } else if ((*i)->first == s) {
+      return (*i)->second.append(val, 1,
+          [this](size_t len) {
+            return post_backing.get(len);
+          });
+    } else if ((*i)->first.size() > key_len) {
       break;
     }
 
@@ -246,7 +244,7 @@ void index_part::insert(std::string s, uint32_t val) {
         return post_backing.get(len);
       });
 
-  index[hash_key].emplace_after(it, key_len, &ref);
+  index[hash_key].emplace_after(it, &ref);
 }
 
 void index_part::update_index(std::pair<key, posting> *ref)
@@ -263,14 +261,14 @@ void index_part::update_index(std::pair<key, posting> *ref)
 
     if (i == end) {
       break;
-    } else if (i->first >= s) {
+    } else if ((*i)->first.size() >= s) {
       break;
     }
 
     it++;
   }
 
-  index[hash_key].emplace_after(it, s, ref);
+  index[hash_key].emplace_after(it, ref);
 }
 
 
@@ -278,12 +276,12 @@ std::tuple<
   bool,
 
   forward_list<
-    std::pair<uint8_t, std::pair<key, posting> *>,
+    std::pair<key, posting> *,
     fixed_memory_pool
   > *,
 
   forward_list<
-    std::pair<uint8_t, std::pair<key, posting> *>,
+    std::pair<key, posting> *,
     fixed_memory_pool
   >::iterator
 >
@@ -303,11 +301,9 @@ index_part::find(key k)
 
     if (i == end) {
       break;
-    } else if (i->first == s) {
-      if (i->second->first == k) {
-        return std::make_tuple(true, in, i);
-      }
-    } else if (i->first > s) {
+    } else if ((*i)->first == k) {
+      return std::make_tuple(true, in, i);
+    } else if ((*i)->first.size() > s) {
       break;
     }
 
@@ -322,12 +318,10 @@ std::pair<key, posting> * index_part::find(std::string ss)
   uint32_t hash_key = hash(ss, htcap);
   size_t s = key_size(ss);
 
-  for (auto &i: index[hash_key]) {
-    if (i.first == s) {
-      if (i.second->first == ss) {
-        return i.second;
-      }
-    } else if (i.first > s) {
+  for (auto i: index[hash_key]) {
+    if (i->first == ss) {
+      return i;
+    } else if (i->first.size() > s) {
       break;
     }
   }
@@ -373,7 +367,7 @@ void index_part::merge(index_part &other)
       auto start = std::chrono::system_clock::now();
 
       auto r = std::get<2>(f);
-      r->second->second.merge(o_it->second, page_id_offset,
+      (*r)->second.merge(o_it->second, page_id_offset,
           [this](size_t s) {
             return post_backing.get(s);
           });
@@ -400,7 +394,7 @@ void index_part::merge(index_part &other)
 
       auto in = std::get<1>(f);
       auto it = std::get<2>(f);
-      in->emplace_after(it, c_size, &n_it);
+      in->emplace_after(it, &n_it);
 
       auto end = std::chrono::system_clock::now();
       index_total += end - start;

@@ -65,9 +65,7 @@ struct index_part {
     > stores;
 
   std::vector<
-      forward_list<
-        std::pair<uint8_t, std::pair<key, posting> *>,
-      fixed_memory_pool>
+      forward_list<std::pair<key, posting> *, fixed_memory_pool>
     > index;
 
   std::vector<uint64_t> page_ids;
@@ -85,7 +83,7 @@ struct index_part {
 
       pool_index(
           forward_list_node_size<
-            std::pair<uint8_t, std::pair<key, posting> *>
+            std::pair<key, posting> *
           >::value,
           1024 * 128),
 
@@ -114,7 +112,7 @@ struct index_part {
 
       pool_index(
           forward_list_node_size<
-            std::pair<uint8_t, std::pair<key, posting> *>
+            std::pair<key, posting> *
           >::value,
           1024 * 128),
 
@@ -233,18 +231,12 @@ struct index_part {
     bool,
 
     forward_list<
-      std::pair<
-        uint8_t,
-        std::pair<key, posting> *
-      >,
+        std::pair<key, posting> *,
       fixed_memory_pool
     > *,
 
     forward_list<
-      std::pair<
-        uint8_t,
-        std::pair<key, posting> *
-      >,
+        std::pair<key, posting> *,
       fixed_memory_pool
     >::iterator>
       find(key);
