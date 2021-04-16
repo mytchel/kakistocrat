@@ -105,37 +105,6 @@ scraper(int tid,
       last_accepting = std::chrono::system_clock::now();
     }
 
-    spdlog::debug("check sites");
-
-    auto s = sites.begin();
-    while (s != sites.end() && ops.size() < max_op) {
-      spdlog::debug("site check {}", (*s)->host);
-
-      if ((*s)->finished()) {
-        spdlog::debug("site finished");
-
-        *s >> out;
-        s = sites.erase(s);
-
-        continue;
-      }
-
-      spdlog::debug("site get next {}", (*s)->host);
-      while (ops.size() < max_op) {
-        auto op = (*s)->get_next();
-        if (!op) {
-          break;
-        }
-
-        spdlog::debug("site got next {}", (*s)->host);
-        ops.emplace_back(*op);
-
-        curl_multi_add_handle(multi_handle, make_handle(ops.back()));
-      }
-
-      s++;
-    }
-
     if (!in.empty()) {
       site *s;
       s << in;
@@ -150,19 +119,35 @@ scraper(int tid,
       sites.push_back(s);
     }
 
-    if (sites.empty()) {
-      spdlog::debug("scraper sleep");
-      std::this_thread::sleep_for(100ms);
-      continue;
+    auto s = sites.begin();
+    while (s != sites.end() && ops.size() < max_op) {
+      if ((*s)->finished()) {
+        spdlog::debug("site finished {}", (*s)->host);
+
+        *s >> out;
+        s = sites.erase(s);
+
+        continue;
+      }
+
+      while (ops.size() < max_op) {
+        auto op = (*s)->get_next();
+        if (!op) {
+          break;
+        }
+
+        ops.emplace_back(*op);
+
+        curl_multi_add_handle(multi_handle, make_handle(ops.back()));
+      }
+
+      s++;
     }
 
     if (ops.empty()) {
-      spdlog::debug("scraper sleep why no ops?");
       std::this_thread::sleep_for(100ms);
       continue;
     }
-
-    spdlog::debug("scraper curl wait");
 
     auto start = std::chrono::steady_clock::now();
 
@@ -175,8 +160,6 @@ scraper(int tid,
       CURLMsg *m = NULL;
       while ((m = curl_multi_info_read(multi_handle, &msgs_left))) {
         if (m->msg == CURLMSG_DONE) {
-          spdlog::debug("scraper finished op");
-
           CURL *handle = m->easy_handle;
           site_op *op;
           char *url;
@@ -199,7 +182,6 @@ scraper(int tid,
           }
 
           ops.remove(op);
-          spdlog::debug("scraper delete op");
           delete op;
 
           curl_multi_remove_handle(multi_handle, handle);

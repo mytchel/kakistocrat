@@ -52,6 +52,27 @@ static std::string site_path(std::string base_dir, std::string host)
   return fmt::format("{}/{}.json", dir_path, host);
 }
 
+
+scrape::site crawler::make_scrape_site(site *s,
+    size_t site_max_con, size_t max_site_part_size, size_t max_page_size)
+{
+  std::list<scrape::page> pages;
+
+  for (auto &p: s->pages) {
+    pages.emplace_back(p.url, p.path, p.last_scanned);
+  }
+
+  scrape::site out(
+              s->host, pages,
+              site_path(site_data_path, s->host),
+              site_max_con,
+              levels[s->level].max_pages,
+              max_site_part_size,
+              max_page_size);
+
+  return std::move(out);
+}
+
 bool crawler::check_blacklist(const std::string &host)
 {
   for (auto &b: blacklist) {
@@ -269,161 +290,6 @@ site* crawler::get_next_site()
   }
 
   return s;
-}
-
-void crawler::crawl()
-{
-  spdlog::info("starting {} threads", n_threads);
-
-  Channel<scrape::site*> in_channels[n_threads];
-  Channel<scrape::site*> out_channels[n_threads];
-  Channel<bool> stat_channels[n_threads];
-  bool thread_stats[n_threads];
-
-  std::vector<std::thread> threads;
-  for (size_t i = 0; i < n_threads; i++) {
-    auto th = std::thread(scrape::scraper, i,
-        std::ref(in_channels[i]),
-        std::ref(out_channels[i]),
-        std::ref(stat_channels[i]),
-        thread_max_sites,
-        thread_max_con);
-
-    threads.emplace_back(std::move(th));
-  }
-
-  std::list<scrape::site> scrapping_sites;
-
-  auto last_save = std::chrono::system_clock::now();
-  bool have_changes = true;
-
-  while (true) {
-    if (have_changes && last_save + 10s < std::chrono::system_clock::now()) {
-      spdlog::info("periodic save");
-
-      for (auto &s: sites) {
-        s.flush();
-      }
-
-      // Save the current index so exiting early doesn't loose
-      // all the work that has been done
-      save();
-
-      spdlog::info("periodic save finished");
-
-      have_changes = false;
-      last_save = std::chrono::system_clock::now();
-    }
-
-    for (size_t i = 0; i < n_threads; i++) {
-      if (!stat_channels[i].empty()) {
-        thread_stats[i] << stat_channels[i];
-      }
-
-      if (thread_stats[i]) {
-        auto site = get_next_site();
-        if (site != NULL) {
-          thread_stats[i] = false;
-
-          spdlog::info("send site {} to be scraped ({} active)",
-              site->host, scrapping_sites.size());
-
-          site->load();
-
-          site->scraping = true;
-
-          std::list<scrape::page> pages;
-
-          for (auto &p: site->pages) {
-            pages.emplace_back(p.url, p.path, p.last_scanned);
-          }
-
-          scrapping_sites.emplace_back(
-              site->host, pages,
-              site_path(site_data_path, site->host),
-              site_max_con,
-              levels[site->level].max_pages,
-              max_site_part_size,
-              max_page_size);
-
-          auto &s = scrapping_sites.back();
-
-          &s >> in_channels[i];
-        }
-      }
-
-      if (!out_channels[i].empty()) {
-        scrape::site *s;
-        s << out_channels[i];
-
-        spdlog::info("site finished {}", s->host);
-
-        auto site = find_site(s->host);
-        if (site == NULL) {
-          spdlog::info("site '{}' not found in map.", s->host);
-          exit(1);
-        }
-
-        site->load();
-
-        site->max_pages = 0;
-        site->scraped = true;
-        site->scraping = false;
-
-        site->last_scanned = time(NULL);
-        site->changed = true;
-
-        update_site(site, s->url_scanned);
-
-        if (site->level + 1 < levels.size()) {
-          auto level = levels[site->level];
-          auto next_level = levels[site->level + 1];
-
-          enable_references(site, level.max_add_sites, next_level.max_pages);
-        }
-
-        spdlog::info("site finished for level {} with {:3} (+ {:3} unchanged) pages : {}",
-            site->level, s->url_scanned.size(), s->url_unchanged.size(),
-            site->host);
-
-        scrapping_sites.remove_if([s](const scrape::site &ss) {
-            return &ss == s;
-            });
-
-        have_changes = true;
-      }
-    }
-
-    if (scrapping_sites.empty() && !have_next_site()) {
-      time_t now = time(NULL);
-
-      bool have_something = false;
-      for (auto &s: sites) {
-        size_t min = (4 * (1 + s.level)) * 60 * 60;
-        if (s.scraped && s.last_scanned + min < now) {
-          int r = rand() % ((24 * (1 + s.level) - 4) * 60 * 60);
-          bool should_scrape = s.last_scanned + min + r < now;
-          if (should_scrape) {
-            s.scraped = false;
-            spdlog::info("transition {} from scraped to ready", s.host);
-
-            if (s.level == 0) {
-              spdlog::info("give site {} at level 0 more pages", s.host);
-              s.max_pages = levels[0].max_pages;
-
-              have_something = true;
-            }
-          }
-        }
-      }
-
-      if (!have_something) {
-        std::this_thread::sleep_for(60s);
-      }
-    }
-
-    std::this_thread::sleep_for(10ms);
-  }
 }
 
 }

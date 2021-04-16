@@ -31,6 +31,34 @@ configure_file(x_seed/blacklist blacklist COPYONLY)
 
 configure_file(config.json config.json COPYONLY)
 
+add_executable(main main.cc
+    scorer.cc
+    merger.cc
+    indexer.cc
+    index_part.cc
+    index.cc
+    hash.cc
+    posting.cc
+    vbyte.cc
+    crawler.cc
+    crawl.cc
+    scraper.cc
+    scrape_op.cc
+    scrape.cc
+    util.cc
+    tokenizer.cc
+    str.c
+    config.cc)
+
+target_include_directories(main PUBLIC ${CURL_INCLUDE_DIRS})
+
+target_link_libraries(main ${CURL_LIBRARIES})
+target_link_libraries(main Threads::Threads)
+target_link_libraries(main nlohmann_json::nlohmann_json)
+target_link_libraries(main spdlog::spdlog)
+target_link_libraries(main foonathan_memory)
+
+
 add_executable(crawl crawl_main.cc
     crawler.cc
     crawl.cc
@@ -61,7 +89,8 @@ target_link_libraries(scorer ${CURL_LIBRARIES})
 target_link_libraries(scorer nlohmann_json::nlohmann_json)
 target_link_libraries(scorer spdlog::spdlog)
 
-add_executable(indexer indexer.cc
+add_executable(indexer indexer_main.cc
+    indexer.cc
     crawl.cc
     tokenizer.cc
     util.cc
@@ -81,14 +110,15 @@ target_link_libraries(indexer Threads::Threads)
 target_link_libraries(indexer spdlog::spdlog)
 target_link_libraries(indexer foonathan_memory)
 
-add_executable(merger merger.cc
+add_executable(merger merger_main.cc
+    merger.cc
     crawl.cc
     tokenizer.cc
     util.cc
     str.c
     hash.cc
-	  posting.cc
-	  vbyte.cc
+    posting.cc
+    vbyte.cc
     index_part.cc
     index.cc
     config.cc)
@@ -108,9 +138,9 @@ add_executable(search_cli search_cli.cc
     tokenizer.cc
     util.cc
     str.c
-	  hash.cc
-	  posting.cc
-	  vbyte.cc
+    hash.cc
+    posting.cc
+    vbyte.cc
     index_part.cc
     index.cc
     config.cc)

@@ -399,6 +399,25 @@ struct index {
     find_matches(char *line);
 };
 
+void
+indexer_run(
+    config settings,
+    Channel<std::string*> &in,
+    Channel<bool> &out_ready,
+    Channel<std::string*> &out,
+    int tid);
+
+void merge(
+    config settings,
+    std::list<std::string> part_paths,
+    std::string w_p,
+    std::string p_p,
+    std::string t_p,
+    std::string start,
+    std::optional<std::string> end,
+    Channel<size_t> &done_channel,
+    size_t id);
+
 }
 #endif
 

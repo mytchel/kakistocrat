@@ -31,6 +31,74 @@
 
 namespace scrape {
 
+site::site(const std::string &h,
+    std::list<page> s,
+    const std::string &n_output,
+    size_t n_max_connections,
+    size_t n_max_pages,
+    size_t n_max_part_size,
+    size_t n_max_page_size)
+  : host(h), output_dir(n_output),
+    max_pages(n_max_pages),
+    max_links(n_max_pages * 5),
+    max_part_size(n_max_part_size),
+    max_page_size(n_max_page_size)
+{
+  pages.reserve(n_max_pages * 3);
+
+  for (auto &u: s) {
+    if (pages.size() == pages.capacity()) {
+      spdlog::warn("scrape site given more pages than max pages");
+      break;
+    }
+
+    pages.emplace_back(u);
+    url_pending.push_back(&pages.back());
+  }
+
+  buf_max = n_max_page_size;
+
+  for (size_t i = 0; i < n_max_connections; i++) {
+    uint8_t *buf = (uint8_t *) malloc(buf_max);
+    if (buf == nullptr) {
+      throw std::bad_alloc();
+    }
+
+    free_bufs.push_back(buf);
+  }
+}
+
+site::~site() {
+  for (auto b: free_bufs) {
+    free(b);
+  }
+}
+
+site::site(site &&o)
+  : host(std::move(o.host)),
+    output_dir(std::move(o.output_dir)),
+    max_pages(o.max_pages),
+    max_links(o.max_links),
+    max_part_size(o.max_part_size),
+    max_page_size(o.max_page_size),
+    pages(std::move(o.pages)),
+    url_pending(std::move(o.url_pending)),
+    url_scanning(std::move(o.url_scanning)),
+    url_scanned(std::move(o.url_scanned)),
+    url_unchanged(std::move(o.url_unchanged)),
+    url_bad(std::move(o.url_bad)),
+    disallow_path(std::move(o.disallow_path)),
+    getting_robots(o.getting_robots),
+    got_robots(o.got_robots),
+    sitemap_url_pending(std::move(o.sitemap_url_pending)),
+    sitemap_url_getting(std::move(o.sitemap_url_getting)),
+    sitemap_url_got(std::move(o.sitemap_url_got)),
+    fail(o.fail),
+    buf_max(o.buf_max),
+    free_bufs(std::move(o.free_bufs)),
+    using_bufs(std::move(o.using_bufs))
+{}
+
 std::string make_path(const std::string &output_dir, const std::string &url) {
   auto host = util::get_host(url);
   if (host.empty()) {
@@ -502,6 +570,7 @@ std::optional<site_op *> site::get_next() {
 
   auto buf = pop_buf();
   if (buf) {
+    spdlog::debug("{} get next url", host);
     spdlog::debug("{} get next {}", host, url_pending.front()->url);
 
     url_scanning.splice(url_scanning.end(),

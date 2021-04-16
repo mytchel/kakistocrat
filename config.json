@@ -2,13 +2,13 @@
     "seed": "seed",
     "blacklist": "blacklist",
     "crawler": {
-        "n_threads": 1,
+        "n_threads": 3,
         "site_data_path": "out/site_data",
         "site_meta_path": "out/site_meta",
         "sites_path": "out/sites.json",
-        "thread_max_sites": 1,
+        "thread_max_sites": 5,
         "thread_max_connections": 50,
-        "site_max_connections": 1,
+        "site_max_connections": 5,
         "max_site_part_size_mb": 50,
         "max_page_size_mb": 1,
         "levels": [ { "p": 10, "s": 1 }, { "p": 1, "s": 0 } ]

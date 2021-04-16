@@ -134,13 +134,6 @@ struct crawler {
   std::string site_meta_path;
   std::string sites_path;
 
-  size_t n_threads;
-  size_t thread_max_sites;
-  size_t thread_max_con;
-  size_t site_max_con;
-  size_t max_site_part_size;
-  size_t max_page_size;
-
   std::vector<crawl_level> levels;
 
   std::uint32_t next_id{1};
@@ -153,19 +146,8 @@ struct crawler {
     : site_data_path(c.crawler.site_data_path),
       site_meta_path(c.crawler.site_meta_path),
       sites_path(c.crawler.sites_path),
-      levels(c.crawler.levels),
-      thread_max_sites(c.crawler.thread_max_sites),
-      thread_max_con(c.crawler.thread_max_connections),
-      site_max_con(c.crawler.site_max_connections),
-      max_site_part_size(c.crawler.max_site_part_size),
-      max_page_size(c.crawler.max_page_size)
-  {
-    if (c.crawler.n_threads) {
-      n_threads = *c.crawler.n_threads;
-    } else {
-      n_threads = std::thread::hardware_concurrency();
-    }
-  }
+      levels(c.crawler.levels)
+  {}
 
   site* find_site(const std::string &host);
   site* find_site(uint32_t id);
@@ -191,7 +173,8 @@ struct crawler {
     size_t max_add_sites,
     size_t next_max_page);
 
-  void crawl();
+  scrape::site make_scrape_site(site *s,
+    size_t site_max_con, size_t max_site_part_size, size_t max_page_size);
 
   void save();
   void load();

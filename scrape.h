@@ -137,38 +137,11 @@ struct site {
       size_t n_max_connections,
       size_t n_max_pages,
       size_t n_max_part_size,
-      size_t n_max_page_size)
-    : host(h), output_dir(n_output),
-      max_pages(n_max_pages),
-      max_links(n_max_pages * 5),
-      max_part_size(n_max_part_size),
-      max_page_size(n_max_page_size)
-  {
-    pages.reserve(n_max_pages * 3);
+      size_t n_max_page_size);
 
-    for (auto &u: s) {
-      pages.emplace_back(u);
+  site(site &&o);
 
-      url_pending.push_back(&pages.back());
-    }
-
-    buf_max = n_max_page_size;
-
-    for (size_t i = 0; i < n_max_connections; i++) {
-      uint8_t *buf = (uint8_t *) malloc(buf_max);
-      if (buf == nullptr) {
-        throw std::bad_alloc();
-      }
-
-      free_bufs.push_back(buf);
-    }
-  }
-
-  ~site() {
-    for (auto b: free_bufs) {
-      free(b);
-    }
-  }
+  ~site();
 
   uint8_t *pop_buf() {
     if (free_bufs.empty()) {
@@ -180,14 +153,10 @@ struct site {
 
     using_bufs.push_back(b);
 
-    spdlog::debug("give out  {}", (size_t) b);
-
     return b;
   }
 
   void push_buf(uint8_t *b) {
-    spdlog::debug("take back {}", (size_t) b);
-
     if (b == nullptr) {
       throw std::invalid_argument("push_buf with null");
     }
