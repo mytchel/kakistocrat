@@ -55,11 +55,20 @@ indexer_run(
         - settings.crawler.max_page_size,
       settings.indexer.max_index_part_size);
 
+  std::list<std::string> paths;
+
+  indexer.on_flush = [&out, &paths](const std::string &path) {
+    paths.push_back(path);
+    &paths.back() >> out;
+  };
+
   size_t file_buf_len = settings.crawler.max_page_size;
   char *file_buf = (char *) malloc(file_buf_len);
   if (file_buf == NULL) {
     throw std::bad_alloc();
   }
+
+  size_t site_count = 0;
 
   while (true) {
     true >> out_ready;
@@ -68,9 +77,16 @@ indexer_run(
     path << in;
 
     if (path == NULL) {
-      spdlog::info("{} got fin", tid);
-      break;
+      if (site_count > 0) {
+        spdlog::info("{} got flush", tid);
+        indexer.flush();
+        indexer.reset();
+        site_count = 0;
+      }
+      continue;
     }
+
+    site_count++;
 
     crawl::site site(*path);
 
@@ -84,22 +100,6 @@ indexer_run(
   }
 
   free(file_buf);
-
-  spdlog::info("indexer using {}", indexer.usage());
-
-  indexer.flush();
-
-  for (auto &p: indexer.paths) {
-    &p >> out;
-  }
-
-  spdlog::info("{} send fin", tid);
-  std::string *end = NULL;
-  end >> out;
-
-  spdlog::info("{} got fin ack", tid);
-  std::string *sync;
-  sync << in;
 }
 
 }

@@ -82,6 +82,9 @@ struct site {
   // For crawler to manage
   bool scraped{false};
   bool scraping{false};
+  bool indexing_part{false};
+  bool indexed_part{false};
+  bool indexed{false};
   size_t max_pages{0};
   size_t level;
 
@@ -106,10 +109,13 @@ struct site {
   site(const std::string &p) : path(p) {}
 
   site(const std::string &p, uint32_t i, const std::string &h,
-      size_t l, size_t m, time_t ls)
+      size_t l, size_t m, time_t ls,
+      bool i_p, bool i_i)
     : path(p), id(i), host(h),
       level(l), max_pages(m),
-      last_scanned(ls)
+      last_scanned(ls),
+      indexed_part(i_p),
+      indexed(i_i)
   {
       scraped = last_scanned > 0;
   }

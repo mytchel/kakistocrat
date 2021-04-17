@@ -18,6 +18,7 @@ void from_json(const nlohmann::json &j, crawl_level &l);
 struct config {
   std::string seed_path;
   std::string blacklist_path;
+  size_t frequency_d;
 
   struct {
     std::optional<size_t> n_threads;

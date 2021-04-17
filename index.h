@@ -287,19 +287,25 @@ struct indexer {
 
   std::string base_path;
 
-  size_t flush_count{0};
-  std::list<std::string> paths;
-
   std::vector<index_part_info> save_part(
     index_part &t, std::string base_path);
 
   std::string save();
+
+  size_t flush_count{0};
+  std::function<void(const std::string &)> on_flush;
 
   void clear() {
     pages.clear();
     word_t.clear();
     pair_t.clear();
     trine_t.clear();
+  }
+
+  void reset() {
+    clear();
+
+    flush_count = 0;
   }
 
   void flush() {
@@ -309,11 +315,15 @@ struct indexer {
     pair_t.print_usage(fmt::format("{}-pair", base_path));
     trine_t.print_usage(fmt::format("{}-trine", base_path));
 
-    paths.emplace_back(save());
+    auto path = save();
 
     clear();
 
     flush_count++;
+
+    if (on_flush) {
+      on_flush(path);
+    }
   }
 
   size_t usage() {

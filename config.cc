@@ -31,6 +31,7 @@ config default_config() {
 
   c.seed_path = "seed";
   c.blacklist_path = "blacklist";
+  c.frequency_d = 1;
 
   c.crawler.site_data_path = "out/sites_data/";
   c.crawler.site_meta_path = "out/sites_meta/";
@@ -84,6 +85,7 @@ config read_config(std::string path) {
 
   j.at("seed").get_to(c.seed_path);
   j.at("blacklist").get_to(c.blacklist_path);
+  j.at("frequency_d").get_to(c.frequency_d);
 
   if (!j.at("crawler").at("n_threads").is_null()) {
     size_t t;

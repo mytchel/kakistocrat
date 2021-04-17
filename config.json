@@ -1,6 +1,7 @@
 {
     "seed": "seed",
     "blacklist": "blacklist",
+    "frequency_d": 1,
     "crawler": {
         "n_threads": 3,
         "site_data_path": "out/site_data",

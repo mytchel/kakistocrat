@@ -129,7 +129,9 @@ void crawler::save()
       {"host", s.host},
       {"level", s.level},
       {"max_pages", s.max_pages},
-      {"last_scanned", s.last_scanned}
+      {"last_scanned", s.last_scanned},
+      {"indexed_part", s.indexed_part},
+      {"indexed", s.indexed}
     };
 
     j_sites.push_back(j);
@@ -175,13 +177,22 @@ void crawler::load()
     j.at("next_id").get_to(next_id);
 
     for (auto &s_j: j.at("sites")) {
+      bool i_p = false, i_i = false;
+      try {
+        s_j.at("indexed_part").get_to(i_p);
+        s_j.at("indexed").get_to(i_i);
+      } catch (const std::exception& e) {
+        spdlog::debug("default to not indexed");
+      }
+
       sites.emplace_back(
             s_j.at("path").get<std::string>(),
             s_j.at("id").get<std::uint32_t>(),
             s_j.at("host").get<std::string>(),
             s_j.at("level").get<size_t>(),
             s_j.at("max_pages").get<size_t>(),
-            s_j.at("last_scanned").get<time_t>());
+            s_j.at("last_scanned").get<time_t>(),
+            i_p, i_i);
     }
 
   } catch (const std::exception& e) {

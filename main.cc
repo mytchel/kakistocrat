@@ -32,7 +32,7 @@
 
 using nlohmann::json;
 
-void merge(const config &c) {
+void merge(const config &c, const std::list<std::string> &part_paths) {
   size_t n_threads;
   if (c.indexer.n_threads) {
     n_threads = *c.indexer.n_threads;
@@ -47,8 +47,6 @@ void merge(const config &c) {
   Channel<size_t> done_channel;
 
   auto split_at = search::get_split_at(c.index_parts);
-
-  auto part_paths = search::load_parts(c.indexer.meta_path);
 
   search::index_info info(c.merger.meta_path);
 
@@ -173,6 +171,8 @@ void run(const config &config, crawl::crawler &crawler)
   Channel<bool> index_ready[n_index_threads];
   Channel<std::string*> index_out[n_index_threads];
 
+  std::list<crawl::site*> indexing[n_index_threads];
+
   std::vector<std::thread> index_threads;
 
   for (size_t i = 0; i < n_index_threads; i++) {
@@ -213,6 +213,22 @@ void run(const config &config, crawl::crawler &crawler)
   bool have_changes = true;
 
   crawl::site *next_site = nullptr;
+
+  std::list<std::string> index_parts =
+    search::load_parts(config.indexer.meta_path);
+
+  bool all_indexed = true;
+  for (auto &s: crawler.sites) {
+    if (s.scraped && !s.indexed) {
+      all_indexed = false;
+    }
+  }
+
+  if (all_indexed) {
+    spdlog::info("everything is indexed so clearing partital paths");
+    index_parts.clear();
+  }
+
 
   while (true) {
     if (have_changes && last_save + 10s < std::chrono::system_clock::now()) {
@@ -279,12 +295,12 @@ void run(const config &config, crawl::crawler &crawler)
 
       site->load();
 
+      site->changed = true;
       site->max_pages = 0;
       site->scraped = true;
       site->scraping = false;
 
       site->last_scanned = time(NULL);
-      site->changed = true;
 
       crawler.update_site(site, s->url_scanned);
 
@@ -303,13 +319,18 @@ void run(const config &config, crawl::crawler &crawler)
           return &ss == s;
           });
 
-      have_changes = true;
-
       // Need to write the changes for this site
       // so the indexer has something to load.
       site->flush();
 
+      spdlog::info("transition {} to indexing", site->host);
+      site->indexing_part = true;
+      site->indexed_part = false;
+      site->indexed = false;
+
       index_pending_sites.emplace_back(site);
+
+      have_changes = true;
     }
 
     for (size_t i = 0; !index_pending_sites.empty() && i < n_index_threads; i++) {
@@ -320,23 +341,135 @@ void run(const config &config, crawl::crawler &crawler)
 
       spdlog::info("send to indexer {}", site->host);
 
+      indexing[i].push_back(site);
+
       &site->path >> index_in[i];
 
       bool ready;
       ready << index_ready[i];
     }
 
+    for (size_t i = 0; i < n_index_threads; i++) {
+      if (index_out[i].empty()) continue;
+
+      std::string *p;
+
+      p << index_out[i];
+      if (p != NULL) {
+        spdlog::info("GOT INDEX PART");
+
+        spdlog::info("got {} from {}", *p, i);
+        index_parts.push_back(*p);
+
+        spdlog::info("save index parts");
+        search::save_parts(config.indexer.meta_path, index_parts);
+
+        for (auto s: indexing[i]) {
+          spdlog::info("transition {} to indexed part", s->host);
+          s->indexing_part = false;
+          s->indexed_part = true;
+          s->indexed = false;
+        }
+
+        indexing[i].clear();
+
+        have_changes = true;
+      }
+    }
+
     if (next_site == nullptr
         && scrapping_sites.empty()
         && index_pending_sites.empty())
     {
+      spdlog::info("have nothing, can finish index");
+
+      bool all_indexed = true;
+      for (auto &s: crawler.sites) {
+        if (s.scraped && !s.indexed) {
+          all_indexed = false;
+          break;
+        }
+      }
+
+      if (all_indexed) {
+        spdlog::info("everything is indexed, nothing to do");
+        std::this_thread::sleep_for(5s);
+        continue;
+      }
+
+      bool have_indexing = false;
+      for (auto &s: crawler.sites) {
+        if (!s.scraped) continue;
+
+        if (s.indexing_part) {
+          have_indexing = true;
+
+        } else if (!s.indexing_part && !s.indexed_part) {
+          spdlog::info("put site {} to indexer without rescrapping", s.host);
+
+          s.indexing_part = true;
+          s.indexed_part = false;
+          s.indexed = false;
+          index_pending_sites.push_back(&s);
+        }
+      }
+
+      if (!index_pending_sites.empty()) {
+        spdlog::info("waiting for indexer to finish");
+        continue;
+      }
+
+      if (have_indexing) {
+        spdlog::info("waiting for indexer to finish / flush");
+
+        // flush the indexers
+        std::string *sync = NULL;
+        for (size_t i = 0; i < n_index_threads; i++) {
+          if (!indexing[i].empty()) {
+            spdlog::info("flushing indexer {}", i);
+            sync >> index_in[i];
+          }
+        }
+
+        std::this_thread::sleep_for(100ms);
+        continue;
+      }
+
+      if (index_parts.empty()) {
+        spdlog::info("no parts to merge");
+        std::this_thread::sleep_for(5s);
+        continue;
+      }
+
+      spdlog::info("all indexed, start merging {} parts", index_parts.size());
+
+      merge(config, index_parts);
+      index_parts.clear();
+
+      spdlog::info("transition sites");
+      for (auto &s: crawler.sites) {
+        spdlog::info("check {}  scraped = {} indexed part = {}",
+            s.host, s.scraped, s.indexed_part);
+        if (s.scraped && s.indexed_part) {
+          spdlog::info("transition {} to indexed", s.host);
+          s.indexing_part = false;
+          s.indexed_part = true;
+          s.indexed = true;
+        }
+      }
+
+      crawler.save();
+
+      update_scores(config, crawler);
+
       time_t now = time(NULL);
 
       bool have_something = false;
       for (auto &s: crawler.sites) {
-        size_t min = (4 * (1 + s.level)) * 60 * 60;
+        size_t min = (config.frequency_d * (1 + s.level)) * 24 * 60 * 60;
+        size_t max = min * 5;
         if (s.scraped && s.last_scanned + min < now) {
-          int r = rand() % ((24 * (1 + s.level) - 4) * 60 * 60);
+          int r = rand() % (max - min);
           bool should_scrape = s.last_scanned + min + r < now;
           if (should_scrape) {
             s.scraped = false;
@@ -350,39 +483,6 @@ void run(const config &config, crawl::crawler &crawler)
             }
           }
         }
-      }
-
-      if (!have_something) {
-        //std::this_thread::sleep_for(60s);
-
-        spdlog::info("have nothing, can finish index");
-
-        std::string *sync = NULL;
-        for (size_t i = 0; i < n_index_threads; i++) {
-          sync >> index_in[i];
-        }
-
-        std::list<std::string> index_parts;
-        for (size_t i = 0; i < n_index_threads; i++) {
-          spdlog::info("get out from {}", i);
-          std::string *s;
-          do {
-            s << index_out[i];
-            if (s != NULL) {
-              spdlog::info("got {} from {}", *s, i);
-              index_parts.push_back(*s);
-            }
-          } while (s != NULL);
-
-          sync >> index_in[i];
-        }
-
-        spdlog::info("save index parts");
-        search::save_parts(config.indexer.meta_path, index_parts);
-        spdlog::warn("todo: index threads will now exit");
-
-        merge(config);
-        update_scores(config, crawler);
       }
     }
 
