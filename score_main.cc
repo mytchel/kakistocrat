@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
   crawl::crawler crawler(c);
   crawler.load();
 
-  scorer::scores scores(c.scores_path, crawler);
+  scorer::scores scores(c.scores_path, crawler.sites);
 
   for (int i = 0; i < 10; i++) {
     spdlog::debug("score iteration {}", i);

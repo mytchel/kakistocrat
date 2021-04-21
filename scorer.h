@@ -35,7 +35,7 @@ struct scores {
   page* find_page(const std::string &url);
 
   scores(std::string p) : path(p) {}
-  scores(std::string p, crawl::crawler &crawler);
+  scores(std::string p, std::list<crawl::site> &sites);
   void iteration();
 
   void save();

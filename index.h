@@ -415,7 +415,8 @@ indexer_run(
     Channel<std::string*> &in,
     Channel<bool> &out_ready,
     Channel<std::string*> &out,
-    int tid);
+    int tid,
+    bool exit_on_flush);
 
 void merge(
     config settings,

@@ -64,7 +64,7 @@ int main(int argc, char *argv[]) {
         std::ref(in_channels[i]),
         std::ref(out_ready_channels[i]),
         std::ref(out_channels[i]),
-        i);
+        i, true);
 
     threads.emplace_back(std::move(th));
   }

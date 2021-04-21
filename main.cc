@@ -130,9 +130,9 @@ void merge(const config &c, const std::list<std::string> &part_paths) {
   spdlog::info("done");
 }
 
-void update_scores(const config &c, crawl::crawler &crawler)
+void update_scores(const config &c, std::list<crawl::site> &sites)
 {
-  scorer::scores scores(c.scores_path, crawler);
+  scorer::scores scores(c.scores_path, sites);
 
   for (int i = 0; i < 10; i++) {
     spdlog::debug("score iteration {}", i);
@@ -182,7 +182,7 @@ void run(const config &config, crawl::crawler &crawler)
         std::ref(index_in[i]),
         std::ref(index_ready[i]),
         std::ref(index_out[i]),
-        i);
+        i, false);
 
     index_threads.emplace_back(std::move(th));
   }
@@ -295,13 +295,6 @@ void run(const config &config, crawl::crawler &crawler)
 
       site->load();
 
-      site->changed = true;
-      site->max_pages = 0;
-      site->scraped = true;
-      site->scraping = false;
-
-      site->last_scanned = time(NULL);
-
       crawler.update_site(site, s->url_scanned);
 
       if (site->level + 1 < crawler.levels.size()) {
@@ -319,9 +312,16 @@ void run(const config &config, crawl::crawler &crawler)
           return &ss == s;
           });
 
+      site->max_pages = 0;
+      site->scraped = true;
+      site->scraping = false;
+
+      site->last_scanned = time(NULL);
+
       // Need to write the changes for this site
       // so the indexer has something to load.
-      site->flush();
+      site->save();
+      site->changed = false;
 
       spdlog::info("transition {} to indexing", site->host);
       site->indexing_part = true;
@@ -460,7 +460,7 @@ void run(const config &config, crawl::crawler &crawler)
 
       crawler.save();
 
-      update_scores(config, crawler);
+      update_scores(config, crawler.sites);
 
       time_t now = time(NULL);
 

@@ -39,7 +39,8 @@ indexer_run(
     Channel<std::string*> &in,
     Channel<bool> &out_ready,
     Channel<std::string*> &out,
-    int tid)
+    int tid,
+    bool exit_on_flush)
 {
   spdlog::info("thread {} started", tid);
 
@@ -83,6 +84,11 @@ indexer_run(
         indexer.reset();
         site_count = 0;
       }
+
+      if (exit_on_flush) {
+        break;
+      }
+
       continue;
     }
 
@@ -100,6 +106,14 @@ indexer_run(
   }
 
   free(file_buf);
+
+  spdlog::info("{} send fin", tid);
+  std::string *end = NULL;
+  end >> out;
+
+  spdlog::info("{} got fin ack", tid);
+  std::string *sync;
+  sync << in;
 }
 
 }

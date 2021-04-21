@@ -100,13 +100,13 @@ void scores::iteration()
   }
 }
 
-scores::scores(std::string p, crawl::crawler &crawler)
+scores::scores(std::string p, std::list<crawl::site> &sites)
   : path(p)
 {
   pages.clear();
   size_t n_pages = 0;
 
-  for (auto &s: crawler.sites) {
+  for (auto &s: sites) {
     if (s.last_scanned == 0) {
       continue;
     }
@@ -148,7 +148,7 @@ scores::scores(std::string p, crawl::crawler &crawler)
 
   double score = 1.0 / (double) n_pages;
 
-  for (auto &s: crawler.sites) {
+  for (auto &s: sites) {
     for (auto &p: s.pages) {
       if (p.last_scanned == 0) continue;
 
