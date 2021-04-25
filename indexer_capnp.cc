@@ -176,7 +176,6 @@ int main(int argc, char *argv[]) {
           spdlog::info("indexer registered");
         },
         [] (auto exception) {
-          spdlog::warn("exception registering indexer");
           spdlog::warn("exception registering indexer : {}", std::string(exception.getDescription()));
         });
 

@@ -16,6 +16,7 @@ interface Indexer {
 
 interface Merger {
     merge @0 (start :Text, end :Text,
-              indexPartPaths :List(Text)) -> (outputPath: Text);
+              indexPartPaths :List(Text),
+              wOut :Text, pOut :Text, tOut :Text);
 }
 
