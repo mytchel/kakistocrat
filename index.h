@@ -373,6 +373,8 @@ struct indexer {
       pair_t(split_at, htcap),
       trine_t(split_at, htcap)
   {
+    util::make_path(base_path);
+
     file_buf = (uint8_t *) malloc(file_buf_size);
     if (file_buf == nullptr) {
       throw std::bad_alloc();

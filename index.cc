@@ -414,10 +414,10 @@ std::vector<index_part_info> indexer::save_part(
 
 std::string indexer::save()
 {
-  auto words_path = fmt::format("{}.{}.words", base_path, flush_count);
-  auto pairs_path = fmt::format("{}.{}.pairs", base_path, flush_count);
-  auto trines_path = fmt::format("{}.{}.trines", base_path, flush_count);
-  auto meta_path = fmt::format("{}.{}.meta.json", base_path, flush_count);
+  auto words_path = fmt::format("{}/part.{}.words", base_path, flush_count);
+  auto pairs_path = fmt::format("{}/part.{}.pairs", base_path, flush_count);
+  auto trines_path = fmt::format("{}/part.{}.trines", base_path, flush_count);
+  auto meta_path = fmt::format("{}/part.{}.meta.json", base_path, flush_count);
 
   auto word_parts = save_part(word_t, words_path);
   auto pair_parts = save_part(pair_t, pairs_path);

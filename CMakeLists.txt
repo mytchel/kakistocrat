@@ -20,6 +20,9 @@ find_package(OpenSSL)
 
 find_package(Boost 1.67 COMPONENTS system thread regex REQUIRED)
 
+find_package(CapnProto)
+set(CAPNP_INCLUDE_DIRECTORY /usr/include/) # Fix bug with void linux package.
+
 add_subdirectory(x_nlohmann)
 
 add_subdirectory(x_spdlog)
@@ -179,4 +182,67 @@ target_link_libraries(search_server spdlog::spdlog)
 target_link_libraries(search_server foonathan_memory)
 
 configure_file(templates/search.html templates/search.html COPYONLY)
+
+capnp_generate_cpp(capnp_sources capnp_headers indexer.capnp)
+
+add_executable(main_capnp main_capnp.cc
+    ${capnp_sources}
+    ${capnp_headers}
+    scorer.cc
+    merger.cc
+    indexer.cc
+    index_part.cc
+    index.cc
+    hash.cc
+    posting.cc
+    vbyte.cc
+    crawler.cc
+    crawl.cc
+    scraper.cc
+    scrape_op.cc
+    scrape.cc
+    util.cc
+    tokenizer.cc
+    str.c
+    config.cc)
+
+target_include_directories(main_capnp PUBLIC ${CURL_INCLUDE_DIRS})
+target_include_directories(main_capnp PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+
+target_link_libraries(main_capnp ${CURL_LIBRARIES})
+target_link_libraries(main_capnp Threads::Threads)
+target_link_libraries(main_capnp nlohmann_json::nlohmann_json)
+target_link_libraries(main_capnp spdlog::spdlog)
+target_link_libraries(main_capnp foonathan_memory)
+target_link_libraries(main_capnp CapnProto::capnp-rpc)
+
+add_executable(indexer_capnp indexer_capnp.cc
+    ${capnp_sources}
+    scorer.cc
+    merger.cc
+    indexer.cc
+    index_part.cc
+    index.cc
+    hash.cc
+    posting.cc
+    vbyte.cc
+    crawler.cc
+    crawl.cc
+    scraper.cc
+    scrape_op.cc
+    scrape.cc
+    util.cc
+    tokenizer.cc
+    str.c
+    config.cc)
+
+target_include_directories(indexer_capnp PUBLIC ${CURL_INCLUDE_DIRS})
+target_include_directories(indexer_capnp PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+
+target_link_libraries(indexer_capnp ${CURL_LIBRARIES})
+target_link_libraries(indexer_capnp Threads::Threads)
+target_link_libraries(indexer_capnp nlohmann_json::nlohmann_json)
+target_link_libraries(indexer_capnp spdlog::spdlog)
+target_link_libraries(indexer_capnp foonathan_memory)
+target_link_libraries(indexer_capnp CapnProto::capnp-rpc)
 

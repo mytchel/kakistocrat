@@ -44,11 +44,8 @@ indexer_run(
 {
   spdlog::info("thread {} started", tid);
 
-  util::make_path(fmt::format("{}/{}",
-        settings.indexer.parts_path, tid));
-
   search::indexer indexer(
-      fmt::format("{}/{}/part", settings.indexer.parts_path, tid),
+      fmt::format("{}/{}", settings.indexer.parts_path, tid),
       search::get_split_at(settings.index_parts),
       settings.indexer.htcap,
       settings.indexer.thread_max_mem
