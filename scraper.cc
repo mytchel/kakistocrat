@@ -34,6 +34,35 @@ using namespace std::chrono_literals;
 
 namespace scrape {
 
+size_t curl_cb_header_write(char *buffer, size_t size, size_t nitems, void *ctx) {
+  site_op_page *op = (site_op_page *) ctx;
+
+  buffer[nitems*size] = 0;
+
+  if (strstr(buffer, "content-type:")) {
+    if (strstr(buffer, "text/html") == NULL &&
+        strstr(buffer, "text/plain") == NULL) {
+      return 0;
+    }
+
+  } else if (op->m_page->last_scanned && strstr(buffer, "Last-Modified: ")) {
+    char *s = buffer + strlen("Last-Modified: ");
+
+    if (strlen(s) > 25) {
+      tm tm;
+      strptime(s, "%a, %d %b %Y %H:%M:%S", &tm);
+      time_t time = mktime(&tm);
+
+      if (op->m_page->last_scanned > time) {
+        op->unchanged = true;
+        return 0;
+      }
+    }
+  }
+
+  return nitems * size;
+}
+
 size_t curl_cb_buffer_write(void *contents, size_t sz, size_t nmemb, void *ctx)
 {
   site_op *op = (site_op *) ctx;
@@ -47,6 +76,45 @@ size_t curl_cb_buffer_write(void *contents, size_t sz, size_t nmemb, void *ctx)
   op->size += realsize;
 
   return realsize;
+}
+
+void setup_handle_page(site_op_page *op, CURL *curl_handle)
+{
+  spdlog::info("setup page   {}", op->m_page->url);
+
+  curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, curl_cb_header_write);
+  curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, op);
+
+  curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 5L);
+
+  char url[util::max_url_len];
+  strncpy(url, op->m_page->url.c_str(), sizeof(url));
+
+  curl_easy_setopt(curl_handle, CURLOPT_URL, url);
+}
+
+void setup_handle_robots(site_op_robots *op, CURL *curl_handle)
+{
+  spdlog::info("setup robots {}", op->m_site->host);
+
+  curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 2L);
+
+  char c_url[util::max_url_len];
+  snprintf(c_url, sizeof(c_url), "https://%s/robots.txt", op->m_site->host.c_str());
+
+  curl_easy_setopt(curl_handle, CURLOPT_URL, c_url);
+}
+
+void setup_handle_sitemap(site_op_sitemap *op, CURL *curl_handle)
+{
+  spdlog::info("setup sitemap {}", op->m_url);
+
+  curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 2L);
+
+  char c_url[util::max_url_len];
+  strncpy(c_url, op->m_url.c_str(), sizeof(c_url));
+
+  curl_easy_setopt(curl_handle, CURLOPT_URL, c_url);
 }
 
 CURL *make_handle(site_op *op)
@@ -66,7 +134,18 @@ CURL *make_handle(site_op *op)
 
   curl_easy_setopt(curl_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
 
-  op->setup_handle(curl_handle);
+  if (auto pop = dynamic_cast<site_op_page *>(op)) {
+    setup_handle_page(pop, curl_handle);
+
+  } else if (auto rop = dynamic_cast<site_op_robots *>(op)) {
+    setup_handle_robots(rop, curl_handle);
+
+  } else if (auto sop = dynamic_cast<site_op_sitemap *>(op)) {
+    setup_handle_sitemap(sop, curl_handle);
+
+  } else {
+    throw std::runtime_error("unknown type");
+  }
 
   return curl_handle;
 }
@@ -162,10 +241,12 @@ scraper(int tid,
         if (m->msg == CURLMSG_DONE) {
           CURL *handle = m->easy_handle;
           site_op *op;
-          char *url;
+          char *url_c;
 
           curl_easy_getinfo(handle, CURLINFO_PRIVATE, &op);
-          curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &url);
+          curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &url_c);
+
+          std::string url(url_c);
 
           CURLcode res = m->data.result;
 
@@ -173,12 +254,20 @@ scraper(int tid,
             long res_status;
             curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &res_status);
             if (res_status == 200) {
-              op->finish(std::string(url));
+              op->finish(url);
             } else {
-              op->finish_bad(CURLE_OK, (int) res_status);
+              spdlog::warn("miss http {} : {}", res_status, url);
+              op->finish_bad(true);
             }
           } else {
-            op->finish_bad(res, 0);
+            if (res == CURLE_WRITE_ERROR) {
+              op->finish_bad(false);
+            } else {
+              spdlog::warn("miss curl {} {} : {}", res,
+                  curl_easy_strerror(res), url);
+
+              op->finish_bad(true);
+            }
           }
 
           ops.remove(op);

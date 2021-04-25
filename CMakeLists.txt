@@ -82,19 +82,24 @@ target_link_libraries(crawl spdlog::spdlog)
 
 add_executable(scorer score_main.cc
     scorer.cc
+    crawler.cc
     crawl.cc
+    scrape_op.cc
+    scrape.cc
+    tokenizer.cc
+    str.c
     util.cc
     config.cc)
 
-target_include_directories(scorer PUBLIC ${CURL_INCLUDE_DIRS})
-
-target_link_libraries(scorer ${CURL_LIBRARIES})
 target_link_libraries(scorer nlohmann_json::nlohmann_json)
 target_link_libraries(scorer spdlog::spdlog)
 
 add_executable(indexer indexer_main.cc
     indexer.cc
+    crawler.cc
     crawl.cc
+    scrape_op.cc
+    scrape.cc
     tokenizer.cc
     util.cc
     str.c
@@ -105,9 +110,6 @@ add_executable(indexer indexer_main.cc
     index.cc
     config.cc)
 
-target_include_directories(indexer PUBLIC ${CURL_INCLUDE_DIRS})
-
-target_link_libraries(indexer ${CURL_LIBRARIES})
 target_link_libraries(indexer nlohmann_json::nlohmann_json)
 target_link_libraries(indexer Threads::Threads)
 target_link_libraries(indexer spdlog::spdlog)
@@ -115,7 +117,10 @@ target_link_libraries(indexer foonathan_memory)
 
 add_executable(merger merger_main.cc
     merger.cc
+    crawler.cc
     crawl.cc
+    scrape_op.cc
+    scrape.cc
     tokenizer.cc
     util.cc
     str.c
@@ -126,9 +131,6 @@ add_executable(merger merger_main.cc
     index.cc
     config.cc)
 
-target_include_directories(merger PUBLIC ${CURL_INCLUDE_DIRS})
-
-target_link_libraries(merger ${CURL_LIBRARIES})
 target_link_libraries(merger nlohmann_json::nlohmann_json)
 target_link_libraries(merger Threads::Threads)
 target_link_libraries(merger spdlog::spdlog)
@@ -136,7 +138,10 @@ target_link_libraries(merger foonathan_memory)
 
 add_executable(search_cli search_cli.cc
     search.cc
+    crawler.cc
     crawl.cc
+    scrape_op.cc
+    scrape.cc
     scorer.cc
     tokenizer.cc
     util.cc
@@ -148,16 +153,16 @@ add_executable(search_cli search_cli.cc
     index.cc
     config.cc)
 
-target_include_directories(search_cli PUBLIC ${CURL_INCLUDE_DIRS})
-
-target_link_libraries(search_cli ${CURL_LIBRARIES})
 target_link_libraries(search_cli nlohmann_json::nlohmann_json)
 target_link_libraries(search_cli spdlog::spdlog)
 target_link_libraries(search_cli foonathan_memory)
 
 add_executable(search_server search_server.cc
     search.cc
+    crawler.cc
     crawl.cc
+    scrape_op.cc
+    scrape.cc
     scorer.cc
     tokenizer.cc
     util.cc
@@ -172,9 +177,7 @@ add_executable(search_server search_server.cc
 target_include_directories(search_server PUBLIC ${Boost_INCLUDE_DIR})
 target_include_directories(search_server PUBLIC ${OPENSSL_INCLUDE_DIR})
 target_include_directories(search_server PUBLIC x_crow/include)
-target_include_directories(search_server PUBLIC ${CURL_INCLUDE_DIRS})
 
-target_link_libraries(search_server ${CURL_LIBRARIES})
 target_link_libraries(search_server nlohmann_json::nlohmann_json)
 target_link_libraries(search_server ${Boost_LIBRARIES})
 target_link_libraries(search_server z)
@@ -198,7 +201,6 @@ add_executable(main_capnp main_capnp.cc
     vbyte.cc
     crawler.cc
     crawl.cc
-    scraper.cc
     scrape_op.cc
     scrape.cc
     util.cc
@@ -206,10 +208,8 @@ add_executable(main_capnp main_capnp.cc
     str.c
     config.cc)
 
-target_include_directories(main_capnp PUBLIC ${CURL_INCLUDE_DIRS})
 target_include_directories(main_capnp PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
-target_link_libraries(main_capnp ${CURL_LIBRARIES})
 target_link_libraries(main_capnp Threads::Threads)
 target_link_libraries(main_capnp nlohmann_json::nlohmann_json)
 target_link_libraries(main_capnp spdlog::spdlog)
@@ -219,7 +219,6 @@ target_link_libraries(main_capnp CapnProto::capnp-rpc)
 add_executable(crawler_capnp crawler_capnp.cc
     ${capnp_sources}
     scorer.cc
-    merger.cc
     indexer.cc
     index_part.cc
     index.cc
@@ -249,7 +248,6 @@ target_link_libraries(crawler_capnp CapnProto::capnp-rpc)
 add_executable(indexer_capnp indexer_capnp.cc
     ${capnp_sources}
     scorer.cc
-    merger.cc
     indexer.cc
     index_part.cc
     index.cc
@@ -258,7 +256,6 @@ add_executable(indexer_capnp indexer_capnp.cc
     vbyte.cc
     crawler.cc
     crawl.cc
-    scraper.cc
     scrape_op.cc
     scrape.cc
     util.cc
@@ -266,10 +263,8 @@ add_executable(indexer_capnp indexer_capnp.cc
     str.c
     config.cc)
 
-target_include_directories(indexer_capnp PUBLIC ${CURL_INCLUDE_DIRS})
 target_include_directories(indexer_capnp PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
-target_link_libraries(indexer_capnp ${CURL_LIBRARIES})
 target_link_libraries(indexer_capnp Threads::Threads)
 target_link_libraries(indexer_capnp nlohmann_json::nlohmann_json)
 target_link_libraries(indexer_capnp spdlog::spdlog)
@@ -279,7 +274,6 @@ target_link_libraries(indexer_capnp CapnProto::capnp-rpc)
 add_executable(merger_capnp merger_capnp.cc
     ${capnp_sources}
     scorer.cc
-    merger.cc
     indexer.cc
     index_part.cc
     index.cc
@@ -288,7 +282,6 @@ add_executable(merger_capnp merger_capnp.cc
     vbyte.cc
     crawler.cc
     crawl.cc
-    scraper.cc
     scrape_op.cc
     scrape.cc
     util.cc
@@ -296,10 +289,8 @@ add_executable(merger_capnp merger_capnp.cc
     str.c
     config.cc)
 
-target_include_directories(merger_capnp PUBLIC ${CURL_INCLUDE_DIRS})
 target_include_directories(merger_capnp PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
-target_link_libraries(merger_capnp ${CURL_LIBRARIES})
 target_link_libraries(merger_capnp Threads::Threads)
 target_link_libraries(merger_capnp nlohmann_json::nlohmann_json)
 target_link_libraries(merger_capnp spdlog::spdlog)

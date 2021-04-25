@@ -9,8 +9,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include <curl/curl.h>
-
 #include <string>
 #include <iostream>
 #include <fstream>
@@ -29,35 +27,6 @@ using namespace std::chrono_literals;
 #include "tokenizer.h"
 
 namespace scrape {
-
-size_t curl_cb_header_write(char *buffer, size_t size, size_t nitems, void *ctx) {
-  site_op_page *op = (site_op_page *) ctx;
-
-  buffer[nitems*size] = 0;
-
-  if (strstr(buffer, "content-type:")) {
-    if (strstr(buffer, "text/html") == NULL &&
-        strstr(buffer, "text/plain") == NULL) {
-      return 0;
-    }
-
-  } else if (op->m_page->last_scanned && strstr(buffer, "Last-Modified: ")) {
-    char *s = buffer + strlen("Last-Modified: ");
-
-    if (strlen(s) > 25) {
-      tm tm;
-      strptime(s, "%a, %d %b %Y %H:%M:%S", &tm);
-      time_t time = mktime(&tm);
-
-      if (op->m_page->last_scanned > time) {
-        op->unchanged = true;
-        return 0;
-      }
-    }
-  }
-
-  return nitems * size;
-}
 
 site_op::~site_op() {
   m_site->push_buf(buf);
@@ -346,71 +315,23 @@ void site_op_sitemap::finish(const std::string &effective_url) {
   }
 }
 
-void site_op_page::finish_bad(CURLcode res, int code) {
+void site_op_page::finish_bad(bool bad) {
   if (unchanged) {
     m_site->finish_unchanged(m_page);
     return;
   }
 
-  if (res == CURLE_WRITE_ERROR) {
-    m_site->finish_bad(m_page, false);
-    return;
-  }
-
-  if (res == CURLE_OK) {
-    // http error
-    m_site->finish_bad(m_page, true);
-    return;
-  }
-
-  if (res != CURLE_OPERATION_TIMEDOUT) {
-    spdlog::info("miss ({}) {} {}", (int) res, curl_easy_strerror(res), m_page->url);
-  }
-
-  m_site->finish_bad(m_page, true);
+  m_site->finish_bad(m_page, bad);
 }
 
-void site_op_robots::finish_bad(CURLcode res, int code) {
+void site_op_robots::finish_bad(bool) {
   m_site->getting_robots = false;
   m_site->got_robots = true;
 }
 
-void site_op_sitemap::finish_bad(CURLcode res, int code) {
+void site_op_sitemap::finish_bad(bool) {
   m_site->sitemap_url_got.insert(m_url);
   m_site->sitemap_url_getting.erase(m_url);
-}
-
-void site_op_page::setup_handle(CURL *curl_handle)
-{
-  curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, curl_cb_header_write);
-  curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, this);
-
-  curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 5L);
-
-  char url[util::max_url_len];
-  strncpy(url, m_page->url.c_str(), sizeof(url));
-
-  curl_easy_setopt(curl_handle, CURLOPT_URL, url);
-}
-
-void site_op_robots::setup_handle(CURL *curl_handle)
-{
-  curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 2L);
-
-  char c_url[util::max_url_len];
-  snprintf(c_url, sizeof(c_url), "https://%s/robots.txt", m_site->host.c_str());
-
-  curl_easy_setopt(curl_handle, CURLOPT_URL, c_url);
-}
-
-void site_op_sitemap::setup_handle(CURL *curl_handle)
-{
-  curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 2L);
-
-  char c_url[util::max_url_len];
-  strncpy(c_url, m_url.c_str(), sizeof(c_url));
-
-  curl_easy_setopt(curl_handle, CURLOPT_URL, c_url);
 }
 
 }

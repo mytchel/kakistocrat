@@ -5,8 +5,6 @@
 #include <list>
 #include <vector>
 
-#include <curl/curl.h>
-
 #include "channel.h"
 
 namespace scrape {
@@ -41,10 +39,10 @@ struct site_op {
 
   virtual ~site_op();
 
-  virtual void setup_handle(CURL *) = 0;
+  //virtual void setup_handle(CURL *) = 0;
 
   virtual void finish(const std::string &effective_url) = 0;
-  virtual void finish_bad(CURLcode res, int http_code) = 0;
+  virtual void finish_bad(bool) = 0;
 };
 
 struct site_op_page : public site_op {
@@ -56,7 +54,7 @@ struct site_op_page : public site_op {
       m_page(p)
   {}
 
-  ~site_op_page() {};
+  ~site_op_page() {}
 
   void save();
 
@@ -64,10 +62,10 @@ struct site_op_page : public site_op {
       std::vector<std::string> &links,
       std::string &title);
 
-  void setup_handle(CURL *);
+  //void setup_handle(CURL *);
 
   void finish(const std::string &effective_url);
-  void finish_bad(CURLcode res, int http_code);
+  void finish_bad(bool);
 };
 
 struct site_op_robots : public site_op {
@@ -75,12 +73,12 @@ struct site_op_robots : public site_op {
     : site_op(s, b, max)
   {}
 
-  ~site_op_robots() {};
+  ~site_op_robots() {}
 
-  void setup_handle(CURL *);
+  //void setup_handle(CURL *);
 
   void finish(const std::string &effective_url);
-  void finish_bad(CURLcode res, int http_code);
+  void finish_bad(bool);
 };
 
 struct site_op_sitemap : public site_op {
@@ -91,12 +89,12 @@ struct site_op_sitemap : public site_op {
       m_url(u)
   {}
 
-  ~site_op_sitemap() {};
+  ~site_op_sitemap() {}
 
-  void setup_handle(CURL *);
+  //void setup_handle(CURL *);
 
   void finish(const std::string &effective_url);
-  void finish_bad(CURLcode res, int http_code);
+  void finish_bad(bool);
 };
 
 struct site {

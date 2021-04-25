@@ -24,6 +24,7 @@
 #include "util.h"
 #include "config.h"
 #include "crawl.h"
+#include "crawler.h"
 #include "scorer.h"
 
 int main(int argc, char *argv[]) {

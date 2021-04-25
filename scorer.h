@@ -2,6 +2,7 @@
 #define SCORER_H
 
 #include "crawl.h"
+#include "crawler.h"
 
 namespace scorer {
 

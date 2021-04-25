@@ -26,6 +26,7 @@
 #include "util.h"
 #include "config.h"
 #include "crawl.h"
+#include "crawler.h"
 
 using namespace std::chrono_literals;
 

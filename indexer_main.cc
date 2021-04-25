@@ -25,6 +25,7 @@
 #include "util.h"
 #include "scrape.h"
 #include "crawl.h"
+#include "crawler.h"
 #include "tokenizer.h"
 
 #include "index.h"

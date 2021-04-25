@@ -25,6 +25,7 @@
 #include "util.h"
 #include "scrape.h"
 #include "crawl.h"
+#include "crawler.h"
 #include "tokenizer.h"
 
 #include "index.h"
@@ -35,6 +36,7 @@
 #include <kj/string.h>
 #include <kj/async-io.h>
 #include <kj/async-unix.h>
+#include <kj/compat/http.h>
 
 #include <capnp/rpc.h>
 #include <capnp/rpc-twoparty.h>
@@ -46,9 +48,19 @@ using nlohmann::json;
 
 class CrawlerImpl final: public Crawler::Server {
 public:
-  CrawlerImpl(const config &s)
-    : settings(s)
+  CrawlerImpl(const config &settings, kj::Timer &timer,
+      kj::Network &network, kj::Network &tls_network)
+    : settings(settings), timer(timer),
   {
+    kj::HttpHeaderTable::Builder builder;
+
+    http_accept = builder.add("Accept");
+    http_last_modified = builder.add("Last-Modified");
+    http_content_type = builder.add("Content-Type");
+
+    http_header_table table(kj::mv(builder));
+
+    http_client = newHttpClient(timer, http_header_table, network, tls_network);
   }
 
   kj::Promise<void> crawl(CrawlContext context) override {
@@ -70,6 +82,15 @@ public:
   }
 
   const config &settings;
+
+  kj::Timer &timer;
+
+  HttpHeaderId http_accept;
+  HttpHeaderId http_last_modified;
+  HttpHeaderId http_content_type;
+
+  kj::HttpHeaderTable http_header_table;
+  kj::Own<HttpClient> http_client;
 };
 
 int main(int argc, char *argv[]) {
@@ -109,7 +130,10 @@ int main(int argc, char *argv[]) {
 
     spdlog::info("creating client");
 
-    Crawler::Client crawler = kj::heap<CrawlerImpl>(settings, std::stoi(argv[2]));
+    auto timer = ioContext.provider.getTimer();
+    auto network = ioContext.provider.getNetwork();
+
+    Crawler::Client crawler = kj::heap<CrawlerImpl>(settings);
 
     spdlog::info("create request");
     auto request = master.registerCrawlerRequest();
