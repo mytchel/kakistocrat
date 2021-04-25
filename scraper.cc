@@ -34,7 +34,7 @@ using namespace std::chrono_literals;
 
 namespace scrape {
 
-  size_t curl_cb_buffer_write(void *contents, size_t sz, size_t nmemb, void *ctx)
+size_t curl_cb_buffer_write(void *contents, size_t sz, size_t nmemb, void *ctx)
 {
   site_op *op = (site_op *) ctx;
   size_t realsize = sz * nmemb;

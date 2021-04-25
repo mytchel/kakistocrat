@@ -52,6 +52,9 @@ static std::string site_path(std::string base_dir, std::string host)
   return fmt::format("{}/{}.json", dir_path, host);
 }
 
+std::string crawler::get_data_path(const std::string &host) {
+  return site_path(site_data_path, host);
+}
 
 scrape::site crawler::make_scrape_site(site *s,
     size_t site_max_con, size_t max_site_part_size, size_t max_page_size)
@@ -64,7 +67,7 @@ scrape::site crawler::make_scrape_site(site *s,
 
   scrape::site out(
               s->host, pages,
-              site_path(site_data_path, s->host),
+              get_data_path(s->host),
               site_max_con,
               levels[s->level].max_pages,
               max_site_part_size,

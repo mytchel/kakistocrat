@@ -1,12 +1,14 @@
 @0xd8ebb90861928a85;
 
 interface Master {
-    registerIndexer @0 (indexer :Indexer);
-    registerMerger @1 (merger :Merger);
+    registerCrawler @0 (crawler :Crawler);
+    registerIndexer @1 (indexer :Indexer);
+    registerMerger @2 (merger :Merger);
 }
 
 interface Crawler {
-    crawl @0 (sitePath :Text);
+    crawl @0 (sitePath :Text, dataPath :Text,
+              maxPages :UInt32);
 }
 
 interface Indexer {

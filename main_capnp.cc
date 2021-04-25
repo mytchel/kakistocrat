@@ -44,9 +44,101 @@ using nlohmann::json;
 class MasterImpl final: public Master::Server,
                         public kj::TaskSet::ErrorHandler {
 public:
-  MasterImpl(const config &s, std::list<crawl::site *> &sites)
-    : settings(s), index_pending_sites(sites), tasks(*this)
-  {}
+  MasterImpl(const config &s)
+    : settings(s), crawler(s), tasks(*this)
+  {
+    crawler.load();
+
+    std::vector<std::string> blacklist = util::load_list(settings.blacklist_path);
+    std::vector<std::string> initial_seed = util::load_list(settings.seed_path);
+
+    crawler.load_blacklist(blacklist);
+    crawler.load_seed(initial_seed);
+
+    index_parts = search::load_parts(settings.indexer.meta_path);
+  }
+
+  void crawlNext() {
+    if (ready_crawlers.empty()) {
+      spdlog::warn("no ready crawlers");
+      return;
+    }
+
+    if (next_site == nullptr) {
+      next_site = crawler.get_next_site();
+    }
+
+    if (next_site == nullptr) {
+      spdlog::warn("no sites");
+      return;
+    }
+
+    auto site = next_site;
+    next_site = nullptr;
+
+    auto proc = ready_crawlers.front();
+    ready_crawlers.pop_front();
+
+    auto request = proc.crawlRequest();
+
+    request.setSitePath(site->path);
+    request.setDataPath(crawler.get_data_path(site->host));
+
+    request.setMaxPages(site->max_pages);
+
+    /*
+    request.setMaxConnections(settings.crawler.site_max_connections);
+    request.setMaxPageSize(settings.crawler.max_page_size);
+    request.setMaxPartSize(settings.crawler.max_site_part_size);
+    */
+
+    site->scraping = true;
+
+    tasks.add(request.send().then(
+        [this, site, proc] (auto result) mutable {
+          spdlog::info("got response for crawl site {}", site->host);
+
+          ready_crawlers.push_back(kj::mv(proc));
+
+          if (site->level + 1 < crawler.levels.size()) {
+            auto level = crawler.levels[site->level];
+            auto next_level = crawler.levels[site->level + 1];
+
+            crawler.enable_references(site, level.max_add_sites, next_level.max_pages);
+          }
+
+          site->last_scanned = time(NULL);
+
+          // Need to write the changes for this site
+          // so the indexer has something to load.
+          site->save();
+          site->changed = false;
+
+          site->max_pages = 0;
+          site->scraped = true;
+          site->scraping = false;
+
+          spdlog::info("transition {} to indexing", site->host);
+          site->indexing_part = true;
+          site->indexed_part = false;
+          site->indexed = false;
+
+          index_pending_sites.emplace_back(site);
+
+          have_changes = true;
+
+          indexNext();
+          crawlNext();
+        },
+        [this, site, proc] (auto exception) {
+          spdlog::warn("got exception for crawl site {} : {}",
+              site->host, std::string(exception.getDescription()));
+
+          site->scraping = false;
+        }));
+
+    crawlNext();
+  }
 
   void finishedMerging() {
     spdlog::info("finished merging");
@@ -84,7 +176,7 @@ public:
     index_parts_merging.clear();
   }
 
-  void triggerMerge() {
+  void mergeNext() {
     if (merge_parts_pending.empty()) {
       if (merge_parts_merging.empty()) {
         finishedMerging();
@@ -144,7 +236,7 @@ public:
 
           ready_mergers.push_back(kj::mv(merger));
 
-          triggerMerge();
+          mergeNext();
         },
         [this, p] (auto exception) {
           spdlog::warn("got exception for merge part {} : {}",
@@ -155,8 +247,10 @@ public:
 
           // Put merger on ready?
 
-          triggerMerge();
+          mergeNext();
         }));
+
+    mergeNext();
   }
 
   void startMerging(const std::list<std::string> &index_parts) {
@@ -180,7 +274,7 @@ public:
 
     index_parts_merging = index_parts;
 
-    triggerMerge();
+    mergeNext();
   }
 
   void flushIndexerDone(Indexer::Client *i, const std::list<std::string> &output_paths) {
@@ -188,6 +282,8 @@ public:
       spdlog::info("adding index part {}", p);
       index_parts.emplace_back(p);
     }
+
+    search::save_parts(settings.indexer.meta_path, index_parts);
 
     spdlog::info("indexer flushed {}, remove from pending", (size_t) i);
     indexers_pending_flush.erase(i);
@@ -252,7 +348,13 @@ public:
     }
   }
 
-  void indexerNextSite(Indexer::Client &indexer) {
+  void indexNext() {
+
+    if (ready_indexers.empty()) {
+      spdlog::info("no ready indexers");
+      return;
+    }
+
     if (index_pending_sites.empty()) {
       spdlog::info("no more sites");
 
@@ -261,7 +363,10 @@ public:
       return;
     }
 
-    spdlog::info("get pending site for new indexer");
+    auto indexer = ready_indexers.front();
+    ready_indexers.pop_front();
+
+    spdlog::info("get pending site for indexer");
 
     // Should put these somewhere and remove them
     // when a flush is done.
@@ -274,43 +379,51 @@ public:
     auto request = indexer.indexRequest();
     request.setSitePath(s->path);
 
-    auto p = request.send().then(
-        [this, s, &indexer] (auto result) {
+    tasks.add(request.send().then(
+        [this, s, indexer] (auto result) mutable {
           spdlog::info("got response for index site {}", s->host);
 
           indexers_pending_flush.insert(&indexer);
 
-          indexerNextSite(indexer);
+          ready_indexers.push_back(kj::mv(indexer));
+
+          indexNext();
         },
         [this, s, &indexer] (auto exception) {
           spdlog::warn("got exception for index site {} : {}", s->host, std::string(exception.getDescription()));
           index_pending_sites.push_back(s);
-        });
+        }));
 
-    spdlog::info("request index for {} sent", s->host);
-    tasks.add(kj::mv(p));
-    spdlog::info("added promise to list");
+    indexNext();
+  }
+
+  kj::Promise<void> registerCrawler(RegisterCrawlerContext context) override {
+    spdlog::info("got register crawler");
+
+    ready_crawlers.push_back(context.getParams().getCrawler());
+
+    crawlNext();
+
+    return kj::READY_NOW;
   }
 
   kj::Promise<void> registerIndexer(RegisterIndexerContext context) override {
     spdlog::info("got register indexer");
-    indexers.push_back(context.getParams().getIndexer());
-    spdlog::info("put indexer on list");
 
-    indexerNextSite(indexers.back());
+    ready_indexers.push_back(context.getParams().getIndexer());
 
-    spdlog::info("register finished");
+    indexNext();
 
     return kj::READY_NOW;
   }
 
   kj::Promise<void> registerMerger(RegisterMergerContext context) override {
     spdlog::info("got register merger");
+
     ready_mergers.push_back(context.getParams().getMerger());
-    spdlog::info("put merger on list");
 
     if (!merge_parts_pending.empty()) {
-      triggerMerge();
+      mergeNext();
     }
 
     return kj::READY_NOW;
@@ -323,13 +436,30 @@ public:
 
   const config &settings;
 
-  std::list<Indexer::Client> indexers;
+  bool have_changes{false};
+
+  // Crawling
+
+  crawl::crawler crawler;
+
+  crawl::site *next_site = nullptr;
+
+  std::list<Crawler::Client> ready_crawlers;
+
+  // Indexing
+
   std::list<crawl::site *> index_pending_sites;
+
+  std::list<Indexer::Client> ready_indexers;
+
+  // Index Flushing
 
   bool flushing_indexers{false};
   std::set<Indexer::Client *> indexers_pending_flush;
 
   std::list<std::string> index_parts;
+
+  // Merging
 
   std::list<std::string> index_parts_merging;
 
@@ -357,17 +487,6 @@ int main(int argc, char *argv[]) {
   config settings = read_config();
 
   spdlog::info("loading");
-
-  crawl::crawler crawler(settings);
-  crawler.load();
-
-  std::list<crawl::site *> index_pending_sites;
-
-  for (auto &s: crawler.sites) {
-    if (s.last_scanned == 0)
-      continue;
-    index_pending_sites.push_back(&s);
-  }
 
   /*
   kj::UnixEventPort::captureSignal(SIGINT);
@@ -432,7 +551,7 @@ int main(int argc, char *argv[]) {
  // auto client = makeRpcClient(network);
 
   // Set up a server.
-  capnp::EzRpcServer server(kj::heap<MasterImpl>(settings, index_pending_sites), argv[1]);
+  capnp::EzRpcServer server(kj::heap<MasterImpl>(settings), argv[1]);
 
   auto& waitScope = server.getWaitScope();
 

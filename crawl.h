@@ -148,7 +148,7 @@ struct crawler {
 
   std::vector<std::string> blacklist;
 
-  crawler(config &c)
+  crawler(const config &c)
     : site_data_path(c.crawler.site_data_path),
       site_meta_path(c.crawler.site_meta_path),
       sites_path(c.crawler.sites_path),
@@ -178,6 +178,8 @@ struct crawler {
     site *isite,
     size_t max_add_sites,
     size_t next_max_page);
+
+  std::string get_data_path(const std::string &host);
 
   scrape::site make_scrape_site(site *s,
     size_t site_max_con, size_t max_site_part_size, size_t max_page_size);

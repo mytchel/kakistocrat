@@ -216,6 +216,36 @@ target_link_libraries(main_capnp spdlog::spdlog)
 target_link_libraries(main_capnp foonathan_memory)
 target_link_libraries(main_capnp CapnProto::capnp-rpc)
 
+add_executable(crawler_capnp crawler_capnp.cc
+    ${capnp_sources}
+    scorer.cc
+    merger.cc
+    indexer.cc
+    index_part.cc
+    index.cc
+    hash.cc
+    posting.cc
+    vbyte.cc
+    crawler.cc
+    crawl.cc
+    scraper.cc
+    scrape_op.cc
+    scrape.cc
+    util.cc
+    tokenizer.cc
+    str.c
+    config.cc)
+
+target_include_directories(crawler_capnp PUBLIC ${CURL_INCLUDE_DIRS})
+target_include_directories(crawler_capnp PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+
+target_link_libraries(crawler_capnp ${CURL_LIBRARIES})
+target_link_libraries(crawler_capnp Threads::Threads)
+target_link_libraries(crawler_capnp nlohmann_json::nlohmann_json)
+target_link_libraries(crawler_capnp spdlog::spdlog)
+target_link_libraries(crawler_capnp foonathan_memory)
+target_link_libraries(crawler_capnp CapnProto::capnp-rpc)
+
 add_executable(indexer_capnp indexer_capnp.cc
     ${capnp_sources}
     scorer.cc
