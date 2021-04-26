@@ -30,6 +30,8 @@
 
 #include "index.h"
 
+#include "curl_kj.h"
+
 #include "indexer.capnp.h"
 
 #include <kj/debug.h>
@@ -46,8 +48,11 @@
 
 using nlohmann::json;
 
-class CrawlerImpl final: public Crawler::Server {
+class CrawlerImpl final: public Crawler::Server,
+                         public kj::TaskSet::ErrorHandler {
+
 public:
+  /*
   CrawlerImpl(const config &settings, kj::Timer &timer,
       kj::Network &network, kj::Network &tls_network)
     : settings(settings), timer(timer),
@@ -61,6 +66,14 @@ public:
     http_header_table table(kj::mv(builder));
 
     http_client = newHttpClient(timer, http_header_table, network, tls_network);
+  }
+*/
+
+  CrawlerImpl(const config &settings, kj::AsyncIoContext &io_context)
+    : settings(settings), tasks(*this),
+      curl(io_context, settings.crawler.thread_max_connections)
+  {
+
   }
 
   kj::Promise<void> crawl(CrawlContext context) override {
@@ -76,13 +89,27 @@ public:
     crawl::site site(path);
     site.load();
 
-    spdlog::info("done  {}", site.host);
+    if (site.pages.empty()) {
+      spdlog::info("nothing to do  {}", site.host);
+      return kj::READY_NOW;
+    }
 
-    return kj::READY_NOW;
+    auto page = site.pages.front();
+    return curl.add(page.url).then(
+          [this, context] (bool result) {
+            spdlog::info("page done, request finished {}", result);
+          });
+  }
+
+  void taskFailed(kj::Exception&& exception) override {
+    spdlog::warn("task failed: {}", std::string(exception.getDescription()));
+    kj::throwFatalException(kj::mv(exception));
   }
 
   const config &settings;
+  kj::TaskSet tasks;
 
+  /*
   kj::Timer &timer;
 
   HttpHeaderId http_accept;
@@ -91,6 +118,9 @@ public:
 
   kj::HttpHeaderTable http_header_table;
   kj::Own<HttpClient> http_client;
+  */
+
+  curl_kj curl;
 };
 
 int main(int argc, char *argv[]) {
@@ -130,10 +160,7 @@ int main(int argc, char *argv[]) {
 
     spdlog::info("creating client");
 
-    auto timer = ioContext.provider.getTimer();
-    auto network = ioContext.provider.getNetwork();
-
-    Crawler::Client crawler = kj::heap<CrawlerImpl>(settings);
+    Crawler::Client crawler = kj::heap<CrawlerImpl>(settings, ioContext);
 
     spdlog::info("create request");
     auto request = master.registerCrawlerRequest();

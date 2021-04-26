@@ -218,6 +218,7 @@ target_link_libraries(main_capnp CapnProto::capnp-rpc)
 
 add_executable(crawler_capnp crawler_capnp.cc
     ${capnp_sources}
+    curl_kj.cc
     scorer.cc
     indexer.cc
     index_part.cc
