@@ -11,23 +11,39 @@
 #include <kj/async-unix.h>
 #include <kj/timer.h>
 
-class test_adaptor;
+struct curl_response {
+  bool success;
+  int http_code;
+  std::string done_url;
+  size_t size;
+};
 
 class curl_kj : public kj::TaskSet::ErrorHandler {
 public:
+  struct adaptor;
+  struct socket_context;
 
   curl_kj(kj::AsyncIoContext &io_context, size_t max_op = 100);
 
   ~curl_kj();
 
-  kj::Promise<bool> add(const std::string &url);
+  kj::Promise<curl_response> add(const std::string &url,
+      uint8_t *buf, size_t buf_max,
+      time_t last_accessed = 0);
 
+  void handle_socket(curl_socket_t s, int action, void *socketp);
+  void handle_timeout(long timeout_ms);
+
+private:
   void check_multi_info();
 
   void on_timeout();
 
   void cancel(CURL *curl_handle);
-  CURL* start_get(const std::string &url, test_adaptor *);
+  void start_get(adaptor *, CURL *);
+
+  void setup_read(socket_context *context);
+  void setup_write(socket_context *context);
 
   void taskFailed(kj::Exception&& exception) override {
     spdlog::warn("task failed: {}", std::string(exception.getDescription()));

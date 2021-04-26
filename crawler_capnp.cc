@@ -94,10 +94,13 @@ public:
       return kj::READY_NOW;
     }
 
+    size_t buf_max = 1024 * 1024;
+    uint8_t *buf = (uint8_t *) malloc(buf_max);
+
     auto page = site.pages.front();
-    return curl.add(page.url).then(
-          [this, context] (bool result) {
-            spdlog::info("page done, request finished {}", result);
+    return curl.add(page.url, buf, buf_max).then(
+          [this, context] (curl_response result) {
+            spdlog::info("page done, request finished {} : {} bytes", result.success, result.size);
           });
   }
 
