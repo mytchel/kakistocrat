@@ -51,8 +51,37 @@ public:
   uint8_t *buf;
   size_t buf_max;
   size_t size{0};
+
+  time_t last_modified;
 };
 
+size_t handle_header_write_c(char *buffer, size_t size, size_t nitems, void *userp) {
+  curl_kj::adaptor *adaptor = static_cast<curl_kj::adaptor *>(userp);
+  if (adaptor == nullptr) {
+    return 0;
+  }
+
+  buffer[nitems*size] = 0;
+
+  if (strstr(buffer, "content-type:")) {
+    if (strstr(buffer, "text/html") == NULL &&
+        strstr(buffer, "text/plain") == NULL) {
+      return 0;
+    }
+
+  } else if (strstr(buffer, "Last-Modified: ")) {
+    char *s = buffer + strlen("Last-Modified: ");
+
+    if (strlen(s) > 25) {
+      tm tm;
+      strptime(s, "%a, %d %b %Y %H:%M:%S", &tm);
+
+      adaptor->last_modified = mktime(&tm);
+    }
+  }
+
+  return nitems * size;
+}
 size_t handle_buffer_write_c(void *contents, size_t sz, size_t nmemb, void *userp)
 {
   spdlog::debug("handle write {}", nmemb);
@@ -120,6 +149,7 @@ void curl_kj::cancel(CURL *curl_handle)
 {
   curl_easy_setopt(curl_handle, CURLOPT_PRIVATE, nullptr);
   curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, nullptr);
+  curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, nullptr);
 }
 
 void curl_kj::start_get(adaptor *adaptor, CURL *easy)
@@ -128,6 +158,7 @@ void curl_kj::start_get(adaptor *adaptor, CURL *easy)
 
   curl_easy_setopt(easy, CURLOPT_PRIVATE, adaptor);
   curl_easy_setopt(easy, CURLOPT_WRITEDATA, adaptor);
+  curl_easy_setopt(easy, CURLOPT_HEADERDATA, adaptor);
 
   spdlog::info("add to multi");
   curl_multi_add_handle(multi_handle, easy);
@@ -145,6 +176,8 @@ kj::Promise<curl_response> curl_kj::add(const std::string &url,
   curl_easy_setopt(easy, CURLOPT_USERAGENT, "crawlycrawler");
 
   curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, handle_buffer_write_c);
+
+  curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, handle_header_write_c);
 
   curl_easy_setopt(easy, CURLOPT_TIMEOUT, 60L);
   curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 30L);
@@ -189,6 +222,7 @@ void curl_kj::check_multi_info()
               res == CURLE_OK,
               (int) res_status,
               std::string(done_url),
+              adaptor->last_modified,
               adaptor->size
         };
 
@@ -318,7 +352,4 @@ void curl_kj::handle_socket(curl_socket_t s, int action, void *socketp)
       break;
   }
 }
-
-
-
 

@@ -15,6 +15,7 @@ struct curl_response {
   bool success;
   int http_code;
   std::string done_url;
+  time_t last_modified;
   size_t size;
 };
 

@@ -52,23 +52,6 @@ class CrawlerImpl final: public Crawler::Server,
                          public kj::TaskSet::ErrorHandler {
 
 public:
-  /*
-  CrawlerImpl(const config &settings, kj::Timer &timer,
-      kj::Network &network, kj::Network &tls_network)
-    : settings(settings), timer(timer),
-  {
-    kj::HttpHeaderTable::Builder builder;
-
-    http_accept = builder.add("Accept");
-    http_last_modified = builder.add("Last-Modified");
-    http_content_type = builder.add("Content-Type");
-
-    http_header_table table(kj::mv(builder));
-
-    http_client = newHttpClient(timer, http_header_table, network, tls_network);
-  }
-*/
-
   CrawlerImpl(const config &settings, kj::AsyncIoContext &io_context)
     : settings(settings), tasks(*this),
       curl(io_context, settings.crawler.thread_max_connections)
@@ -111,17 +94,6 @@ public:
 
   const config &settings;
   kj::TaskSet tasks;
-
-  /*
-  kj::Timer &timer;
-
-  HttpHeaderId http_accept;
-  HttpHeaderId http_last_modified;
-  HttpHeaderId http_content_type;
-
-  kj::HttpHeaderTable http_header_table;
-  kj::Own<HttpClient> http_client;
-  */
 
   curl_kj curl;
 };
