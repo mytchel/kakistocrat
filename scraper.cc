@@ -86,11 +86,6 @@ void setup_handle_page(site_op_page *op, CURL *curl_handle)
   curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, op);
 
   curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 5L);
-
-  char url[util::max_url_len];
-  strncpy(url, op->m_page->url.c_str(), sizeof(url));
-
-  curl_easy_setopt(curl_handle, CURLOPT_URL, url);
 }
 
 void setup_handle_robots(site_op_robots *op, CURL *curl_handle)
@@ -98,23 +93,13 @@ void setup_handle_robots(site_op_robots *op, CURL *curl_handle)
   spdlog::info("setup robots {}", op->m_site->host);
 
   curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 2L);
-
-  char c_url[util::max_url_len];
-  snprintf(c_url, sizeof(c_url), "https://%s/robots.txt", op->m_site->host.c_str());
-
-  curl_easy_setopt(curl_handle, CURLOPT_URL, c_url);
 }
 
 void setup_handle_sitemap(site_op_sitemap *op, CURL *curl_handle)
 {
-  spdlog::info("setup sitemap {}", op->m_url);
+  spdlog::info("setup sitemap {}", op->url);
 
   curl_easy_setopt(curl_handle, CURLOPT_MAXREDIRS, 2L);
-
-  char c_url[util::max_url_len];
-  strncpy(c_url, op->m_url.c_str(), sizeof(c_url));
-
-  curl_easy_setopt(curl_handle, CURLOPT_URL, c_url);
 }
 
 CURL *make_handle(site_op *op)
@@ -133,6 +118,11 @@ CURL *make_handle(site_op *op)
   curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
 
   curl_easy_setopt(curl_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
+
+  char c_url[util::max_url_len];
+  strncpy(c_url, op->url.c_str(), sizeof(c_url));
+
+  curl_easy_setopt(curl_handle, CURLOPT_URL, c_url);
 
   if (auto pop = dynamic_cast<site_op_page *>(op)) {
     setup_handle_page(pop, curl_handle);

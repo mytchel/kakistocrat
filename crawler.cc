@@ -194,8 +194,8 @@ scrape::site crawler::make_scrape_site(site *s,
   scrape::site out(
               s->host, pages,
               get_data_path(s->host),
-              site_max_con,
               levels[s->level].max_pages,
+              site_max_con,
               max_site_part_size,
               max_page_size);
 

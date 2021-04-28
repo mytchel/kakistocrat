@@ -34,8 +34,8 @@ namespace scrape {
 site::site(const std::string &h,
     std::list<page> s,
     const std::string &n_output,
-    size_t n_max_connections,
     size_t n_max_pages,
+    size_t n_max_connections,
     size_t n_max_part_size,
     size_t n_max_page_size)
   : host(h), output_dir(n_output),

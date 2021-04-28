@@ -51,10 +51,35 @@ using nlohmann::json;
 class CrawlerImpl final: public Crawler::Server,
                          public kj::TaskSet::ErrorHandler {
 
+  struct adaptor {
+  public:
+    adaptor(kj::PromiseFulfiller<void> &fulfiller,
+            CrawlerImpl *crawler,
+            CrawlContext context,
+            scrape::site site)
+        : fulfiller(fulfiller),
+          crawler(crawler),
+          context(kj::mv(context)),
+          site(std::move(site))
+    {
+      crawler->add_adaptor(this);
+    }
+
+    void finish() {
+      fulfiller.fulfill();
+    }
+
+    kj::PromiseFulfiller<void> &fulfiller;
+    CrawlerImpl *crawler;
+    CrawlContext context;
+    scrape::site site;
+  };
+
 public:
   CrawlerImpl(const config &settings, kj::AsyncIoContext &io_context)
     : settings(settings), tasks(*this),
-      curl(io_context, settings.crawler.thread_max_connections)
+      curl(io_context, settings.crawler.thread_max_connections),
+      max_ops(settings.crawler.thread_max_connections)
   {
 
   }
@@ -64,27 +89,103 @@ public:
 
     auto params = context.getParams();
 
-    std::string path = params.getSitePath();
+    std::string site_path = params.getSitePath();
+    std::string data_path = params.getDataPath();
     size_t max_pages = params.getMaxPages();
 
-    spdlog::info("load  {}", path);
+    spdlog::info("load  {}", site_path);
 
-    crawl::site site(path);
-    site.load();
+    crawl::site crawl_site(site_path);
+    crawl_site.load();
 
-    if (site.pages.empty()) {
-      spdlog::info("nothing to do  {}", site.host);
+    if (crawl_site.pages.empty()) {
+      spdlog::info("nothing to do  {}", crawl_site.host);
       return kj::READY_NOW;
     }
 
-    size_t buf_max = 1024 * 1024;
-    uint8_t *buf = (uint8_t *) malloc(buf_max);
+    std::list<scrape::page> pages;
 
-    auto page = site.pages.front();
-    return curl.add(page.url, buf, buf_max).then(
-          [this, context] (curl_response result) {
-            spdlog::info("page done, request finished {} : {} bytes", result.success, result.size);
-          });
+    for (auto &p: crawl_site.pages) {
+      pages.emplace_back(p.url, p.path, p.last_scanned);
+    }
+
+    scrape::site site(crawl_site.host,
+        pages, data_path,
+        max_pages,
+        settings.crawler.site_max_connections,
+        settings.crawler.max_site_part_size,
+        settings.crawler.max_page_size);
+
+    return kj::newAdaptedPromise<void, adaptor>(this, kj::mv(context), std::move(site));
+  }
+
+  void add_adaptor(adaptor *a) {
+    spdlog::debug("add adaptor");
+    adaptors.push_back(a);
+    process();
+  }
+
+  void process() {
+    spdlog::debug("processing");
+
+    auto a = adaptors.begin();
+
+    bool all_blocked = true;
+
+    while (a != adaptors.end()) {
+      auto &s = (*a)->site;
+
+      if (s.finished()) {
+        spdlog::info("finished {}", s.host);
+
+        // TODO: save
+
+        (*a)->finish();
+        a = adaptors.erase(a);
+
+        continue;
+      }
+
+      if (ops.size() + 1 >= max_ops) {
+        continue;
+      }
+
+      auto m_op = s.get_next();
+      if (m_op) {
+        spdlog::info("got op for {}", s.host);
+
+        auto op = *m_op;
+
+        ops.push_back(op);
+
+        tasks.add(curl.add(op->url, op->buf, op->buf_max).then(
+              [this, op] (curl_response response) {
+                spdlog::info("one op done");
+
+                op->size = response.size;
+
+                if (response.success) {
+                  op->finish(response.done_url);
+                } else {
+                  op->finish_bad(true);
+                }
+
+                ops.remove(op);
+                delete op;
+
+                process();
+              }));
+
+        all_blocked = false;
+      }
+
+      a++;
+    }
+
+    if (!all_blocked) {
+      spdlog::debug("not all blocked, call again");
+      process();
+    }
   }
 
   void taskFailed(kj::Exception&& exception) override {
@@ -96,6 +197,11 @@ public:
   kj::TaskSet tasks;
 
   curl_kj curl;
+
+  std::list<adaptor*> adaptors;
+  std::list<scrape::site_op*> ops;
+
+  size_t max_ops;
 };
 
 int main(int argc, char *argv[]) {

@@ -29,12 +29,15 @@ struct page {
 
 struct site_op {
   site *m_site;
+  std::string url;
+
   uint8_t *buf;
   size_t buf_max;
+
   size_t size{0};
 
-  site_op(site *s, uint8_t *b, size_t max)
-    : m_site(s), buf(b), buf_max(max)
+  site_op(site *s, const std::string &url, uint8_t *b, size_t max)
+    : m_site(s), url(url), buf(b), buf_max(max)
   {}
 
   virtual ~site_op();
@@ -49,11 +52,7 @@ struct site_op_page : public site_op {
   page *m_page;
   bool unchanged{false};
 
-  site_op_page(site *s, uint8_t *b, size_t max, page *p)
-    : site_op(s, b, max),
-      m_page(p)
-  {}
-
+  site_op_page(site *s, uint8_t *b, size_t max, page *p);
   ~site_op_page() {}
 
   void save();
@@ -62,36 +61,21 @@ struct site_op_page : public site_op {
       std::vector<std::string> &links,
       std::string &title);
 
-  //void setup_handle(CURL *);
-
   void finish(const std::string &effective_url);
   void finish_bad(bool);
 };
 
 struct site_op_robots : public site_op {
-  site_op_robots(site *s, uint8_t *b, size_t max)
-    : site_op(s, b, max)
-  {}
-
+  site_op_robots(site *s, uint8_t *b, size_t max);
   ~site_op_robots() {}
-
-  //void setup_handle(CURL *);
 
   void finish(const std::string &effective_url);
   void finish_bad(bool);
 };
 
 struct site_op_sitemap : public site_op {
-  std::string m_url;
-
-  site_op_sitemap(site *s, uint8_t *b, size_t max, std::string u)
-    : site_op(s, b, max),
-      m_url(u)
-  {}
-
+  site_op_sitemap(site *s, uint8_t *b, size_t max, std::string u);
   ~site_op_sitemap() {}
-
-  //void setup_handle(CURL *);
 
   void finish(const std::string &effective_url);
   void finish_bad(bool);
@@ -132,8 +116,8 @@ struct site {
   site(const std::string &h,
       std::list<page> s,
       const std::string &n_output,
-      size_t n_max_connections,
       size_t n_max_pages,
+      size_t n_max_connections,
       size_t n_max_part_size,
       size_t n_max_page_size);
 

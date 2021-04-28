@@ -66,7 +66,7 @@ size_t handle_header_write_c(char *buffer, size_t size, size_t nitems, void *use
   if (strstr(buffer, "content-type:")) {
     if (strstr(buffer, "text/html") == NULL &&
         strstr(buffer, "text/plain") == NULL) {
-      return 0;
+      //return 0;
     }
 
   } else if (strstr(buffer, "Last-Modified: ")) {

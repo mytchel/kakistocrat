@@ -32,6 +32,21 @@ site_op::~site_op() {
   m_site->push_buf(buf);
 }
 
+site_op_page::site_op_page(site *s, uint8_t *b, size_t max, page *p)
+  : site_op(s, p->url, b, max),
+    m_page(p)
+{}
+
+site_op_robots::site_op_robots(site *s, uint8_t *b, size_t max)
+  : site_op(s,
+      fmt::format("https://{}/robots.txt", s->host),
+      b, max)
+{}
+
+site_op_sitemap::site_op_sitemap(site *s, uint8_t *b, size_t max, std::string u)
+  : site_op(s, u, b, max)
+{}
+
 void site_op_page::save()
 {
   std::ofstream file;
@@ -236,8 +251,8 @@ void site_op_robots::finish(const std::string &effective_url) {
 void site_op_sitemap::finish(const std::string &effective_url) {
   spdlog::debug("process sitemap {}", effective_url);
 
-  m_site->sitemap_url_got.insert(m_url);
-  m_site->sitemap_url_getting.erase(m_url);
+  m_site->sitemap_url_got.insert(url);
+  m_site->sitemap_url_getting.erase(url);
 
   char tok_buffer_store[1024];
 	struct str tok_buffer;
@@ -330,8 +345,8 @@ void site_op_robots::finish_bad(bool) {
 }
 
 void site_op_sitemap::finish_bad(bool) {
-  m_site->sitemap_url_got.insert(m_url);
-  m_site->sitemap_url_getting.erase(m_url);
+  m_site->sitemap_url_got.insert(url);
+  m_site->sitemap_url_getting.erase(url);
 }
 
 }
