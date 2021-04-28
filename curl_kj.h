@@ -52,7 +52,9 @@ private:
 
   kj::TaskSet tasks;
   kj::AsyncIoContext &io_context;
+
   kj::Timer &timer;
+  kj::Canceler timer_canceler;
 
   CURLM *multi_handle;
 };

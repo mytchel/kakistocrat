@@ -1,6 +1,7 @@
 #include "spdlog/spdlog.h"
 
 #include "kj/time.h"
+#include "kj/exception.h"
 
 #include "util.h"
 
@@ -200,6 +201,26 @@ void curl_kj::check_multi_info()
   }
 }
 
+void curl_kj::handle_timeout(long timeout_ms)
+{
+  timer_canceler.cancel("canceled");
+
+  if (timeout_ms < 0) {
+    return;
+  }
+
+  auto timeout = timeout_ms * kj::MILLISECONDS;
+
+  tasks.add(timer_canceler.wrap(
+        timer.afterDelay(timeout)).then(
+          [this] () {
+            timer_canceler.release();
+            on_timeout();
+          },
+          [] (auto e) {}
+        ));
+}
+
 void curl_kj::on_timeout() {
   int running_handles;
   curl_multi_socket_action(multi_handle, CURL_SOCKET_TIMEOUT, 0,
@@ -208,33 +229,15 @@ void curl_kj::on_timeout() {
   check_multi_info();
 }
 
-void curl_kj::handle_timeout(long timeout_ms)
-{
-  if (timeout_ms < 0) {
-    // TODO: cancel timer.
-    return;
-  }
-
-  auto timeout = timeout_ms * kj::MILLISECONDS;
-
-  tasks.add(timer.afterDelay(timeout).then(
-        [this] () {
-          on_timeout();
-        }));
-}
-
 // observers must only be called when there is no data.
 // ie: check before somehow
 // This may not matter / curl might be handling it for us.
 
 void curl_kj::setup_read(socket_context *context)
 {
-  spdlog::info("set socket readable");
   tasks.add(context->observer.whenBecomesReadable().then(
         [this, context] () {
           int running_handles;
-          spdlog::info("socket is readable");
-
           curl_multi_socket_action(multi_handle, context->fd, CURL_CSELECT_IN,
                      &running_handles);
 
@@ -249,11 +252,9 @@ void curl_kj::setup_read(socket_context *context)
 
 void curl_kj::setup_write(socket_context *context)
 {
-  spdlog::info("set socket writeable");
   tasks.add(context->observer.whenBecomesWritable().then(
         [this, context] () {
           int running_handles;
-          spdlog::info("socket is writable");
 
           curl_multi_socket_action(multi_handle, context->fd, CURL_CSELECT_OUT,
                      &running_handles);
@@ -270,7 +271,6 @@ void curl_kj::setup_write(socket_context *context)
 void curl_kj::handle_socket(curl_socket_t s, int action, void *socketp)
 {
   socket_context *context;
-  spdlog::debug("got curl set socket  {}", action);
 
   switch (action) {
     case CURL_POLL_IN:
