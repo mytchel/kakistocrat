@@ -159,22 +159,22 @@ public:
         ops.push_back(op);
 
         tasks.add(curl.add(op->url, op->buf, op->buf_max).then(
-              [this, op] (curl_response response) {
-                spdlog::info("one op done");
+          [this, op] (curl_response response) {
+            spdlog::info("one op done");
 
-                op->size = response.size;
+            op->size = response.size;
 
-                if (response.success) {
-                  op->finish(response.done_url);
-                } else {
-                  op->finish_bad(true);
-                }
+            if (response.success) {
+              op->finish(response.done_url);
+            } else {
+              op->finish_bad(true);
+            }
 
-                ops.remove(op);
-                delete op;
+            ops.remove(op);
+            delete op;
 
-                process();
-              }));
+            process();
+          }));
 
         all_blocked = false;
       }
