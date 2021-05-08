@@ -48,7 +48,7 @@ private:
 
   void taskFailed(kj::Exception&& exception) override {
     spdlog::warn("curl task failed: {}", std::string(exception.getDescription()));
-    //kj::throwFatalException(kj::mv(exception));
+    kj::throwFatalException(kj::mv(exception));
   }
 
   kj::TaskSet tasks;
