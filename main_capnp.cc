@@ -21,14 +21,9 @@
 #include <nlohmann/json.hpp>
 #include "spdlog/spdlog.h"
 
-#include "channel.h"
 #include "util.h"
-#include "scrape.h"
-#include "crawl.h"
 #include "crawler.h"
-#include "tokenizer.h"
-
-#include "index.h"
+//#include "index.h"
 
 #include "indexer.capnp.h"
 
@@ -46,7 +41,7 @@ class MasterImpl final: public Master::Server,
                         public kj::TaskSet::ErrorHandler {
 public:
   MasterImpl(const config &s)
-    : settings(s), crawler(s), tasks(*this)
+    : settings(s), tasks(*this), crawler(s)
   {
     crawler.load();
 
@@ -56,7 +51,7 @@ public:
     crawler.load_blacklist(blacklist);
     crawler.load_seed(initial_seed);
 
-    index_parts = search::load_parts(settings.indexer.meta_path);
+//    index_parts = search::load_parts(settings.indexer.meta_path);
   }
 
   void crawlNext() {
@@ -77,13 +72,15 @@ public:
     auto site = next_site;
     next_site = nullptr;
 
+    site->flush();
+
     auto proc = ready_crawlers.front();
     ready_crawlers.pop_front();
 
     auto request = proc.crawlRequest();
 
-    request.setSitePath(site->path);
-    request.setDataPath(crawler.get_data_path(site->host));
+    request.setSitePath(site->m_site.path);
+    request.setDataPath(crawler.get_data_path(site->m_site.host));
 
     request.setMaxPages(site->max_pages);
 
@@ -97,7 +94,7 @@ public:
 
     tasks.add(request.send().then(
         [this, site, proc] (auto result) mutable {
-          spdlog::info("got response for crawl site {}", site->host);
+          spdlog::info("got response for crawl site {}", site->m_site.host);
 
           ready_crawlers.push_back(kj::mv(proc));
 
@@ -112,28 +109,27 @@ public:
 
           // Need to write the changes for this site
           // so the indexer has something to load.
-          site->save();
-          site->changed = false;
+          site->flush();
 
           site->max_pages = 0;
           site->scraped = true;
           site->scraping = false;
 
-          spdlog::info("transition {} to indexing", site->host);
+          spdlog::info("transition {} to indexing", site->m_site.host);
           site->indexing_part = true;
           site->indexed_part = false;
           site->indexed = false;
 
-          index_pending_sites.emplace_back(site);
+          //index_pending_sites.emplace_back(site);
 
           have_changes = true;
 
-          indexNext();
+          //indexNext();
           crawlNext();
         },
         [this, site, proc] (auto exception) {
           spdlog::warn("got exception for crawl site {} : {}",
-              site->host, std::string(exception.getDescription()));
+              site->m_site.host, std::string(exception.getDescription()));
 
           site->scraping = false;
         }));
@@ -141,6 +137,7 @@ public:
     crawlNext();
   }
 
+  /*
   void finishedMerging() {
     spdlog::info("finished merging");
 
@@ -398,6 +395,8 @@ public:
     indexNext();
   }
 
+  */
+
   kj::Promise<void> registerCrawler(RegisterCrawlerContext context) override {
     spdlog::info("got register crawler");
 
@@ -408,6 +407,7 @@ public:
     return kj::READY_NOW;
   }
 
+  /*
   kj::Promise<void> registerIndexer(RegisterIndexerContext context) override {
     spdlog::info("got register indexer");
 
@@ -430,12 +430,16 @@ public:
     return kj::READY_NOW;
   }
 
+  */
+
   void taskFailed(kj::Exception&& exception) override {
     spdlog::warn("task failed: {}", std::string(exception.getDescription()));
     kj::throwFatalException(kj::mv(exception));
   }
 
   const config &settings;
+
+  kj::TaskSet tasks;
 
   bool have_changes{false};
 
@@ -447,6 +451,7 @@ public:
 
   std::list<Crawler::Client> ready_crawlers;
 
+  /*
   // Indexing
 
   std::list<crawl::site *> index_pending_sites;
@@ -470,8 +475,7 @@ public:
   std::list<search::index_part_info> merge_out_w, merge_out_p, merge_out_t;
 
   std::list<Merger::Client> ready_mergers;
-
-  kj::TaskSet tasks;
+*/
 };
 
 int main(int argc, char *argv[]) {

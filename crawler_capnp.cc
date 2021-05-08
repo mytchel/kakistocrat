@@ -21,14 +21,9 @@
 #include <nlohmann/json.hpp>
 #include "spdlog/spdlog.h"
 
-#include "channel.h"
 #include "util.h"
 #include "scrape.h"
-#include "crawl.h"
 #include "crawler.h"
-#include "tokenizer.h"
-
-#include "index.h"
 
 #include "curl_kj.h"
 
@@ -93,30 +88,15 @@ public:
     std::string data_path = params.getDataPath();
     size_t max_pages = params.getMaxPages();
 
-    spdlog::info("load  {}", site_path);
-
-    crawl::site crawl_site(site_path);
-    crawl_site.load();
-
-    if (crawl_site.pages.empty()) {
-      spdlog::info("nothing to do  {}", crawl_site.host);
-      return kj::READY_NOW;
-    }
-
-    std::list<scrape::page> pages;
-
-    for (auto &p: crawl_site.pages) {
-      pages.emplace_back(p.url, p.path, p.last_scanned);
-    }
-
-    scrape::site site(crawl_site.host,
-        pages, data_path,
-        max_pages,
+    spdlog::info("make scrape site  {}", site_path);
+    scrape::site scrape_site(
+        site_path, data_path, max_pages,
         settings.crawler.site_max_connections,
         settings.crawler.max_site_part_size,
         settings.crawler.max_page_size);
 
-    return kj::newAdaptedPromise<void, adaptor>(this, kj::mv(context), std::move(site));
+    spdlog::info("made scrape site {} {}", scrape_site.m_site.host, site_path);
+    return kj::newAdaptedPromise<void, adaptor>(this, kj::mv(context), std::move(scrape_site));
   }
 
   void add_adaptor(adaptor *a) {
@@ -133,12 +113,14 @@ public:
     bool all_blocked = true;
 
     while (a != adaptors.end()) {
+      spdlog::debug("check adaptor");
+
       auto &s = (*a)->site;
 
       if (s.finished()) {
-        spdlog::info("finished {}", s.host);
+        spdlog::info("finished {}", s.m_site.host);
 
-        // TODO: save
+        s.m_site.save();
 
         (*a)->finish();
         a = adaptors.erase(a);
@@ -147,16 +129,19 @@ public:
       }
 
       if (ops.size() + 1 >= max_ops) {
-        continue;
+        spdlog::info("at max ops {}", ops.size());
+        break;
       }
+
+      spdlog::info("checking {} for op", s.m_site.host);
 
       auto m_op = s.get_next();
       if (m_op) {
-        spdlog::info("got op for {}", s.host);
+        spdlog::info("got op for {}", s.m_site.host);
 
         auto op = *m_op;
 
-        ops.push_back(op);
+        ops.emplace_back(op);
 
         tasks.add(curl.add(op->url, op->buf, op->buf_max).then(
           [this, op] (curl_response response) {
@@ -185,12 +170,18 @@ public:
     if (!all_blocked) {
       spdlog::debug("not all blocked, call again");
       process();
+    } else {
+      spdlog::info("crawler all blocked with {} sites", adaptors.size());
+
+      for (auto a: adaptors) {
+        spdlog::info("crawling site {} with {} ops", a->site.m_site.host, a->site.using_bufs.size());
+      }
     }
   }
 
   void taskFailed(kj::Exception&& exception) override {
-    spdlog::warn("task failed: {}", std::string(exception.getDescription()));
-    kj::throwFatalException(kj::mv(exception));
+    spdlog::warn("crawler task failed: {}", std::string(exception.getDescription()));
+    //kj::throwFatalException(kj::mv(exception));
   }
 
   const config &settings;

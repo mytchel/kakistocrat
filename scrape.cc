@@ -31,33 +31,38 @@
 
 namespace scrape {
 
-site::site(const std::string &h,
-    std::list<page> s,
+site::site(
+    const std::string &path,
     const std::string &n_output,
     size_t n_max_pages,
     size_t n_max_connections,
     size_t n_max_part_size,
     size_t n_max_page_size)
-  : host(h), output_dir(n_output),
+  : m_site(path), output_dir(n_output),
     max_pages(n_max_pages),
     max_links(n_max_pages * 5),
     max_part_size(n_max_part_size),
     max_page_size(n_max_page_size)
 {
-  pages.reserve(n_max_pages * 3);
+  m_site.load();
 
-  for (auto &u: s) {
-    if (pages.size() == pages.capacity()) {
-      spdlog::warn("scrape site given more pages than max pages");
+  if (m_site.pages.size() >= max_pages) {
+    spdlog::warn("scrape site given more pages than max pages");
+  }
+
+  for (auto &u: m_site.pages) {
+    if (url_pending.size() == max_pages) {
       break;
     }
 
-    pages.emplace_back(u);
-    url_pending.push_back(&pages.back());
+    url_pending.push_back(&u);
   }
+
+  init_paths();
 
   buf_max = n_max_page_size;
 
+  n_max_connections = 1;
   for (size_t i = 0; i < n_max_connections; i++) {
     uint8_t *buf = (uint8_t *) malloc(buf_max);
     if (buf == nullptr) {
@@ -69,19 +74,20 @@ site::site(const std::string &h,
 }
 
 site::~site() {
+  spdlog::info("site free");
   for (auto b: free_bufs) {
+    spdlog::info("site {} free buf {}", m_site.host, (uintptr_t) b);
     free(b);
   }
 }
 
 site::site(site &&o)
-  : host(std::move(o.host)),
+  : m_site(std::move(o.m_site)),
     output_dir(std::move(o.output_dir)),
     max_pages(o.max_pages),
     max_links(o.max_links),
     max_part_size(o.max_part_size),
     max_page_size(o.max_page_size),
-    pages(std::move(o.pages)),
     url_pending(std::move(o.url_pending)),
     url_scanning(std::move(o.url_scanning)),
     url_scanned(std::move(o.url_scanned)),
@@ -97,9 +103,13 @@ site::site(site &&o)
     buf_max(o.buf_max),
     free_bufs(std::move(o.free_bufs)),
     using_bufs(std::move(o.using_bufs))
-{}
+{
+  spdlog::info("scrape::site moved '{}'", m_site.host);
+}
 
 std::string make_path(const std::string &output_dir, const std::string &url) {
+  spdlog::info("make path '{}' '{}'", output_dir, url);
+
   auto host = util::get_host(url);
   if (host.empty()) {
     return "junk_path";
@@ -260,14 +270,18 @@ void site::add_disallow(const std::string &path) {
     }
   }
 
-  auto p = pages.begin();
-  while (p != pages.end()) {
+  /*
+  // This will break things wont it?
+
+  auto p = m_site.pages.begin();
+  while (p != m_site.pages.end()) {
     if (util::has_prefix(p->url, path)) {
-      p = pages.erase(p);
+      p = m_site.pages.erase(p);
     } else {
       p++;
     }
   }
+  */
 }
 
 void site::add_sitemap(const std::string &url) {
@@ -317,30 +331,23 @@ void site::process_sitemap_entry(
     u++;
   }
 
-  if (pages.size() + 1 >= pages.capacity()) {
+  if (m_site.pages.size() + 1 >= max_pages) {
+    return;
+  }
+
+  if (m_site.find_page(url) != nullptr) {
+    spdlog::warn("drop sitemap url {} as in pages (url) already", url);
     return;
   }
 
   auto p = make_path(output_dir, url);
 
-  if (index_check_path(url_scanned, p)) {
+  if (m_site.find_page_by_path(p) != nullptr) {
+    spdlog::warn("drop sitemap url {} as in pages (path) already", url);
     return;
   }
 
-  if (index_check_path(url_pending, p)) {
-    return;
-  }
-
-  if (index_check_path(url_scanning, p)) {
-    return;
-  }
-
-  if (index_check_path(url_unchanged, p)) {
-    return;
-  }
-
-  pages.emplace_back(url, p);
-  url_pending.push_back(&pages.back());
+  url_pending.push_back(m_site.add_page(url, p));
 }
 
 bool add_link(page *p, std::string &n) {
@@ -360,8 +367,10 @@ void site::finish(
       std::vector<std::string> &links,
       std::string &title)
 {
+  spdlog::info("{} finished good {}", m_site.host, url->url);
+
   spdlog::debug("{} bad={} uc={} c={} s={} p={} finish {}",
-      host,
+      m_site.host,
       url_bad.size(),
       url_unchanged.size(),
       url_scanned.size(),
@@ -375,7 +384,7 @@ void site::finish(
 
     bool is_new = add_link(url, u);
 
-    if (is_new && u_host == host && pages.size() + 1 < pages.capacity()) {
+    if (is_new && u_host == m_site.host && m_site.pages.size() + 1 < max_pages) {
       if (url_pending.size() > max_pages) {
         continue;
       }
@@ -384,46 +393,17 @@ void site::finish(
         continue;
       }
 
-      if (index_check(url_bad, u)) {
-        continue;
-      }
-
-      if (index_check(url_scanned, u)) {
-        continue;
-      }
-
-      if (index_check(url_pending, u)) {
-        continue;
-      }
-
-      if (index_check(url_scanning, u)) {
-        continue;
-      }
-
-      if (index_check(url_unchanged, u)) {
+      if (m_site.find_page(u) != nullptr) {
         continue;
       }
 
       auto p = make_path(output_dir, u);
 
-      if (index_check_path(url_scanned, p)) {
+      if (m_site.find_page_by_path(p) != nullptr) {
         continue;
       }
 
-      if (index_check_path(url_pending, p)) {
-        continue;
-      }
-
-      if (index_check_path(url_scanning, p)) {
-        continue;
-      }
-
-      if (index_check_path(url_unchanged, p)) {
-        continue;
-      }
-
-      pages.emplace_back(u, p);
-      url_pending.push_back(&pages.back());
+      url_pending.push_back(m_site.add_page(u, p));
     }
   }
 
@@ -481,6 +461,8 @@ void site::finish(
 }
 
 void site::finish_unchanged(page *url) {
+  spdlog::info("{} finished unchanged {}", m_site.host, url->url);
+
   auto it = url_scanning.begin();
   while (it != url_scanning.end()) {
     auto u = *it;
@@ -494,6 +476,8 @@ void site::finish_unchanged(page *url) {
 }
 
 void site::finish_bad(page *url, bool actually_bad) {
+  spdlog::info("{} finished bad {}", m_site.host, url->url);
+
   auto it = url_scanning.begin();
   while (it != url_scanning.end()) {
     auto u = *it;
@@ -556,22 +540,22 @@ std::optional<site_op *> site::get_next() {
   }
 
   if (url_unchanged.size() + url_scanned.size() + url_scanning.size() >= max_pages) {
-    spdlog::debug("{} over max", host);
+    spdlog::debug("{} over max", m_site.host);
     return {};
 
   } else if (url_pending.empty()) {
-    spdlog::debug("{} no pending", host);
+    spdlog::debug("{} no pending", m_site.host);
     return {};
 
   } else if (should_finish()) {
-    spdlog::debug("{} should finish", host);
+    spdlog::debug("{} should finish", m_site.host);
     return {};
   }
 
   auto buf = pop_buf();
   if (buf) {
-    spdlog::debug("{} get next url", host);
-    spdlog::debug("{} get next {}", host, url_pending.front()->url);
+    spdlog::debug("{} get next url", m_site.host);
+    spdlog::debug("{} get next {}", m_site.host, url_pending.front()->url);
 
     url_scanning.splice(url_scanning.end(),
       url_pending, url_pending.begin());
@@ -579,26 +563,26 @@ std::optional<site_op *> site::get_next() {
     return new site_op_page(this, buf, buf_max, url_scanning.back());
 
   } else {
-    spdlog::debug("{} no bufs for request", host);
+    spdlog::debug("{} no bufs for request", m_site.host);
     return {};
   }
 }
 
 bool site::finished() {
-  spdlog::debug("{} check finished", host);
+  spdlog::debug("{} check finished", m_site.host);
 
   if (!got_robots) {
-    spdlog::debug("{} not finished, no robots", host);
+    spdlog::debug("{} not finished, no robots", m_site.host);
     return false;
   }
 
   if (!sitemap_url_getting.empty() || !sitemap_url_pending.empty()) {
-    spdlog::debug("{} not finished, pending sitemaps", host);
+    spdlog::debug("{} not finished, pending sitemaps", m_site.host);
     return false;
   }
 
   if (!url_scanning.empty()) {
-    spdlog::debug("{} has active", host);
+    spdlog::debug("{} has active", m_site.host);
     return false;
   }
 

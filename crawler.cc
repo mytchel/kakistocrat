@@ -23,7 +23,6 @@
 #include "spdlog/spdlog.h"
 
 #include "util.h"
-#include "crawl.h"
 #include "crawler.h"
 
 using namespace std::chrono_literals;
@@ -31,32 +30,38 @@ using nlohmann::json;
 
 namespace crawl {
 
+void to_json(nlohmann::json &j, const site &s)
+{
+  j["path"] = s.m_site.path;
+  j["host"] = s.m_site.host;
+  j["level"] = s.level;
+  j["max_pages"] = s.max_pages;
+  j["last_scanned"] = s.last_scanned;
+  j["indexed_part"] = s.indexed_part;
+  j["indexed"] = s.indexed;
+}
+
+void from_json(const nlohmann::json &j, site &s)
+{
+  j.at("path").get_to(s.m_site.path);
+  j.at("host").get_to(s.m_site.host);
+  j.at("level").get_to(s.level);
+  j.at("max_pages").get_to(s.max_pages);
+  j.at("last_scanned").get_to(s.last_scanned);
+  j.at("indexed_part").get_to(s.indexed_part);
+  j.at("indexed").get_to(s.indexed);
+
+  s.scraped = s.last_scanned > 0;
+}
+
 void crawler::save()
 {
   spdlog::debug("save {}", sites_path);
 
   std::ofstream file;
 
-  std::vector<json> j_sites;
-
-  for (auto &s: sites) {
-    json j = {
-      {"path", s.path},
-      {"id", s.id},
-      {"host", s.host},
-      {"level", s.level},
-      {"max_pages", s.max_pages},
-      {"last_scanned", s.last_scanned},
-      {"indexed_part", s.indexed_part},
-      {"indexed", s.indexed}
-    };
-
-    j_sites.push_back(j);
-  }
-
   json j = {
-    {"next_id", next_id},
-    {"sites", j_sites}
+    {"sites", sites}
   };
 
   file.open(sites_path, std::ios::out | std::ios::trunc);
@@ -86,31 +91,10 @@ void crawler::load()
     return;
   }
 
-  sites.clear();
-
   try {
     json j = json::parse(file);
 
-    j.at("next_id").get_to(next_id);
-
-    for (auto &s_j: j.at("sites")) {
-      bool i_p = false, i_i = false;
-      try {
-        s_j.at("indexed_part").get_to(i_p);
-        s_j.at("indexed").get_to(i_i);
-      } catch (const std::exception& e) {
-        spdlog::debug("default to not indexed");
-      }
-
-      sites.emplace_back(
-            s_j.at("path").get<std::string>(),
-            s_j.at("id").get<std::uint32_t>(),
-            s_j.at("host").get<std::string>(),
-            s_j.at("level").get<size_t>(),
-            s_j.at("max_pages").get<size_t>(),
-            s_j.at("last_scanned").get<time_t>(),
-            i_p, i_i);
-    }
+    j.at("sites").get_to(sites);
 
   } catch (const std::exception& e) {
     spdlog::warn("failed to load {}", sites_path);
@@ -124,37 +108,12 @@ void crawler::load()
 site * crawler::find_site(const std::string &host)
 {
   for (auto &i: sites) {
-    if (i.host == host) {
+    if (i.m_site.host == host) {
       return &i;
     }
   }
 
   return NULL;
-}
-
-site * crawler::find_site(uint32_t id)
-{
-  for (auto &i: sites) {
-    if (i.id == id) {
-      return &i;
-    }
-  }
-
-  return NULL;
-}
-
-page* crawler::find_page(page_id id)
-{
-  auto s = find_site(id.site);
-  if (s != NULL)
-    return s->find_page(id.page);
-  else
-    return NULL;
-}
-
-page* crawler::find_page(uint64_t id)
-{
-  return find_page(page_id(id));
 }
 
 static std::string host_hash(const std::string &host) {
@@ -182,6 +141,7 @@ std::string crawler::get_data_path(const std::string &host) {
   return site_path(site_data_path, host);
 }
 
+/*
 scrape::site crawler::make_scrape_site(site *s,
     size_t site_max_con, size_t max_site_part_size, size_t max_page_size)
 {
@@ -201,6 +161,7 @@ scrape::site crawler::make_scrape_site(site *s,
 
   return std::move(out);
 }
+*/
 
 bool crawler::check_blacklist(const std::string &host)
 {
@@ -213,27 +174,23 @@ bool crawler::check_blacklist(const std::string &host)
   return false;
 }
 
-page* site_find_add_page(site *site, std::string url, size_t level,
-    std::string path = "")
+page* site::find_add_page(std::string url, size_t level, std::string path)
 {
-  site->load();
+  load();
 
-  if (site->level > level) site->level = level;
+  if (level > level) level = level;
 
-  auto p = site->find_page(url);
+  auto p = m_site.find_page(url);
   if (p != NULL) {
     return p;
   }
 
-  p = site->find_page_by_path(path);
+  p = m_site.find_page_by_path(path);
   if (p != NULL) {
     return p;
   }
 
-  auto id = site->next_id++;
-
-  site->changed = true;
-  return &site->pages.emplace_back(id, url, path);
+  return m_site.add_page(url, path);
 }
 
 void crawler::enable_references(
@@ -241,6 +198,7 @@ void crawler::enable_references(
     size_t max_add_sites,
     size_t next_max_pages)
 {
+  /*
   std::map<uint32_t, size_t> sites_link_count;
 
   isite->load();
@@ -284,8 +242,10 @@ void crawler::enable_references(
       }
     }
   }
+  */
 }
 
+/*
 static void add_link(page *p, page_id id, size_t count)
 {
   for (auto &l: p->links) {
@@ -340,7 +300,7 @@ void crawler::update_site(
         if (o_site == NULL) {
           sites.emplace_back(
                 site_path(site_meta_path, host),
-                next_id++, host, isite->level + 1);
+                host, isite->level + 1);
 
           o_site = &sites.back();
         }
@@ -352,6 +312,7 @@ void crawler::update_site(
     }
   }
 }
+*/
 
 void crawler::load_seed(std::vector<std::string> urls)
 {
@@ -368,13 +329,12 @@ void crawler::load_seed(std::vector<std::string> urls)
     if (site == NULL) {
       sites.emplace_back(
           site_path(site_meta_path, host),
-          next_id++, host, 0);
+          host, 0);
       site = &sites.back();
     }
 
-    site_find_add_page(site, o, 0);
+    site->find_add_page(o, 0);
 
-    site->changed = true;
     site->max_pages = levels[0].max_pages;
 
     site->flush();

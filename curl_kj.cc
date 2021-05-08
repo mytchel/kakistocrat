@@ -1,3 +1,5 @@
+#include <unistd.h>
+
 #include "spdlog/spdlog.h"
 
 #include "kj/time.h"
@@ -15,11 +17,33 @@ struct curl_kj::socket_context {
                 kj::UnixEventPort::FdObserver::OBSERVE_READ_WRITE),
     id(socket_id++)
   {
-    spdlog::info("socket {} create", id);
+    spdlog::trace("socket {} created for fd {}", id, fd);
   }
 
   ~socket_context() {
     spdlog::warn("socket {} destructor", id);
+  }
+
+  bool check_finish() {
+    if (!finish) {
+      return false;
+    }
+
+    if (reading) {
+      spdlog::info("socket {} finish but reading", id);
+      return false;
+    }
+
+    if (writing) {
+      spdlog::info("socket {} finish but writing", id);
+      return false;
+    }
+
+    spdlog::info("socket {} finished", id);
+
+    delete this;
+
+    return true;
   }
 
   int fd;
@@ -30,8 +54,9 @@ struct curl_kj::socket_context {
   kj::Canceler write_canceler;
 
   bool finish{false};
-  bool read{false};
-  bool write{false};
+
+  bool read{false}, reading{false};
+  bool write{false}, writing{false};
 };
 
 struct curl_kj::adaptor {
@@ -42,12 +67,12 @@ public:
       : fulfiller(fulfiller), curl(curl), easy(easy),
         buf(buf), buf_max(max)
   {
-    spdlog::info("adaptor starting"); curl->start_get(this, easy);
+    spdlog::debug("adaptor starting"); curl->start_get(this, easy);
   }
 
   ~adaptor()
   {
-    spdlog::info("adaptor destructing");
+    spdlog::debug("adaptor destructing");
     /*
     if (easy) {
       spdlog::warn("cancel");
@@ -57,7 +82,7 @@ public:
   }
 
   void finish(curl_response &&r) {
-    spdlog::info("adaptor finishing");
+    spdlog::debug("adaptor finishing");
     easy = nullptr;
     buf_max = 0;
     fulfiller.fulfill(kj::mv(r));
@@ -105,7 +130,7 @@ size_t handle_header_write_c(char *buffer, size_t size, size_t nitems, void *use
 }
 size_t handle_buffer_write_c(void *contents, size_t sz, size_t nmemb, void *userp)
 {
-  spdlog::debug("handle write {}", nmemb);
+  spdlog::trace("handle write {}", nmemb);
 
   curl_kj::adaptor *adaptor = static_cast<curl_kj::adaptor *>(userp);
   if (adaptor == nullptr) {
@@ -126,7 +151,7 @@ size_t handle_buffer_write_c(void *contents, size_t sz, size_t nmemb, void *user
 
 static int start_timeout_c(CURLM *multi, long timeout_ms, void *userp)
 {
-  spdlog::debug("got curl set timeout {}", timeout_ms);
+  spdlog::trace("got curl set timeout {}", timeout_ms);
 
   curl_kj *self = static_cast<curl_kj *>(userp);
 
@@ -137,7 +162,7 @@ static int start_timeout_c(CURLM *multi, long timeout_ms, void *userp)
 
 static int handle_socket_c(CURL *easy, curl_socket_t s, int action, void *userp, void *socketp)
 {
-  spdlog::debug("got curl set socket {} {}", s, action);
+  spdlog::trace("got curl set socket {} {}", s, action);
 
   curl_kj *self = static_cast<curl_kj *>(userp);
 
@@ -271,6 +296,8 @@ void curl_kj::handle_timeout(long timeout_ms)
           [this] () {
             timer_canceler.release();
 
+            spdlog::debug("timeout");
+
             int running_handles;
             curl_multi_socket_action(multi_handle, CURL_SOCKET_TIMEOUT, 0,
                                      &running_handles);
@@ -278,41 +305,8 @@ void curl_kj::handle_timeout(long timeout_ms)
             check_multi_info();
 
           },
-          [] (auto e) {
-            spdlog::info("timeout canceled");
-          }
+          [] (auto e) {}
         ));
-}
-
-static bool context_check_finish(curl_kj::socket_context *context)
-{
-  if (context->finish) {
-    bool done = true;
-
-    if (!context->read_canceler.isEmpty()) {
-      spdlog::info("socktet {} cancel read", context->id);
-
-      context->read_canceler.cancel("finished");
-      done = false;
-    }
-
-    if (!context->write_canceler.isEmpty()) {
-      spdlog::info("socktet {} cancel write", context->id);
-
-      context->write_canceler.cancel("finished");
-      done = false;
-    }
-
-    if (done) {
-      spdlog::info("socket {} finish and no read or write", context->id);
-      delete context;
-    }
-
-    return true;
-
-  } else {
-    return false;
-  }
 }
 
 // observers must only be called when there is no data.
@@ -321,59 +315,125 @@ static bool context_check_finish(curl_kj::socket_context *context)
 
 void curl_kj::setup_read(socket_context *context)
 {
-  spdlog::info("socket {} read", context->id);
+  /*
+  uint8_t buf;
+  int r = recv(context->fd, &buf, 1, MSG_PEEK|MSG_DONTWAIT);
+  spdlog::debug("socket {} / {} read  {} - {}", context->id, context->fd, r, errno);
+*/
 
-  tasks.add(context->read_canceler.wrap(
-        context->observer.whenBecomesReadable()).then(
+  kj::Promise<void> p(kj::READY_NOW);
+/*
+  if (r == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+    spdlog::debug("socket {} / {} read would block", context->id, context->fd);
+*/
+    p = context->observer.whenBecomesReadable();
+/*
+  } else {
+    spdlog::debug("socket {} / {} read not blocked {} - {}", context->id, context->fd, r, errno);
+  }
+*/
+
+  context->reading = true;
+  tasks.add(context->read_canceler.wrap(kj::mv(p)).then(
         [this, context] () {
-          spdlog::info("socket {} read done", context->id);
-
+          spdlog::debug("socket {} / {} read done", context->id, context->fd);
           context->read_canceler.release();
+
+          context->reading = false;
+
+          if (context->check_finish()) {
+            return;
+          }
+
+          if (context->read) {
+            spdlog::debug("socket {} / {} continue reading", context->id, context->fd);
+            setup_read(context);
+          }
 
           int running_handles;
           curl_multi_socket_action(multi_handle, context->fd, CURL_CSELECT_IN,
                      &running_handles);
 
           check_multi_info();
-
-          if (context->read) {
-            setup_read(context);
-          }
         },
         [this, context] (auto exception) {
           spdlog::warn("socket {} read exception: {}", context->id, std::string(exception.getDescription()));
           context->read_canceler.release();
-          context->read = false;
-          context_check_finish(context);
+
+          context->reading = false;
+
+          if (!context->finish) {
+            int running_handles;
+            curl_multi_socket_action(multi_handle, context->fd, CURL_CSELECT_ERR,
+                         &running_handles);
+
+            check_multi_info();
+          }
         }));
 }
 
 void curl_kj::setup_write(socket_context *context)
 {
-  spdlog::info("socket {} write", context->id);
+  //uint8_t buf;
+  //int r = send(context->fd, &buf, 1, MSG_PEEK|MSG_DONTWAIT);
+  //spdlog::debug("socket {} / {} read  {} - {}", context->id, context->fd, r, errno);
 
-  tasks.add(context->write_canceler.wrap(
-        context->observer.whenBecomesWritable()).then(
+  /*
+  uint8_t buf;
+  int r = write(context->fd, &buf, 0);
+
+  spdlog::debug("socket {} / {} write state {} - {}", context->id, context->fd, r, errno);
+*/
+
+  kj::Promise<void> p(kj::READY_NOW);
+
+  //if (r == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+//    spdlog::debug("socket {} / {} write would block", context->id, context->fd);
+
+    p = context->observer.whenBecomesWritable();
+/*
+ } else {
+    spdlog::debug("socket {} / {} write not blocked {} - {}", context->id, context->fd, r, errno);
+  }
+*/
+
+  context->writing = true;
+  tasks.add(context->write_canceler.wrap(kj::mv(p)).then(
         [this, context] () {
-          spdlog::info("socket {} write done", context->id);
-
+          spdlog::debug("socket {} write done", context->id);
           context->write_canceler.release();
+
+          spdlog::debug("socket {} / {} write done and handled", context->id, context->fd);
+
+          context->writing = false;
+
+          if (context->check_finish()) {
+            return;
+          }
+
+          if (context->write) {
+            setup_write(context);
+          }
 
           int running_handles;
           curl_multi_socket_action(multi_handle, context->fd, CURL_CSELECT_OUT,
                      &running_handles);
 
           check_multi_info();
-
-          if (context->write) {
-            setup_write(context);
-          }
-        },
+       },
         [this, context] (auto exception) {
           spdlog::warn("socket {} write exception: {}", context->id, std::string(exception.getDescription()));
           context->write_canceler.release();
-          context->write = false;
-          context_check_finish(context);
+
+          context->writing = false;
+
+          if (!context->finish) {
+            int running_handles;
+            curl_multi_socket_action(multi_handle, context->fd, CURL_CSELECT_ERR,
+                         &running_handles);
+
+            check_multi_info();
+          }
         }));
 }
 
@@ -387,57 +447,79 @@ void curl_kj::handle_socket(curl_socket_t s, int action, void *socketp)
     case CURL_POLL_INOUT:
 
       if (socketp) {
-        spdlog::debug("get context from socketp");
+        spdlog::debug("get context from socketp {}", (int) s);
         context = static_cast<socket_context *>(socketp);
 
       } else {
-        spdlog::debug("make new context for socketp");
+        spdlog::debug("make new context for socketp {}", (int) s);
 
-        context = new socket_context(io_context.unixEventPort, (int) s);
+        try {
+          context = new socket_context(io_context.unixEventPort, (int) s);
+        } catch (const std::exception& e) {
+          spdlog::warn("socket context create failed: {}", e.what());
+
+          tasks.add(kj::Promise<void>(kj::READY_NOW).then(
+                [this, s] () {
+                  spdlog::warn("socket context create failed so give error to curl");
+                  int running_handles;
+                  curl_multi_socket_action(multi_handle, s, CURL_CSELECT_ERR, &running_handles);
+
+                  check_multi_info();
+                }));
+
+          return;
+        }
+
+        spdlog::debug("socket {} / {} setup", context->id, context->fd);
       }
+
+      spdlog::debug("socket {} / {} set {}", context->id, context->fd, action);
 
       curl_multi_assign(multi_handle, s, (void *) context);
 
-      if (action & CURL_POLL_IN) {
-        spdlog::debug("socket read");
+      context->read = action & CURL_POLL_IN;
+      context->write = action & CURL_POLL_OUT;
 
-        context->read = true;
-        if (context->read_canceler.isEmpty()) {
-          spdlog::warn("socket {} start reading", context->id);
-          setup_read(context);
-        }
-      } else {
-        context->read = false;
+      if (context->read && !context->reading) {
+        spdlog::debug("socket {} / {} start reading", context->id, context->fd);
+        setup_read(context);
       }
 
-      if (action & CURL_POLL_OUT) {
-        spdlog::debug("socket write");
+      if (context->write && !context->writing) {
+        spdlog::debug("socket {} / {} start writing", context->id, context->fd);
+        setup_write(context);
+      }
 
-        context->write = true;
-        if (context->write_canceler.isEmpty()) {
-          spdlog::warn("socket {} start writeing", context->id);
-          setup_write(context);
-        }
-      } else {
-        context->write = false;
+      if (action == CURL_POLL_NONE && (context->reading || context->writing)) {
+        spdlog::debug("socket {} / {} cancel ops", context->id, context->fd);
+        context->read_canceler.cancel("stop");
+        context->write_canceler.cancel("stop");
       }
 
       break;
 
     case CURL_POLL_REMOVE:
-      spdlog::warn("remove socket {}", (int) s);
+      spdlog::warn("remove fd {}", (int) s);
 
       if (socketp) {
         socket_context *context = static_cast<socket_context *>(socketp);
 
-        spdlog::warn("socket {} set finished", context->id);
-        context->finish = true;
-        context->read = false;
-        context->write = false;
+        spdlog::debug("socket {} / {} finish", context->id, context->fd);
 
-        context_check_finish(context);
+        context->finish = true;
+
+        if (context->reading || context->writing) {
+          spdlog::debug("socket {} / {} cancel and finish", context->id, context->fd);
+          context->read_canceler.cancel("finished");
+          context->write_canceler.cancel("finished");
+        }
+
+        context->check_finish();
 
         curl_multi_assign(multi_handle, s, nullptr);
+
+      } else {
+        spdlog::warn("bad socketp for remove fd {}", (int) s);
       }
 
       break;

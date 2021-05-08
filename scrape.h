@@ -5,27 +5,11 @@
 #include <list>
 #include <vector>
 
-#include "channel.h"
+#include "site.h"
 
 namespace scrape {
 
 struct site;
-
-struct page {
-  std::string url;
-  std::string path;
-  std::string title{""};
-
-  time_t last_scanned{0};
-
-  std::vector<std::pair<std::string, size_t>> links;
-
-  page(const std::string &u, const std::string &p) :
-    url(u), path(p) {}
-
-  page(const std::string &u, const std::string &p, time_t t) :
-    url(u), path(p), last_scanned(t) {}
-};
 
 struct site_op {
   site *m_site;
@@ -82,9 +66,7 @@ struct site_op_sitemap : public site_op {
 };
 
 struct site {
-  std::string host;
-
-  std::vector<page> pages;
+  site_map m_site;
 
   std::list<page *> url_pending;
   std::list<page *> url_scanning;
@@ -113,8 +95,7 @@ struct site {
   std::vector<uint8_t *> using_bufs;
   size_t buf_max;
 
-  site(const std::string &h,
-      std::list<page> s,
+  site(const std::string &path,
       const std::string &n_output,
       size_t n_max_pages,
       size_t n_max_connections,
@@ -180,14 +161,5 @@ bool bad_suffix(const std::string &path);
 
 bool bad_prefix(const std::string &path);
 
-void
-scraper(int i,
-    Channel<site*> &in,
-    Channel<site*> &out,
-    Channel<bool> &stat,
-    size_t max_sites,
-    size_t max_con);
-
 }
-
 #endif

@@ -18,44 +18,32 @@
 #include "spdlog/spdlog.h"
 
 #include "util.h"
-#include "crawl.h"
-#include "config.h"
+#include "site.h"
 
 using nlohmann::json;
 
-namespace crawl {
-
-void to_json(json &j, const page_id &id) {
-  j = json{{"s", id.site}, {"p", id.page}};
-}
-
-void from_json(const json &j, page_id &id) {
-  j.at("s").get_to(id.site);
-  j.at("p").get_to(id.page);
-}
-
 void to_json(json &j, const page &p) {
   j = json{
-      {"i", p.id},
       {"u", p.url},
       {"p", p.path},
       {"t", p.title},
+      {"aliases", p.aliases},
       {"links", p.links},
       {"s", p.last_scanned}};
 }
 
 void from_json(const json &j, page &p) {
-  j.at("i").get_to(p.id);
   j.at("u").get_to(p.url);
   j.at("p").get_to(p.path);
   j.at("t").get_to(p.title);
 
+  j.at("aliases").get_to(p.aliases);
   j.at("links").get_to(p.links);
 
   j.at("s").get_to(p.last_scanned);
 }
 
-void site::load() {
+void site_map::load() {
   if (loaded) return;
   loaded = true;
 
@@ -71,13 +59,16 @@ void site::load() {
   }
 
   try {
+    spdlog::info("parse json {}", path);
     json j = json::parse(file);
 
-    j.at("id").get_to(id);
+    spdlog::info("parse host {}", path);
     j.at("host").get_to(host);
-    j.at("last_scanned").get_to(last_scanned);
-    j.at("next_id").get_to(next_id);
+    //spdlog::info("parse last scanned {}", path);
+    //j.at("last_scanned").get_to(last_scanned);
+    spdlog::info("parse pages {}", path);
     j.at("pages").get_to(pages);
+    spdlog::info("parse done {}", path);
 
   } catch (const std::exception& e) {
     spdlog::warn("failed to load {}", path);
@@ -85,19 +76,17 @@ void site::load() {
 
   file.close();
 
-  spdlog::debug("load {} finished", path);
+  spdlog::debug("load {} finished {} with {} pages", path, host, pages.size());
 }
 
-void site::save() {
+void site_map::save() {
   spdlog::debug("save {}", path);
 
   std::ofstream file;
 
+      //{"last_scanned", last_scanned},
   json j = {
-      {"id", id},
       {"host", host},
-      {"last_scanned", last_scanned},
-      {"next_id", next_id},
       {"pages", pages}};
 
   file.open(path, std::ios::out | std::ios::trunc);
@@ -114,18 +103,24 @@ void site::save() {
   spdlog::debug("save {} finished", path);
 }
 
-page* site::find_page(const std::string &url)
+page* site_map::find_page(const std::string &url)
 {
   for (auto &p: pages) {
     if (p.url == url) {
       return &p;
+    }
+
+    for (auto &a: p.aliases) {
+      if (a == url) {
+        return &p;
+      }
     }
   }
 
   return NULL;
 }
 
-page* site::find_page_by_path(const std::string &path)
+page* site_map::find_page_by_path(const std::string &path)
 {
   for (auto &p: pages) {
     if (p.path == path) {
@@ -136,15 +131,9 @@ page* site::find_page_by_path(const std::string &path)
   return NULL;
 }
 
-page* site::find_page(uint32_t id)
+page* site_map::add_page(const std::string &url, const std::string &path)
 {
-  for (auto &p: pages) {
-    if (p.id == id) {
-      return &p;
-    }
-  }
-
-  return NULL;
+  changed = true;
+  return &pages.emplace_back(url, path);
 }
 
-}

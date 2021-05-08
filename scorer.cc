@@ -18,7 +18,6 @@
 #include <nlohmann/json.hpp>
 #include "spdlog/spdlog.h"
 
-#include "channel.h"
 #include "util.h"
 #include "scrape.h"
 #include "crawl.h"

@@ -7,9 +7,42 @@
 #include <vector>
 #include <list>
 
-#include "crawl.h"
+#include "site.h"
+#include "config.h"
 
 namespace crawl {
+
+struct site {
+  site_map m_site;
+  size_t level;
+
+  time_t last_scanned{0};
+
+  bool scraped{false};
+  bool scraping{false};
+  bool indexing_part{false};
+  bool indexed_part{false};
+  bool indexed{false};
+  size_t max_pages{0};
+
+  void flush() { m_site.flush(); }
+  void load() { m_site.load(); }
+  void save() { m_site.save(); }
+
+  site() {}
+
+  site(const std::string &p, const std::string &h, size_t l)
+    : m_site(p, h), level(l)
+  {}
+
+  page* find_page(const std::string &url);
+  page* find_page_by_path(const std::string &path);
+
+  page* find_add_page(std::string url, size_t level, std::string path = "");
+};
+
+void to_json(nlohmann::json &j, const site &s);
+void from_json(const nlohmann::json &j, site &s);
 
 struct crawler {
   std::string site_data_path;
@@ -17,8 +50,6 @@ struct crawler {
   std::string sites_path;
 
   std::vector<crawl_level> levels;
-
-  std::uint32_t next_id{1};
 
   std::list<site> sites;
 
@@ -32,10 +63,6 @@ struct crawler {
   {}
 
   site* find_site(const std::string &host);
-  site* find_site(uint32_t id);
-
-  page* find_page(uint64_t id);
-  page* find_page(page_id id);
 
   void load_seed(std::vector<std::string> seed);
 
@@ -48,7 +75,7 @@ struct crawler {
   bool have_next_site();
   site* get_next_site();
 
-  void update_site(site *isite, std::list<scrape::page *> &page_list);
+  //void update_site(site *isite, std::list<scrape::page *> &page_list);
 
   void enable_references(
     site *isite,
@@ -57,8 +84,8 @@ struct crawler {
 
   std::string get_data_path(const std::string &host);
 
-  scrape::site make_scrape_site(site *s,
-    size_t site_max_con, size_t max_site_part_size, size_t max_page_size);
+  //scrape::site make_scrape_site(site *s,
+ //   size_t site_max_con, size_t max_site_part_size, size_t max_page_size);
 
   void save();
   void load();

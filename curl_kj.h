@@ -47,8 +47,8 @@ private:
   void setup_write(socket_context *context);
 
   void taskFailed(kj::Exception&& exception) override {
-    spdlog::warn("task failed: {}", std::string(exception.getDescription()));
-    kj::throwFatalException(kj::mv(exception));
+    spdlog::warn("curl task failed: {}", std::string(exception.getDescription()));
+    //kj::throwFatalException(kj::mv(exception));
   }
 
   kj::TaskSet tasks;
