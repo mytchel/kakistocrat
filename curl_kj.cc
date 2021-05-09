@@ -219,13 +219,10 @@ void curl_kj::cancel(CURL *curl_handle)
 
 void curl_kj::start_get(adaptor *adaptor, CURL *easy)
 {
-  spdlog::info("set data's");
-
   curl_easy_setopt(easy, CURLOPT_PRIVATE, adaptor);
   curl_easy_setopt(easy, CURLOPT_WRITEDATA, adaptor);
   curl_easy_setopt(easy, CURLOPT_HEADERDATA, adaptor);
 
-  spdlog::info("add to multi");
   curl_multi_add_handle(multi_handle, easy);
 }
 
@@ -255,8 +252,6 @@ kj::Promise<curl_response> curl_kj::add(const std::string &url,
   strncpy(url_c, url.c_str(), sizeof(url_c));
 
   curl_easy_setopt(easy, CURLOPT_URL, url_c);
-
-  spdlog::info("create promise");
 
   return kj::newAdaptedPromise<curl_response, adaptor>(this, easy, buf, buf_max);
 }

@@ -30,18 +30,86 @@
 #include <kj/debug.h>
 #include <kj/async-io.h>
 #include <kj/async-unix.h>
-
+#include <kj/timer.h>
+#include <kj/threadlocal.h>
 #include <capnp/ez-rpc.h>
+#include <capnp/rpc-twoparty.h>
+#include <capnp/capability.h>
+#include <capnp/rpc.h>
 #include <capnp/message.h>
 #include <iostream>
 
 using nlohmann::json;
 
+class Server final : public kj::TaskSet::ErrorHandler {
+
+  const config &settings;
+  capnp::Capability::Client mainInterface;
+  kj::TaskSet tasks;
+
+  struct ServerContext {
+    kj::Own<kj::AsyncIoStream> stream;
+    capnp::TwoPartyVatNetwork network;
+    capnp::RpcSystem<capnp::rpc::twoparty::VatId> rpcSystem;
+
+    ServerContext(kj::Own<kj::AsyncIoStream>&& stream, capnp::Capability::Client bootstrap,
+                  capnp::ReaderOptions readerOpts)
+        : stream(kj::mv(stream)),
+          network(*this->stream, capnp::rpc::twoparty::Side::SERVER, readerOpts),
+          rpcSystem(makeRpcServer(network, bootstrap)) {}
+  };
+
+public:
+  Server(kj::AsyncIoContext &io_context, const config &s, capnp::Capability::Client mainInterface)
+    : settings(s), tasks(*this), mainInterface(kj::mv(mainInterface))
+  {
+    std::string bindAddress = "localhost:1234";
+
+    capnp::ReaderOptions readerOpts;
+
+    spdlog::info("server setup for {}", bindAddress);
+
+    tasks.add(io_context.provider->getNetwork().parseAddress(bindAddress, 1234)
+        .then([this, readerOpts](kj::Own<kj::NetworkAddress>&& addr) {
+
+      //spdlog::info("server ready: {}", std::string(addr->toString()));
+      spdlog::info("server ready");
+      auto listener = addr->listen();
+      acceptLoop(kj::mv(listener), readerOpts);
+    }));
+  }
+
+  void acceptLoop(kj::Own<kj::ConnectionReceiver>&& listener, capnp::ReaderOptions readerOpts) {
+    auto ptr = listener.get();
+    tasks.add(ptr->accept().then(kj::mvCapture(kj::mv(listener),
+        [this, readerOpts](kj::Own<kj::ConnectionReceiver>&& listener,
+                           kj::Own<kj::AsyncIoStream>&& connection) {
+      acceptLoop(kj::mv(listener), readerOpts);
+
+      spdlog::info("server got connection");
+
+      auto server = kj::heap<ServerContext>(kj::mv(connection), mainInterface, readerOpts);
+
+      // Arrange to destroy the server context when all references are gone, or when the
+      // EzRpcServer is destroyed (which will destroy the TaskSet).
+      tasks.add(server->network.onDisconnect().attach(kj::mv(server)));
+    })));
+  }
+
+  void taskFailed(kj::Exception&& exception) override {
+    spdlog::warn("task failed: {}", std::string(exception.getDescription()));
+    kj::throwFatalException(kj::mv(exception));
+  }
+};
+
 class MasterImpl final: public Master::Server,
                         public kj::TaskSet::ErrorHandler {
-public:
-  MasterImpl(const config &s)
-    : settings(s), tasks(*this), crawler(s)
+
+ public:
+  MasterImpl(kj::AsyncIoContext &io_context, const config &s)
+    : settings(s), tasks(*this),
+      timer(io_context.provider->getTimer()),
+      crawler(s)
   {
     crawler.load();
 
@@ -52,6 +120,42 @@ public:
     crawler.load_seed(initial_seed);
 
 //    index_parts = search::load_parts(settings.indexer.meta_path);
+
+    checkCrawlers();
+  }
+
+  void checkCrawlers() {
+    spdlog::info("checking {} crawlers", crawlers.size());
+
+    for (auto &c: crawlers) {
+      auto request = c.canCrawlRequest();
+
+      auto it = std::find(ready_crawlers.begin(), ready_crawlers.end(), &c);
+      if (it != ready_crawlers.end()) {
+        continue;
+      }
+
+      tasks.add(request.send().then(
+        [this, &c] (auto result) {
+
+          bool can_crawl = result.getHaveSpace();
+          spdlog::info("crawler {} can crawl: {}", (uintptr_t) &c, can_crawl);
+
+          if (can_crawl) {
+            auto it = std::find(ready_crawlers.begin(), ready_crawlers.end(), &c);
+            if (it == ready_crawlers.end()) {
+              spdlog::info("crawler {} transition to ready", (uintptr_t) &c);
+              ready_crawlers.push_back(&c);
+              crawlNext();
+            }
+          }
+        }));
+    }
+
+    tasks.add(timer.afterDelay(5 * kj::SECONDS).then(
+          [this] () {
+            checkCrawlers();
+          }));
   }
 
   void crawlNext() {
@@ -77,7 +181,7 @@ public:
     auto proc = ready_crawlers.front();
     ready_crawlers.pop_front();
 
-    auto request = proc.crawlRequest();
+    auto request = proc->crawlRequest();
 
     request.setSitePath(site->m_site.path);
     request.setDataPath(crawler.get_data_path(site->m_site.host));
@@ -95,8 +199,6 @@ public:
     tasks.add(request.send().then(
         [this, site, proc] (auto result) mutable {
           spdlog::info("got response for crawl site {}", site->m_site.host);
-
-          ready_crawlers.push_back(kj::mv(proc));
 
           if (site->level + 1 < crawler.levels.size()) {
             auto level = crawler.levels[site->level];
@@ -123,6 +225,12 @@ public:
           //index_pending_sites.emplace_back(site);
 
           have_changes = true;
+
+          auto it = std::find(ready_crawlers.begin(), ready_crawlers.end(), proc);
+          if (it == ready_crawlers.end()) {
+            spdlog::info("crawler {} transition to ready", (uintptr_t) proc);
+            ready_crawlers.push_back(proc);
+          }
 
           //indexNext();
           crawlNext();
@@ -400,7 +508,9 @@ public:
   kj::Promise<void> registerCrawler(RegisterCrawlerContext context) override {
     spdlog::info("got register crawler");
 
-    ready_crawlers.push_back(context.getParams().getCrawler());
+    crawlers.push_back(context.getParams().getCrawler());
+
+    ready_crawlers.push_back(&crawlers.back());
 
     crawlNext();
 
@@ -439,9 +549,11 @@ public:
 
   const config &settings;
 
+  bool have_changes{false};
+
   kj::TaskSet tasks;
 
-  bool have_changes{false};
+  kj::Timer &timer;
 
   // Crawling
 
@@ -449,7 +561,8 @@ public:
 
   crawl::site *next_site = nullptr;
 
-  std::list<Crawler::Client> ready_crawlers;
+  std::list<Crawler::Client> crawlers;
+  std::list<Crawler::Client *> ready_crawlers;
 
   /*
   // Indexing
@@ -493,74 +606,26 @@ int main(int argc, char *argv[]) {
 
   spdlog::info("loading");
 
-  /*
-  kj::UnixEventPort::captureSignal(SIGINT);
+  //kj::UnixEventPort::captureSignal(SIGINT);
   auto ioContext = kj::setupAsyncIo();
 
-  auto addrPromise = ioContext.provider->getNetwork().parseAddress(argv[1], 2572)
-  .then([](kj::Own<kj::NetworkAddress> addr) {
-      spdlog::info("using addr {}", addr.toString());
-      return addr->connect().attach(kj::mv(addr));
-  });
+  Master::Client master = kj::heap<MasterImpl>(ioContext, settings);
 
-  auto stream = addrPromise.wait(ioContext.waitScope);
+  Server server(ioContext, settings, master);
 
-  capnp::TwoPartyVatNetwork network(*stream, rpc::twoparty::Side::SERVER);
+  kj::NEVER_DONE.wait(ioContext.waitScope);
 
-  MyEventLoop eventLoop;
-  kj::WaitScope waitScope(eventLoop);
+/*
 
-  TwoPartyVatNetwork network;
-  // kj::Own<kj::AsyncIoStream>&& stream, ReaderOptions readerOpts)
-
-  ReaderOptions readerOpts;
-
-    tasks.add(context->getIoProvider().getNetwork().parseAddress(bindAddress, defaultPort)
-        .then(kj::mvCapture(paf.fulfiller,
-          [this, readerOpts](kj::Own<kj::PromiseFulfiller<uint>>&& portFulfiller,
-                             kj::Own<kj::NetworkAddress>&& addr) {
-      auto listener = addr->listen();
-      portFulfiller->fulfill(listener->getPort());
-      acceptLoop(kj::mv(listener), readerOpts);
-    })));
-
-
-    void acceptLoop(kj::Own<kj::ConnectionReceiver>&& listener, ReaderOptions readerOpts) {
-      auto ptr = listener.get();
-      tasks.add(ptr->accept().then(kj::mvCapture(kj::mv(listener),
-          [this, readerOpts](kj::Own<kj::ConnectionReceiver>&& listener,
-                             kj::Own<kj::AsyncIoStream>&& connection) {
-        acceptLoop(kj::mv(listener), readerOpts);
-
-        auto server = kj::heap<ServerContext>(kj::mv(connection), *this, readerOpts);
-
-        // Arrange to destroy the server context when all references are gone, or when the
-        // EzRpcServer is destroyed (which will destroy the TaskSet).
-        tasks.add(server->network.onDisconnect().attach(kj::mv(server)));
-      })));
-    }
-
-  auto listener = context->getIoProvider().getNetwork()
-        .getSockaddr(bindAddress, addrSize)->listen();
-  acceptLoop(kj::mv(listener), readerOpts);
-
-  Master::Client master = kj::heap<MasterImpl>(index_pending_sites);
-
-  auto server = makeRpcServer(network, master);
-
-  kj::NEVER_DONE.wait(waitScope);
-
-  //network.onDisconnect().wait(waitScope);
-*/
-
- // auto client = makeRpcClient(network);
+  auto io_context = kj::EzRpcContext::getThreadLocal();
 
   // Set up a server.
-  capnp::EzRpcServer server(kj::heap<MasterImpl>(settings), argv[1]);
+  capnp::EzRpcServer server(kj::heap<MasterImpl>(io_context, settings), argv[1]);
 
   auto& waitScope = server.getWaitScope();
 
   kj::NEVER_DONE.wait(waitScope);
+*/
 
   return 0;
 }

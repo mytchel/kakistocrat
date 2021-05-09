@@ -59,16 +59,11 @@ void site_map::load() {
   }
 
   try {
-    spdlog::info("parse json {}", path);
     json j = json::parse(file);
 
-    spdlog::info("parse host {}", path);
     j.at("host").get_to(host);
-    //spdlog::info("parse last scanned {}", path);
     //j.at("last_scanned").get_to(last_scanned);
-    spdlog::info("parse pages {}", path);
     j.at("pages").get_to(pages);
-    spdlog::info("parse done {}", path);
 
   } catch (const std::exception& e) {
     spdlog::warn("failed to load {}", path);

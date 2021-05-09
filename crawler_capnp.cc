@@ -74,9 +74,16 @@ public:
   CrawlerImpl(const config &settings, kj::AsyncIoContext &io_context)
     : settings(settings), tasks(*this),
       curl(io_context, settings.crawler.thread_max_connections),
+      max_sites(settings.crawler.thread_max_sites),
       max_ops(settings.crawler.thread_max_connections)
-  {
+  {}
 
+  kj::Promise<void> canCrawl(CanCrawlContext context) override {
+    bool have_space = ops.size() < max_ops && adaptors.size() < max_sites;
+
+    context.getResults().setHaveSpace(have_space);
+
+    return kj::READY_NOW;
   }
 
   kj::Promise<void> crawl(CrawlContext context) override {
@@ -88,33 +95,26 @@ public:
     std::string data_path = params.getDataPath();
     size_t max_pages = params.getMaxPages();
 
-    spdlog::info("make scrape site  {}", site_path);
     scrape::site scrape_site(
         site_path, data_path, max_pages,
         settings.crawler.site_max_connections,
         settings.crawler.max_site_part_size,
         settings.crawler.max_page_size);
 
-    spdlog::info("made scrape site {} {}", scrape_site.m_site.host, site_path);
     return kj::newAdaptedPromise<void, adaptor>(this, kj::mv(context), std::move(scrape_site));
   }
 
   void add_adaptor(adaptor *a) {
-    spdlog::debug("add adaptor");
     adaptors.push_back(a);
     process();
   }
 
   void process() {
-    spdlog::debug("processing");
-
     auto a = adaptors.begin();
 
     bool all_blocked = true;
 
     while (a != adaptors.end()) {
-      spdlog::debug("check adaptor");
-
       auto &s = (*a)->site;
 
       if (s.finished()) {
@@ -145,8 +145,6 @@ public:
 
         tasks.add(curl.add(op->url, op->buf, op->buf_max).then(
           [this, op] (curl_response response) {
-            spdlog::info("one op done");
-
             op->size = response.size;
 
             if (response.success) {
@@ -170,6 +168,7 @@ public:
     if (!all_blocked) {
       spdlog::debug("not all blocked, call again");
       process();
+
     } else {
       spdlog::info("crawler all blocked with {} sites", adaptors.size());
 
@@ -181,7 +180,7 @@ public:
 
   void taskFailed(kj::Exception&& exception) override {
     spdlog::warn("crawler task failed: {}", std::string(exception.getDescription()));
-    //kj::throwFatalException(kj::mv(exception));
+    kj::throwFatalException(kj::mv(exception));
   }
 
   const config &settings;
@@ -192,6 +191,7 @@ public:
   std::list<adaptor*> adaptors;
   std::list<scrape::site_op*> ops;
 
+  size_t max_sites;
   size_t max_ops;
 };
 

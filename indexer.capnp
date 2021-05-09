@@ -9,6 +9,8 @@ interface Master {
 interface Crawler {
     crawl @0 (sitePath :Text, dataPath :Text,
               maxPages :UInt32);
+
+    canCrawl @1 () -> (haveSpace :Bool);
 }
 
 interface Indexer {

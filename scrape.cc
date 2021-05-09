@@ -62,7 +62,6 @@ site::site(
 
   buf_max = n_max_page_size;
 
-  n_max_connections = 1;
   for (size_t i = 0; i < n_max_connections; i++) {
     uint8_t *buf = (uint8_t *) malloc(buf_max);
     if (buf == nullptr) {
@@ -74,9 +73,7 @@ site::site(
 }
 
 site::~site() {
-  spdlog::info("site free");
   for (auto b: free_bufs) {
-    spdlog::info("site {} free buf {}", m_site.host, (uintptr_t) b);
     free(b);
   }
 }
@@ -518,8 +515,10 @@ std::optional<site_op *> site::get_next() {
       auto buf = pop_buf();
       if (buf) {
         getting_robots = true;
+        spdlog::debug("{} get next robots", m_site.host);
         return new site_op_robots(this, buf, buf_max);
       } else {
+        spdlog::debug("{} get next robots out of bufs", m_site.host);
         return {};
       }
     }
@@ -533,10 +532,16 @@ std::optional<site_op *> site::get_next() {
       sitemap_url_pending.erase(url);
       sitemap_url_getting.insert(url);
 
+      spdlog::debug("{} get next sitemap {}", m_site.host, url);
       return new site_op_sitemap(this, buf, buf_max, url);
     } else {
+      spdlog::debug("{} get next sitemap out of bufs", m_site.host);
       return {};
     }
+  }
+
+  if (!sitemap_url_getting.empty()) {
+    return {};
   }
 
   if (url_unchanged.size() + url_scanned.size() + url_scanning.size() >= max_pages) {
@@ -554,8 +559,7 @@ std::optional<site_op *> site::get_next() {
 
   auto buf = pop_buf();
   if (buf) {
-    spdlog::debug("{} get next url", m_site.host);
-    spdlog::debug("{} get next {}", m_site.host, url_pending.front()->url);
+    spdlog::debug("{} get next page {}", m_site.host, url_pending.front()->url);
 
     url_scanning.splice(url_scanning.end(),
       url_pending, url_pending.begin());
@@ -563,14 +567,12 @@ std::optional<site_op *> site::get_next() {
     return new site_op_page(this, buf, buf_max, url_scanning.back());
 
   } else {
-    spdlog::debug("{} no bufs for request", m_site.host);
+    spdlog::debug("{} get next page out of bufs", m_site.host);
     return {};
   }
 }
 
 bool site::finished() {
-  spdlog::debug("{} check finished", m_site.host);
-
   if (!got_robots) {
     spdlog::debug("{} not finished, no robots", m_site.host);
     return false;
