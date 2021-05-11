@@ -26,6 +26,7 @@ struct site {
   size_t max_pages{0};
 
   void flush() { m_site.flush(); }
+  void reload() { m_site.reload(); }
   void load() { m_site.load(); }
   void save() { m_site.save(); }
 
@@ -75,7 +76,7 @@ struct crawler {
   bool have_next_site();
   site* get_next_site();
 
-  //void update_site(site *isite, std::list<scrape::page *> &page_list);
+  void expand_links(site *isite);
 
   void enable_references(
     site *isite,

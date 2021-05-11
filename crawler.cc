@@ -198,51 +198,50 @@ void crawler::enable_references(
     size_t max_add_sites,
     size_t next_max_pages)
 {
-  /*
-  std::map<uint32_t, size_t> sites_link_count;
+  std::map<std::string, size_t> sites_link_count;
 
   isite->load();
 
-  for (auto &page: isite->pages) {
+  for (auto &page: isite->m_site.pages) {
     for (auto &l: page.links) {
-      if (l.first.site == isite->id) continue;
+      auto host = util::get_host(l.first);
+      if (host == isite->m_site.host) continue;
 
-      auto it = sites_link_count.try_emplace(l.first.site, l.second);
+      auto it = sites_link_count.try_emplace(host, l.second);
       if (!it.second) {
         it.first->second += l.second;
       }
     }
   }
 
-  std::list<uint32_t> linked_sites;
+  std::list<std::string> linked_sites;
 
   for (auto &s: sites_link_count) {
     linked_sites.push_back(s.first);
   }
 
   linked_sites.sort(
-      [&sites_link_count](uint32_t a, uint32_t b) {
+      [&sites_link_count](std::string a, std::string b) {
         auto aa = sites_link_count.find(a);
         auto bb = sites_link_count.find(b);
         return aa->second > bb->second;
       });
 
   size_t add_sites = 0;
-  for (auto &sid: linked_sites) {
-    auto site = find_site(sid);
+  for (auto &host: linked_sites) {
+    auto site = find_site(host);
     if (site != NULL) {
       site->max_pages += next_max_pages;
       add_sites++;
 
       spdlog::debug("site {} is adding available pages {} to {}",
-          isite->host, next_max_pages, site->host);
+          isite->m_site.host, next_max_pages, site->m_site.host);
 
       if (add_sites >= max_add_sites) {
         break;
       }
     }
   }
-  */
 }
 
 /*
@@ -257,62 +256,35 @@ static void add_link(page *p, page_id id, size_t count)
 
   p->links.emplace_back(id, count);
 }
+*/
 
-void crawler::update_site(
-    site *isite,
-    std::list<scrape::page *> &page_list)
+void crawler::expand_links(site *isite)
 {
-  spdlog::info("update {} info", isite->host);
+  spdlog::info("update {} info", isite->m_site.host);
 
-  for (auto &u: page_list) {
-    auto p = site_find_add_page(isite, u->url, isite->level, u->path);
-
-    p->links.clear();
-
-    p->title = u->title;
-
-    p->path = u->path;
-    p->last_scanned = u->last_scanned;
-  }
-
-  for (auto &u: page_list) {
-    auto p = isite->find_page(u->url);
-    if (p == NULL) continue;
-
-    for (auto &l: u->links) {
+  for (auto &p: isite->m_site.pages) {
+    for (auto &l: p.links) {
       auto host = util::get_host(l.first);
       if (host == "") continue;
+      if (host == isite->m_site.host) continue;
 
-      if (host == isite->host) {
-        auto n_p = isite->find_page(l.first);
-        // Incase all the links didn't come though then
-        // don't fuck with the page reference.
-        if (n_p != NULL) {
-          add_link(p, page_id(isite->id, n_p->id), l.second);
-        }
-
-      } else {
-        if (check_blacklist(host)) {
-          continue;
-        }
-
-        site *o_site = find_site(host);
-        if (o_site == NULL) {
-          sites.emplace_back(
-                site_path(site_meta_path, host),
-                host, isite->level + 1);
-
-          o_site = &sites.back();
-        }
-
-        auto o_p = site_find_add_page(o_site, l.first, isite->level + 1);
-
-        add_link(p, page_id(o_site->id, o_p->id), l.second);
+      if (check_blacklist(host)) {
+        continue;
       }
+
+      site *o_site = find_site(host);
+      if (o_site == NULL) {
+        sites.emplace_back(
+              site_path(site_meta_path, host),
+              host, isite->level + 1);
+
+        o_site = &sites.back();
+      }
+
+      o_site->find_add_page(l.first, isite->level + 1);
     }
   }
 }
-*/
 
 void crawler::load_seed(std::vector<std::string> urls)
 {

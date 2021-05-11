@@ -22,10 +22,9 @@
 #include "spdlog/spdlog.h"
 
 #include "util.h"
-#include "scrape.h"
-#include "crawl.h"
+#include "config.h"
+#include "site.h"
 #include "tokenizer.h"
-
 #include "index.h"
 
 #include "indexer.capnp.h"
@@ -82,7 +81,7 @@ public:
 
     spdlog::info("load  {}", path);
 
-    crawl::site site(path);
+    site_map site(path);
     site.load();
 
     spdlog::info("index {}", site.host);
@@ -104,7 +103,7 @@ public:
 
     size_t i = 0;
     for (auto &p: output_paths) {
-      paths.set(i++, p);//] = capnp::Text::Builder(p.c_str());
+      paths.set(i++, p);
     }
 
     indexer.reset();

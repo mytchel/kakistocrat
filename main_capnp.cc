@@ -23,7 +23,7 @@
 
 #include "util.h"
 #include "crawler.h"
-//#include "index.h"
+#include "index.h"
 
 #include "indexer.capnp.h"
 
@@ -119,9 +119,17 @@ class MasterImpl final: public Master::Server,
     crawler.load_blacklist(blacklist);
     crawler.load_seed(initial_seed);
 
-//    index_parts = search::load_parts(settings.indexer.meta_path);
+    index_parts = search::load_parts(settings.indexer.meta_path);
+
+    for (auto &site: crawler.sites) {
+      if (site.scraped && !site.indexed && !site.indexed_part) {
+        spdlog::info("setting site {} for indexing", site.m_site.host);
+        index_pending_sites.emplace_back(&site);
+      }
+    }
 
     checkCrawlers();
+    flush();
   }
 
   void checkCrawlers() {
@@ -152,15 +160,38 @@ class MasterImpl final: public Master::Server,
         }));
     }
 
-    tasks.add(timer.afterDelay(5 * kj::SECONDS).then(
+    tasks.add(timer.afterDelay(1 * kj::SECONDS).then(
           [this] () {
             checkCrawlers();
           }));
   }
 
+  void flush() {
+    if (have_changes) {
+      spdlog::info("periodic save: started");
+
+      spdlog::info("periodic save: flush sites");
+      for (auto &s: crawler.sites) {
+        s.flush();
+      }
+
+      spdlog::info("periodic save: save metadata");
+      crawler.save();
+
+      spdlog::info("periodic save: finished");
+
+      have_changes = false;
+    }
+
+    tasks.add(timer.afterDelay(10 * kj::SECONDS).then(
+          [this] () {
+            flush();
+          }));
+  }
+
   void crawlNext() {
     if (ready_crawlers.empty()) {
-      spdlog::warn("no ready crawlers");
+      spdlog::info("no ready crawlers");
       return;
     }
 
@@ -169,7 +200,7 @@ class MasterImpl final: public Master::Server,
     }
 
     if (next_site == nullptr) {
-      spdlog::warn("no sites");
+      spdlog::info("no sites to crawl");
       return;
     }
 
@@ -200,6 +231,10 @@ class MasterImpl final: public Master::Server,
         [this, site, proc] (auto result) mutable {
           spdlog::info("got response for crawl site {}", site->m_site.host);
 
+          site->reload();
+
+          crawler.expand_links(site);
+
           if (site->level + 1 < crawler.levels.size()) {
             auto level = crawler.levels[site->level];
             auto next_level = crawler.levels[site->level + 1];
@@ -222,9 +257,10 @@ class MasterImpl final: public Master::Server,
           site->indexed_part = false;
           site->indexed = false;
 
-          //index_pending_sites.emplace_back(site);
-
           have_changes = true;
+
+          index_pending_sites.emplace_back(site);
+          indexNext();
 
           auto it = std::find(ready_crawlers.begin(), ready_crawlers.end(), proc);
           if (it == ready_crawlers.end()) {
@@ -232,7 +268,6 @@ class MasterImpl final: public Master::Server,
             ready_crawlers.push_back(proc);
           }
 
-          //indexNext();
           crawlNext();
         },
         [this, site, proc] (auto exception) {
@@ -383,6 +418,8 @@ class MasterImpl final: public Master::Server,
     mergeNext();
   }
 
+  */
+
   void flushIndexerDone(Indexer::Client *i, const std::list<std::string> &output_paths) {
     for (auto &p: output_paths) {
       spdlog::info("adding index part {}", p);
@@ -401,7 +438,7 @@ class MasterImpl final: public Master::Server,
         spdlog::info("part ready for merging {}", p);
       }
 
-      startMerging(index_parts);
+      //startMerging(index_parts);
 
       index_parts.clear();
 
@@ -462,7 +499,7 @@ class MasterImpl final: public Master::Server,
     }
 
     if (index_pending_sites.empty()) {
-      spdlog::info("no more sites");
+      spdlog::info("no sites to index");
 
       flushIndexers();
 
@@ -480,30 +517,28 @@ class MasterImpl final: public Master::Server,
     auto s = index_pending_sites.front();
     index_pending_sites.pop_front();
 
-    spdlog::info("request index for {}", s->host);
+    spdlog::info("request index for {}", s->m_site.host);
 
-    auto request = indexer.indexRequest();
-    request.setSitePath(s->path);
+    auto request = indexer->indexRequest();
+    request.setSitePath(s->m_site.path);
 
     tasks.add(request.send().then(
-        [this, s, indexer] (auto result) mutable {
-          spdlog::info("got response for index site {}", s->host);
+        [this, s, indexer] (auto result) {
+          spdlog::info("got response for index site {}", s->m_site.host);
 
-          indexers_pending_flush.insert(&indexer);
+          indexers_pending_flush.insert(indexer);
 
-          ready_indexers.push_back(kj::mv(indexer));
+          ready_indexers.push_back(indexer);
 
           indexNext();
         },
-        [this, s, &indexer] (auto exception) {
-          spdlog::warn("got exception for index site {} : {}", s->host, std::string(exception.getDescription()));
+        [this, s, indexer] (auto exception) {
+          spdlog::warn("got exception for index site {} : {}", s->m_site.host, std::string(exception.getDescription()));
           index_pending_sites.push_back(s);
         }));
 
     indexNext();
   }
-
-  */
 
   kj::Promise<void> registerCrawler(RegisterCrawlerContext context) override {
     spdlog::info("got register crawler");
@@ -517,17 +552,18 @@ class MasterImpl final: public Master::Server,
     return kj::READY_NOW;
   }
 
-  /*
   kj::Promise<void> registerIndexer(RegisterIndexerContext context) override {
     spdlog::info("got register indexer");
 
-    ready_indexers.push_back(context.getParams().getIndexer());
+    indexers.push_back(context.getParams().getIndexer());
+    ready_indexers.push_back(&indexers.back());
 
     indexNext();
 
     return kj::READY_NOW;
   }
 
+  /*
   kj::Promise<void> registerMerger(RegisterMergerContext context) override {
     spdlog::info("got register merger");
 
@@ -564,12 +600,12 @@ class MasterImpl final: public Master::Server,
   std::list<Crawler::Client> crawlers;
   std::list<Crawler::Client *> ready_crawlers;
 
-  /*
   // Indexing
 
-  std::list<crawl::site *> index_pending_sites;
+  std::list<Indexer::Client> indexers;
+  std::list<Indexer::Client *> ready_indexers;
 
-  std::list<Indexer::Client> ready_indexers;
+  std::list<crawl::site *> index_pending_sites;
 
   // Index Flushing
 
@@ -578,6 +614,7 @@ class MasterImpl final: public Master::Server,
 
   std::list<std::string> index_parts;
 
+  /*
   // Merging
 
   std::list<std::string> index_parts_merging;

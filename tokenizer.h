@@ -1,3 +1,6 @@
+#ifndef TOKENIZER_H
+#define TOKENIZER_H
+
 extern "C" {
 #include "str.h"
 }
@@ -29,4 +32,6 @@ const size_t attr_value_max_len = 512;
 bool get_tag_attr(char *attr_value, const char *attr_name, char *token);
 
 }
+
+#endif
 

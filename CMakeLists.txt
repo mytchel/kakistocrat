@@ -71,8 +71,17 @@ capnp_generate_cpp(capnp_sources capnp_headers indexer.capnp)
 add_executable(main_capnp main_capnp.cc
     ${capnp_sources}
     ${capnp_headers}
-    hash.cc
+
     crawler.cc
+
+    index.cc
+    index_part.cc
+    tokenizer.cc
+    posting.cc
+    vbyte.cc
+    str.c
+
+    hash.cc
     site.cc
     util.cc
     config.cc)
@@ -87,14 +96,17 @@ target_link_libraries(main_capnp CapnProto::capnp-rpc)
 
 add_executable(crawler_capnp crawler_capnp.cc
     ${capnp_sources}
+    ${capnp_headers}
+
     curl_kj.cc
-    hash.cc
     scrape_op.cc
     scrape.cc
-    site.cc
-    util.cc
     tokenizer.cc
     str.c
+
+    hash.cc
+    site.cc
+    util.cc
     config.cc)
 
 target_include_directories(crawler_capnp PUBLIC ${CURL_INCLUDE_DIRS})
@@ -107,21 +119,20 @@ target_link_libraries(crawler_capnp spdlog::spdlog)
 target_link_libraries(crawler_capnp foonathan_memory)
 target_link_libraries(crawler_capnp CapnProto::capnp-rpc)
 
-
-if (FALSE)
-
 add_executable(indexer_capnp indexer_capnp.cc
     ${capnp_sources}
+    ${capnp_headers}
+
     index_part.cc
     index.cc
-    hash.cc
     posting.cc
     vbyte.cc
-    crawler.cc
-    scrape.cc
-    util.cc
     tokenizer.cc
     str.c
+
+    hash.cc
+    site.cc
+    util.cc
     config.cc)
 
 target_include_directories(indexer_capnp PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
@@ -131,6 +142,8 @@ target_link_libraries(indexer_capnp nlohmann_json::nlohmann_json)
 target_link_libraries(indexer_capnp spdlog::spdlog)
 target_link_libraries(indexer_capnp foonathan_memory)
 target_link_libraries(indexer_capnp CapnProto::capnp-rpc)
+
+if (FALSE)
 
 add_executable(merger_capnp merger_capnp.cc
     ${capnp_sources}

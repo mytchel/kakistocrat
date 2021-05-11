@@ -17,8 +17,6 @@
 
 #include "spdlog/spdlog.h"
 
-#include "util.h"
-#include "posting.h"
 #include "index.h"
 #include "tokenizer.h"
 
@@ -44,7 +42,7 @@ static bool word_allow_extra(std::string s)
   return true;
 }
 
-void indexer::index_site(crawl::site &site, char *file_buf, size_t file_buf_len) {
+void indexer::index_site(site_map &site, char *file_buf, size_t file_buf_len) {
   spdlog::info("index site {}", site.host);
 
   const size_t buf_len = 80;
@@ -67,7 +65,6 @@ void indexer::index_site(crawl::site &site, char *file_buf, size_t file_buf_len)
   for (auto &page: site.pages) {
     if (page.last_scanned == 0) continue;
 
-    uint64_t page_id = crawl::page_id(site.id, page.id).to_value();
     uint32_t index_id = next_id();
     size_t page_length = 0;
 
@@ -84,9 +81,8 @@ void indexer::index_site(crawl::site &site, char *file_buf, size_t file_buf_len)
 
     size_t len = pfile.gcount();
 
-    spdlog::debug("process page {} / {} : {} kb : {}",
-      page_id, index_id,
-      len / 1024, page.url);
+    spdlog::debug("process page {} : {} kb : {}",
+      index_id, len / 1024, page.url);
 
     check_usage();
 
@@ -173,7 +169,7 @@ void indexer::index_site(crawl::site &site, char *file_buf, size_t file_buf_len)
 
     pfile.close();
 
-    add_page(page_id, page_length);
+    add_page(page.url, page_length);
   }
 
   spdlog::info("finished indexing site {}", site.host);
@@ -354,7 +350,7 @@ void index_info::load()
 
 void index_part_save(
     std::string path,
-    std::list<std::pair<uint64_t, uint32_t>> &pages,
+    std::list<std::pair<std::string, uint32_t>> &pages,
     forward_list<std::pair<key, posting>, fixed_memory_pool> &store,
     uint8_t *buffer, size_t buffer_len)
 {
@@ -362,7 +358,13 @@ void index_part_save(
   size_t post_count = 0;
   size_t offset = sizeof(uint32_t) * 2;
 
-  auto rpage = save_pages_to_buf(pages,
+  std::vector<std::string> pages_raw;
+  pages_raw.reserve(pages.size());
+  for (auto &p: pages) {
+    pages_raw.emplace_back(p.first);
+  }
+
+  auto rpage = save_pages_to_buf(pages_raw,
       buffer + offset, buffer_len - offset);
 
   offset += rpage.first;
@@ -522,31 +524,31 @@ static terms split_terms(char *line)
  * Trotman, A., X. Jia, M. Crane, Towards an Efficient and Effective Search Engine,
  * SIGIR 2012 Workshop on Open Source Information Retrieval, p. 40-47
  */
-static std::vector<std::pair<uint64_t, double>>
+static std::vector<std::pair<std::string, double>>
 rank(
     std::vector<std::pair<uint32_t, uint8_t>> &postings,
-    std::vector<uint64_t> &page_ids,
-    std::map<uint64_t, uint32_t> &page_lengths,
+    std::vector<std::string> &pages,
+    std::map<std::string, uint32_t> &page_lengths,
     double avgdl)
 {
-  std::vector<std::pair<uint64_t, double>> pairs_ranked;
+  std::vector<std::pair<std::string, double>> pairs_ranked;
 
 	// IDF = ln(N/df_t)
 	double wt = log(page_lengths.size() / postings.size());
 	for (auto &p: postings) {
 		uint32_t index_id = p.first;
-		uint64_t page_id = 0;
+    std::string page_url;
 
     try {
-      page_id = page_ids.at(index_id);
+      page_url = pages.at(index_id);
     } catch (const std::exception& e) {
-      spdlog::info("bad index id {} / {}", index_id, page_ids.size());
+      spdlog::info("bad index id {} / {}", index_id, pages.size());
       continue;
     }
 
-    auto it = page_lengths.find(page_id);
+    auto it = page_lengths.find(page_url);
     if (it == page_lengths.end()) {
-      spdlog::info("didnt find page length for {}", page_id);
+      spdlog::info("didnt find page length for {}", page_url);
       continue;
     }
 
@@ -563,7 +565,7 @@ rank(
 		double divisor = k1 * (1 - b + b * (docLength / avgdl) + tf);
 		double rsv = wt * dividend / divisor;
 
-    pairs_ranked.emplace_back(page_id, rsv);
+    pairs_ranked.emplace_back(page_url, rsv);
 	}
 
   std::sort(pairs_ranked.begin(), pairs_ranked.end(),
@@ -577,7 +579,7 @@ rank(
 void index::find_part_matches(
     search::index_part &part,
     std::string &term,
-    std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
+    std::vector<std::vector<std::pair<std::string, double>>> &postings)
 {
   spdlog::info("find term {} in {}", term, part.path);
 
@@ -585,7 +587,7 @@ void index::find_part_matches(
   if (pair != nullptr) {
     auto pairs = pair->second.decompress();
     spdlog::info("have pair {} with {} docs", pair->first.str(), pairs.size());
-    auto pairs_ranked = rank(pairs, part.page_ids, info.page_lengths, info.average_page_length);
+    auto pairs_ranked = rank(pairs, part.pages, info.page_lengths, info.average_page_length);
 
     spdlog::info("have ranked {} with {} docs", pair->first.str(), pairs_ranked.size());
     postings.push_back(pairs_ranked);
@@ -604,7 +606,7 @@ static index_part load_part(index_part_info &info, size_t htcap)
 void index::find_matches(
     std::vector<index_part_info> &part_info,
     std::list<std::string> &terms,
-    std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
+    std::vector<std::vector<std::pair<std::string, double>>> &postings)
 {
   terms.sort();
 
@@ -640,13 +642,13 @@ void index::find_matches(
   }
 }
 
-std::vector<std::vector<std::pair<uint64_t, double>>> index::find_matches(char *line)
+std::vector<std::vector<std::pair<std::string, double>>> index::find_matches(char *line)
 {
   spdlog::info("find matches for {}", line);
 
   auto terms = split_terms(line);
 
-  std::vector<std::vector<std::pair<uint64_t, double>>> postings;
+  std::vector<std::vector<std::pair<std::string, double>>> postings;
 
   find_matches(info.word_parts, terms.words, postings);
   find_matches(info.pair_parts, terms.pairs, postings);

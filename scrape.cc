@@ -359,6 +359,8 @@ bool add_link(page *p, std::string &n) {
   return true;
 }
 
+// TODO: effective url check, put as alias.
+
 void site::finish(
       page *url,
       std::vector<std::string> &links,

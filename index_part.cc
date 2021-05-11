@@ -17,11 +17,7 @@
 
 #include "spdlog/spdlog.h"
 
-#include "util.h"
-#include "posting.h"
-#include "hash.h"
 #include "index.h"
-#include "tokenizer.h"
 
 using namespace std::chrono_literals;
 
@@ -40,11 +36,21 @@ void index_part::load()
 
   size_t offset = sizeof(uint32_t) * 2;
 
-  page_ids.reserve(page_count);
+  uint32_t *page_offsets = (uint32_t *) (backing + offset);
+  uint8_t *page_data = backing + offset + page_count * sizeof(uint32_t);
+
+  pages.reserve(page_count);
+
+  spdlog::info("loading {} pages", page_count);
 
   for (size_t i = 0; i < page_count; i++) {
-    page_ids.push_back(*((uint64_t *) (backing + offset)));
-    offset += sizeof(uint64_t);
+    uint32_t p_offset = page_offsets[i];
+    uint32_t p_len = ((uint32_t *) page_data)[p_offset];
+
+    pages.emplace_back((const char *) page_data + p_offset + sizeof(uint32_t), p_len);
+    spdlog::info("got page {} {}", i, pages.back());
+
+    offset = offset + page_count * sizeof(uint32_t) + p_offset + p_len;
   }
 
   for (size_t i = 0; i < posting_count; i++) {
@@ -103,38 +109,41 @@ std::pair<size_t, size_t> save_postings_to_buf(
 }
 
 std::pair<size_t, size_t> save_pages_to_buf(
-    std::vector<uint64_t> &pages,
+    std::vector<std::string> &pages,
     uint8_t *buffer, size_t buffer_len)
 {
-  size_t offset = 0;
+  uint32_t *offsets = (uint32_t *) buffer;
+  size_t offsets_size = sizeof(uint32_t) * pages.size();
 
-  for (auto p: pages) {
-    if (offset + sizeof(uint64_t) >= buffer_len) {
-      spdlog::warn("buffer too small to save");
-      return std::make_pair(offset, 0);
-    }
-
-    *((uint64_t *) (buffer + offset)) = p;
-    offset += sizeof(uint64_t);
+  if (offsets_size >= buffer_len) {
+    spdlog::warn("buffer too small to save");
+    return std::make_pair(0, 0);
   }
 
-  return std::make_pair(offset, pages.size());
-}
+  uint8_t *data = buffer + offsets_size;
 
-std::pair<size_t, size_t> save_pages_to_buf(
-    std::list<std::pair<uint64_t, uint32_t>> &pages,
-    uint8_t *buffer, size_t buffer_len)
-{
-  size_t offset = 0;
+  uint32_t index = 0;
+  uint32_t offset = 0;
 
-  for (auto &p: pages) {
-    if (offset + sizeof(uint64_t) >= buffer_len) {
+  for (auto p: pages) {
+    size_t page_size = p.size() + sizeof(uint32_t);
+
+    if (offsets_size + offset + page_size >= buffer_len) {
       spdlog::warn("buffer too small to save");
-      return std::make_pair(offset, 0);
+      return std::make_pair(0, 0);
     }
 
-    *((uint64_t *) (buffer + offset)) = p.first;
-    offset += sizeof(uint64_t);
+    offsets[index++] = offset;
+
+    *((uint32_t *) &data[offset]) = p.size();
+
+    offset += sizeof(uint32_t);
+
+    for (auto c: p) {
+      data[offset++] = c;
+    }
+
+    data[offset++] = 0;
   }
 
   return std::make_pair(offset, pages.size());
@@ -151,7 +160,7 @@ void index_part::save(uint8_t *buffer, size_t buffer_len)
   size_t post_count = 0;
   size_t offset = sizeof(uint32_t) * 2;
 
-  auto rpage = save_pages_to_buf(page_ids,
+  auto rpage = save_pages_to_buf(pages,
       buffer + offset, buffer_len - offset);
 
   offset += rpage.first;
@@ -335,11 +344,11 @@ void index_part::merge(index_part &other)
 
   size_t key_buf_size = 1024 * 1024;
 
-  uint32_t page_id_offset = page_ids.size();
+  uint32_t pages_offset = pages.size();
 
-  page_ids.reserve(page_ids.size() + other.page_ids.size());
-  for (auto p: other.page_ids) {
-    page_ids.push_back(p);
+  pages.reserve(pages.size() + other.pages.size());
+  for (auto p: other.pages) {
+    pages.push_back(p);
   }
 
   auto o_it = other.stores[0].begin();
@@ -367,7 +376,7 @@ void index_part::merge(index_part &other)
       auto start = std::chrono::system_clock::now();
 
       auto r = std::get<2>(f);
-      (*r)->second.merge(o_it->second, page_id_offset,
+      (*r)->second.merge(o_it->second, pages_offset,
           [this](size_t s) {
             return post_backing.get(s);
           });
@@ -387,7 +396,7 @@ void index_part::merge(index_part &other)
       stores[0].emplace_front(key(c_buf), posting());
       auto &n_it = stores[0].front();
 
-      n_it.second.merge(o_it->second, page_id_offset,
+      n_it.second.merge(o_it->second, pages_offset,
           [this](size_t s) {
             return post_backing.get(s);
           });

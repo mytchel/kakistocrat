@@ -43,8 +43,7 @@ void from_json(const json &j, page &p) {
   j.at("s").get_to(p.last_scanned);
 }
 
-void site_map::load() {
-  if (loaded) return;
+void site_map::reload() {
   loaded = true;
 
   std::ifstream file;
@@ -72,6 +71,11 @@ void site_map::load() {
   file.close();
 
   spdlog::debug("load {} finished {} with {} pages", path, host, pages.size());
+}
+
+void site_map::load() {
+  if (loaded) return;
+  reload();
 }
 
 void site_map::save() {

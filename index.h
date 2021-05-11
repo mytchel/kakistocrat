@@ -9,7 +9,9 @@
 
 using namespace std::chrono_literals;
 
-#include "crawl.h"
+#include "util.h"
+#include "site.h"
+
 #include "posting.h"
 #include "hash.h"
 #include "key.h"
@@ -34,7 +36,7 @@ std::pair<size_t, size_t> save_postings_to_buf(
 
 
 std::pair<size_t, size_t> save_pages_to_buf(
-    std::vector<uint64_t> &pages,
+    std::vector<std::string> &pages,
     uint8_t *buffer, size_t buffer_len);
 
 std::pair<size_t, size_t> save_pages_to_buf(
@@ -68,7 +70,7 @@ struct index_part {
       forward_list<std::pair<key, posting> *, fixed_memory_pool>
     > index;
 
-  std::vector<uint64_t> page_ids;
+  std::vector<std::string> pages;
 
   std::chrono::nanoseconds index_total{0ms};
   std::chrono::nanoseconds merge_total{0ms};
@@ -139,7 +141,7 @@ struct index_part {
       post_backing(std::move(p.post_backing)),
       stores(std::move(p.stores)),
       index(std::move(p.index)),
-      page_ids(std::move(p.page_ids))
+      pages(std::move(p.pages))
   {
     backing = p.backing;
     p.backing = NULL;
@@ -167,7 +169,7 @@ struct index_part {
     pool_index.clear();
     pool_store.clear();
 
-    page_ids.clear();
+    pages.clear();
 
     if (backing) {
       free(backing);
@@ -177,13 +179,12 @@ struct index_part {
 
   void print_usage(std::string n)
   {
-    spdlog::info("usage {} : key {} kb post {} kb pool store {} kb pool index {} kb page {} kb -> {} mb",
+    spdlog::info("usage {} : key {} kb post {} kb pool store {} kb pool index {} kb -> {} mb",
           n,
           key_backing.usage / 1024,
           post_backing.usage / 1024,
           pool_store.usage / 1024,
           pool_index.usage / 1024,
-          page_ids.size() * sizeof(uint64_t) / 1024,
           usage() / 1024 / 1024);
   }
 
@@ -191,8 +192,7 @@ struct index_part {
     return key_backing.usage
          + post_backing.usage
          + pool_store.usage
-         + pool_index.usage
-         + page_ids.size() * sizeof(uint64_t);
+         + pool_index.usage;
   }
 
   bool load_backing();
@@ -264,7 +264,7 @@ struct index_info {
   std::string path;
 
   uint32_t average_page_length;
-  std::map<uint64_t, uint32_t> page_lengths;
+  std::map<std::string, uint32_t> page_lengths;
 
   std::vector<index_part_info> word_parts;
   std::vector<index_part_info> pair_parts;
@@ -277,7 +277,7 @@ struct index_info {
 };
 
 struct indexer {
-  std::list<std::pair<uint64_t, uint32_t>> pages;
+  std::list<std::pair<std::string, uint32_t>> pages;
   index_part word_t, pair_t, trine_t;
 
   uint8_t *file_buf{nullptr};
@@ -341,7 +341,7 @@ struct indexer {
     }
   }
 
-  void index_site(crawl::site &site, char *file_buf, size_t file_buf_len);
+  void index_site(site_map &site, char *file_buf, size_t file_buf_len);
 
   void insert(index_type t, std::string s, uint32_t index_id) {
     if (t == words) {
@@ -357,8 +357,8 @@ struct indexer {
     return pages.size();
   }
 
-  void add_page(uint64_t page_id, uint32_t size) {
-    pages.emplace_back(page_id, size);
+  void add_page(std::string url, uint32_t size) {
+    pages.emplace_back(url, size);
   }
 
   indexer(std::string p,
@@ -400,37 +400,18 @@ struct index {
 
   void find_part_matches(index_part &p,
     std::string &term,
-    std::vector<std::vector<std::pair<uint64_t, double>>> &postings);
+    std::vector<std::vector<std::pair<std::string, double>>> &postings);
 
   void find_matches(
     std::vector<index_part_info> &part_info,
     std::list<std::string> &terms,
-    std::vector<std::vector<std::pair<uint64_t, double>>> &postings);
+    std::vector<std::vector<std::pair<std::string, double>>> &postings);
 
-  std::vector<std::vector<std::pair<uint64_t, double>>>
+  std::vector<std::vector<std::pair<std::string, double>>>
     find_matches(char *line);
 };
 
-void
-indexer_run(
-    config settings,
-    Channel<std::string*> &in,
-    Channel<bool> &out_ready,
-    Channel<std::string*> &out,
-    int tid,
-    bool exit_on_flush);
-
-void merge(
-    config settings,
-    std::list<std::string> part_paths,
-    std::string w_p,
-    std::string p_p,
-    std::string t_p,
-    std::string start,
-    std::optional<std::string> end,
-    Channel<size_t> &done_channel,
-    size_t id);
-
 }
+
 #endif
 

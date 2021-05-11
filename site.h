@@ -51,6 +51,7 @@ struct site_map {
     }
   }
 
+  void reload();
   void load();
   void save();
 
@@ -59,17 +60,13 @@ struct site_map {
 
   site_map(const std::string &p)
     : path(p), host(""), loaded(false), changed(false)
-  {
-    spdlog::info("sitemap created {}", path);
-  }
+  {}
 
   site_map(const std::string &p, const std::string &h)
     : path(p), host(h),
       loaded(true),
       changed(true)
-  {
-    spdlog::info("sitemap created {} : {}", path, host);
-  }
+  {}
 
   page* find_page(const std::string &url);
   page* find_page_by_path(const std::string &path);
