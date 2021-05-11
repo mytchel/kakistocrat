@@ -143,20 +143,20 @@ target_link_libraries(indexer_capnp spdlog::spdlog)
 target_link_libraries(indexer_capnp foonathan_memory)
 target_link_libraries(indexer_capnp CapnProto::capnp-rpc)
 
-if (FALSE)
-
 add_executable(merger_capnp merger_capnp.cc
     ${capnp_sources}
+    ${capnp_headers}
+
     index_part.cc
     index.cc
-    hash.cc
     posting.cc
     vbyte.cc
-    crawler.cc
-    scrape.cc
-    util.cc
     tokenizer.cc
     str.c
+
+    hash.cc
+    site.cc
+    util.cc
     config.cc)
 
 target_include_directories(merger_capnp PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
@@ -167,5 +167,4 @@ target_link_libraries(merger_capnp spdlog::spdlog)
 target_link_libraries(merger_capnp foonathan_memory)
 target_link_libraries(merger_capnp CapnProto::capnp-rpc)
 
-endif()
 

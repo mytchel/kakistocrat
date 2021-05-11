@@ -280,7 +280,6 @@ class MasterImpl final: public Master::Server,
     crawlNext();
   }
 
-  /*
   void finishedMerging() {
     spdlog::info("finished merging");
 
@@ -339,10 +338,10 @@ class MasterImpl final: public Master::Server,
 
     merge_parts_merging.push_back(p);
 
-    Merger::Client merger = ready_mergers.front();
+    auto merger = ready_mergers.front();
     ready_mergers.pop_front();
 
-    auto request = merger.mergeRequest();
+    auto request = merger->mergeRequest();
 
     request.setStart(p.first);
 
@@ -366,7 +365,7 @@ class MasterImpl final: public Master::Server,
     request.setTOut(t_p);
 
     tasks.add(request.send().then(
-        [this, p, merger, w_p, p_p, t_p] (auto result) mutable {
+        [this, p, merger, w_p, p_p, t_p] (auto result) {
           spdlog::info("finished merging part {}", p.first);
 
           merge_out_w.emplace_back(w_p, p.first, p.second);
@@ -375,7 +374,7 @@ class MasterImpl final: public Master::Server,
 
           merge_parts_merging.remove(p);
 
-          ready_mergers.push_back(kj::mv(merger));
+          ready_mergers.push_back(merger);
 
           mergeNext();
         },
@@ -418,8 +417,6 @@ class MasterImpl final: public Master::Server,
     mergeNext();
   }
 
-  */
-
   void flushIndexerDone(Indexer::Client *i, const std::list<std::string> &output_paths) {
     for (auto &p: output_paths) {
       spdlog::info("adding index part {}", p);
@@ -438,7 +435,7 @@ class MasterImpl final: public Master::Server,
         spdlog::info("part ready for merging {}", p);
       }
 
-      //startMerging(index_parts);
+      startMerging(index_parts);
 
       index_parts.clear();
 
@@ -563,11 +560,11 @@ class MasterImpl final: public Master::Server,
     return kj::READY_NOW;
   }
 
-  /*
   kj::Promise<void> registerMerger(RegisterMergerContext context) override {
     spdlog::info("got register merger");
 
-    ready_mergers.push_back(context.getParams().getMerger());
+    mergers.push_back(context.getParams().getMerger());
+    ready_mergers.push_back(&mergers.back());
 
     if (!merge_parts_pending.empty()) {
       mergeNext();
@@ -575,8 +572,6 @@ class MasterImpl final: public Master::Server,
 
     return kj::READY_NOW;
   }
-
-  */
 
   void taskFailed(kj::Exception&& exception) override {
     spdlog::warn("task failed: {}", std::string(exception.getDescription()));
@@ -614,8 +609,10 @@ class MasterImpl final: public Master::Server,
 
   std::list<std::string> index_parts;
 
-  /*
   // Merging
+
+  std::list<Merger::Client> mergers;
+  std::list<Merger::Client *> ready_mergers;
 
   std::list<std::string> index_parts_merging;
 
@@ -623,9 +620,6 @@ class MasterImpl final: public Master::Server,
   std::list<std::pair<std::string, std::optional<std::string>>> merge_parts_merging;
 
   std::list<search::index_part_info> merge_out_w, merge_out_p, merge_out_t;
-
-  std::list<Merger::Client> ready_mergers;
-*/
 };
 
 int main(int argc, char *argv[]) {

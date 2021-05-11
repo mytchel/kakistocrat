@@ -22,10 +22,7 @@
 #include "spdlog/spdlog.h"
 
 #include "util.h"
-#include "scrape.h"
-#include "crawl.h"
-#include "tokenizer.h"
-
+#include "config.h"
 #include "index.h"
 
 #include "indexer.capnp.h"
