@@ -20,9 +20,9 @@ struct site {
 
   bool scraped{false};
   bool scraping{false};
-  bool indexing_part{false};
-  bool indexed_part{false};
+  bool indexing{false};
   bool indexed{false};
+  bool merged{false};
   size_t max_pages{0};
 
   void flush() { m_site.flush(); }

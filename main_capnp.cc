@@ -119,20 +119,31 @@ class MasterImpl final: public Master::Server,
     crawler.load_blacklist(blacklist);
     crawler.load_seed(initial_seed);
 
-    index_parts = search::load_parts(settings.indexer.meta_path);
+    index_parts_pending_merge = search::load_parts(settings.indexer.meta_path);
+    index_part_id = index_parts_pending_merge.size();
 
     for (auto &site: crawler.sites) {
-      if (site.scraped && !site.indexed && !site.indexed_part) {
+      if (site.scraped && !site.merged && !site.indexed) {
         spdlog::info("setting site {} for indexing", site.m_site.host);
-        index_pending_sites.emplace_back(&site);
+
+        site.load();
+
+        sites_pending_index.emplace_back(&site);
+        sites_pending_index_page_count += site.m_site.pages.size();
       }
     }
 
-    checkCrawlers();
     flush();
+    checkCrawlers();
+    checkStartMerge();
+
+    indexNext();
   }
 
   void checkCrawlers() {
+    // TODO
+    return;
+
     spdlog::info("checking {} crawlers", crawlers.size());
 
     for (auto &c: crawlers) {
@@ -147,16 +158,18 @@ class MasterImpl final: public Master::Server,
         [this, &c] (auto result) {
 
           bool can_crawl = result.getHaveSpace();
-          spdlog::info("crawler {} can crawl: {}", (uintptr_t) &c, can_crawl);
 
           if (can_crawl) {
             auto it = std::find(ready_crawlers.begin(), ready_crawlers.end(), &c);
             if (it == ready_crawlers.end()) {
-              spdlog::info("crawler {} transition to ready", (uintptr_t) &c);
               ready_crawlers.push_back(&c);
               crawlNext();
             }
           }
+        },
+        [this, &c] (auto exception) {
+          spdlog::info("crawler {} error checking can crawl", (uintptr_t) &c);
+          // TODO: remove crawler
         }));
     }
 
@@ -167,6 +180,8 @@ class MasterImpl final: public Master::Server,
   }
 
   void flush() {
+    search::save_parts(settings.indexer.meta_path, index_parts_pending_merge);
+
     if (have_changes) {
       spdlog::info("periodic save: started");
 
@@ -189,9 +204,46 @@ class MasterImpl final: public Master::Server,
           }));
   }
 
+  void checkStartMerge() {
+    tasks.add(timer.afterDelay(10 * kj::SECONDS).then(
+          [this] () {
+            checkStartMerge();
+          }));
+
+    if (!merge_parts_pending.empty() || !merge_parts_merging.empty()) {
+      return;
+    }
+
+    if (index_parts_pending_merge.empty()) {
+      return;
+    }
+
+    spdlog::debug("check merge ready");
+
+    bool all_indexed = true;
+    bool all_merged = true;
+
+    for (auto &site: crawler.sites) {
+      if (!site.scraped) continue;
+
+      if (!site.indexed) {
+        all_indexed = false;
+        break;
+      }
+
+      if (!site.merged) {
+        all_merged = false;
+      }
+    }
+
+    if (all_indexed && !all_merged) {
+      spdlog::debug("starting merge");
+      startMerging();
+    }
+  }
+
   void crawlNext() {
     if (ready_crawlers.empty()) {
-      spdlog::info("no ready crawlers");
       return;
     }
 
@@ -227,6 +279,8 @@ class MasterImpl final: public Master::Server,
 
     site->scraping = true;
 
+    spdlog::info("start crawling {}", site->m_site.host);
+
     tasks.add(request.send().then(
         [this, site, proc] (auto result) mutable {
           spdlog::info("got response for crawl site {}", site->m_site.host);
@@ -244,6 +298,8 @@ class MasterImpl final: public Master::Server,
 
           site->last_scanned = time(NULL);
 
+          size_t page_count = site->m_site.pages.size();
+
           // Need to write the changes for this site
           // so the indexer has something to load.
           site->flush();
@@ -252,14 +308,14 @@ class MasterImpl final: public Master::Server,
           site->scraped = true;
           site->scraping = false;
 
-          spdlog::info("transition {} to indexing", site->m_site.host);
-          site->indexing_part = true;
-          site->indexed_part = false;
           site->indexed = false;
+          site->merged = false;
 
           have_changes = true;
 
-          index_pending_sites.emplace_back(site);
+          sites_pending_index.emplace_back(site);
+          sites_pending_index_page_count += page_count;
+
           indexNext();
 
           auto it = std::find(ready_crawlers.begin(), ready_crawlers.end(), proc);
@@ -275,6 +331,8 @@ class MasterImpl final: public Master::Server,
               site->m_site.host, std::string(exception.getDescription()));
 
           site->scraping = false;
+
+          crawlNext();
         }));
 
     crawlNext();
@@ -313,7 +371,12 @@ class MasterImpl final: public Master::Server,
     merge_out_p.clear();
     merge_out_t.clear();
 
+    for (auto s: sites_merging) {
+      s->merged = true;
+    }
+
     index_parts_merging.clear();
+    sites_merging.clear();
   }
 
   void mergeNext() {
@@ -356,6 +419,8 @@ class MasterImpl final: public Master::Server,
       paths.set(i++, p);
     }
 
+    util::make_path(settings.merger.parts_path);
+
     auto w_p = fmt::format("{}/index.words.{}.dat", settings.merger.parts_path, p.first);
     auto p_p = fmt::format("{}/index.pairs.{}.dat", settings.merger.parts_path, p.first);
     auto t_p = fmt::format("{}/index.trines.{}.dat", settings.merger.parts_path, p.first);
@@ -393,7 +458,7 @@ class MasterImpl final: public Master::Server,
     mergeNext();
   }
 
-  void startMerging(const std::list<std::string> &index_parts) {
+  void startMerging() {
     if (!merge_parts_pending.empty() || !merge_parts_merging.empty()) {
       spdlog::warn("got start merge while still merging");
       return;
@@ -412,129 +477,71 @@ class MasterImpl final: public Master::Server,
       start++;
     }
 
-    index_parts_merging = index_parts;
+    index_parts_merging = index_parts_pending_merge;
+    sites_merging = sites_pending_merge;
+
+    index_parts_pending_merge.clear();
+    sites_pending_merge.clear();
 
     mergeNext();
   }
 
-  void flushIndexerDone(Indexer::Client *i, const std::list<std::string> &output_paths) {
-    for (auto &p: output_paths) {
-      spdlog::info("adding index part {}", p);
-      index_parts.emplace_back(p);
-    }
-
-    search::save_parts(settings.indexer.meta_path, index_parts);
-
-    spdlog::info("indexer flushed {}, remove from pending", (size_t) i);
-    indexers_pending_flush.erase(i);
-
-    if (indexers_pending_flush.empty()) {
-      spdlog::info("indexers all flushed");
-
-      for (auto &p: index_parts) {
-        spdlog::info("part ready for merging {}", p);
-      }
-
-      startMerging(index_parts);
-
-      index_parts.clear();
-
-      flushing_indexers = false;
-
-    } else {
-      spdlog::info("waiting on {} indexers to flush", indexers_pending_flush.size());
-    }
-  }
-
-  void flushIndexers() {
-    if (flushing_indexers) {
-      spdlog::warn("already flushing");
-      return;
-    }
-
-    if (indexers_pending_flush.empty()) {
-      spdlog::warn("nothing to flush");
-      return;
-    }
-
-    spdlog::info("flushing indexers");
-
-    flushing_indexers = true;
-
-    for (auto i: indexers_pending_flush) {
-      auto request = i->flushRequest();
-
-      auto p = request.send().then(
-        [this, i] (auto result) {
-          spdlog::info("indexer flushed");
-
-          std::list<std::string> output_paths;
-
-          for (auto p: result.getOutputPaths()) {
-            output_paths.emplace_back(p);
-          }
-
-          flushIndexerDone(i, output_paths);
-        },
-        [this, i] (auto exception) {
-          spdlog::warn("indexer flush failed");
-
-          std::list<std::string> empty_output_paths;
-
-          flushIndexerDone(i, empty_output_paths);
-        });
-
-      tasks.add(kj::mv(p));
-    }
-  }
-
-  void indexNext() {
+  void indexNext(bool flush = false) {
 
     if (ready_indexers.empty()) {
       spdlog::info("no ready indexers");
       return;
     }
 
-    if (index_pending_sites.empty()) {
-      spdlog::info("no sites to index");
-
-      flushIndexers();
-
+    if (!flush && sites_pending_index_page_count < settings.indexer.pages_per_part) {
+      spdlog::debug("waiting on more pages, have {}", sites_pending_index_page_count);
       return;
     }
+
+    auto sites = std::move(sites_pending_index);
+
+    sites_pending_index_page_count = 0;
+    sites_pending_index.clear();
 
     auto indexer = ready_indexers.front();
     ready_indexers.pop_front();
 
-    spdlog::info("get pending site for indexer");
-
-    // Should put these somewhere and remove them
-    // when a flush is done.
-
-    auto s = index_pending_sites.front();
-    index_pending_sites.pop_front();
-
-    spdlog::info("request index for {}", s->m_site.host);
+    spdlog::info("request index for {} sites", sites.size());
 
     auto request = indexer->indexRequest();
-    request.setSitePath(s->m_site.path);
+
+    std::string output = fmt::format("{}/{}", settings.indexer.parts_path, index_part_id++);
+
+    auto paths = request.initSitePaths(sites.size());
+    size_t i = 0;
+    for (auto &s: sites) {
+      paths.set(i++, s->m_site.path);
+      spdlog::info("indexing {} -> {}", s->m_site.path, output);
+    }
+
+    request.setOutputBase(output);
 
     tasks.add(request.send().then(
-        [this, s, indexer] (auto result) {
-          spdlog::info("got response for index site {}", s->m_site.host);
+        [this, sites(std::move(sites)), indexer] (auto result) {
+          for (auto &s: sites) {
+            spdlog::info("index finished for {}", s->m_site.path);
+            sites_pending_merge.push_back(s);
+            s->indexed = true;
+          }
 
-          indexers_pending_flush.insert(indexer);
+          for (auto p: result.getOutputPaths()) {
+            spdlog::info("index new part {}", std::string(p));
+            index_parts_pending_merge.emplace_back(p);
+          }
 
           ready_indexers.push_back(indexer);
 
           indexNext();
         },
-        [this, s, indexer] (auto exception) {
-          spdlog::warn("got exception for index site {} : {}", s->m_site.host, std::string(exception.getDescription()));
-          index_pending_sites.push_back(s);
+        [this, indexer] (auto exception) {
+          spdlog::warn("got exception while indexing {}", std::string(exception.getDescription()));
+          // TODO store sites somehow.
         }));
-
-    indexNext();
   }
 
   kj::Promise<void> registerCrawler(RegisterCrawlerContext context) override {
@@ -553,8 +560,8 @@ class MasterImpl final: public Master::Server,
     spdlog::info("got register indexer");
 
     indexers.push_back(context.getParams().getIndexer());
-    ready_indexers.push_back(&indexers.back());
 
+    ready_indexers.push_back(&indexers.back());
     indexNext();
 
     return kj::READY_NOW;
@@ -600,21 +607,21 @@ class MasterImpl final: public Master::Server,
   std::list<Indexer::Client> indexers;
   std::list<Indexer::Client *> ready_indexers;
 
-  std::list<crawl::site *> index_pending_sites;
+  size_t index_part_id;
 
-  // Index Flushing
-
-  bool flushing_indexers{false};
-  std::set<Indexer::Client *> indexers_pending_flush;
-
-  std::list<std::string> index_parts;
+  std::list<crawl::site *> sites_pending_index;
+  size_t sites_pending_index_page_count;
 
   // Merging
+
+  std::list<std::string> index_parts_pending_merge;
+  std::list<crawl::site *> sites_pending_merge;
 
   std::list<Merger::Client> mergers;
   std::list<Merger::Client *> ready_mergers;
 
   std::list<std::string> index_parts_merging;
+  std::list<crawl::site *> sites_merging;
 
   std::list<std::pair<std::string, std::optional<std::string>>> merge_parts_pending;
   std::list<std::pair<std::string, std::optional<std::string>>> merge_parts_merging;

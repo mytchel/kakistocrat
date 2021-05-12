@@ -69,8 +69,6 @@ void site_map::reload() {
   }
 
   file.close();
-
-  spdlog::debug("load {} finished {} with {} pages", path, host, pages.size());
 }
 
 void site_map::load() {
@@ -98,8 +96,6 @@ void site_map::save() {
   file << j;
 
   file.close();
-
-  spdlog::debug("save {} finished", path);
 }
 
 page* site_map::find_page(const std::string &url)

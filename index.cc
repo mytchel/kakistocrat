@@ -63,7 +63,10 @@ void indexer::index_site(site_map &site, char *file_buf, size_t file_buf_len) {
 
   spdlog::info("process pages for {}", site.host);
   for (auto &page: site.pages) {
-    if (page.last_scanned == 0) continue;
+    if (page.last_scanned == 0) {
+      spdlog::info("skip unscanned page {}", page.url);
+      continue;
+    }
 
     uint32_t index_id = next_id();
     size_t page_length = 0;

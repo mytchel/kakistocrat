@@ -285,7 +285,7 @@ struct indexer {
 
   size_t max_usage;
 
-  std::string base_path;
+  std::string base_path{"/tmp/bad"};
 
   std::vector<index_part_info> save_part(
     index_part &t, std::string base_path);
@@ -361,20 +361,17 @@ struct indexer {
     pages.emplace_back(url, size);
   }
 
-  indexer(std::string p,
+  indexer(
       std::vector<std::string> split_at,
       size_t htcap,
       size_t max_u,
       size_t max_p)
-    : base_path(p),
-      max_usage(max_u),
+    : max_usage(max_u),
       file_buf_size(max_p),
       word_t(split_at, htcap),
       pair_t(split_at, htcap),
       trine_t(split_at, htcap)
   {
-    util::make_path(base_path);
-
     file_buf = (uint8_t *) malloc(file_buf_size);
     if (file_buf == nullptr) {
       throw std::bad_alloc();

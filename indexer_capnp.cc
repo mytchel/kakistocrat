@@ -44,10 +44,9 @@ using nlohmann::json;
 
 class IndexerImpl final: public Indexer::Server {
 public:
-  IndexerImpl(const config &s, size_t tid)
+  IndexerImpl(const config &s)
     : settings(s),
       indexer(
-        fmt::format("{}/{}/part", settings.indexer.parts_path, tid),
         search::get_split_at(settings.index_parts),
         settings.indexer.htcap,
         settings.indexer.thread_max_mem
@@ -75,29 +74,25 @@ public:
   kj::Promise<void> index(IndexContext context) override {
     spdlog::info("got index request");
 
-    std::string path = context.getParams().getSitePath();
+    std::string output_path = context.getParams().getOutputBase();
 
-    site_count++;
+    indexer.base_path = fmt::format("{}/", output_path);
 
-    spdlog::info("load  {}", path);
+    util::make_path(indexer.base_path);
 
-    site_map site(path);
-    site.load();
+    for (auto path: context.getParams().getSitePaths()) {
+      spdlog::info("load  {}", std::string(path));
 
-    spdlog::info("index {}", site.host);
-    indexer.index_site(site, file_buf, file_buf_len);
+      site_map site(path);
+      site.load();
 
-    spdlog::info("done  {}", site.host);
+      spdlog::info("index {}", site.host);
+      indexer.index_site(site, file_buf, file_buf_len);
 
-    return kj::READY_NOW;
-  }
-
-  kj::Promise<void> flush(FlushContext context) override {
-    spdlog::info("got flush request");
+      spdlog::info("done  {}", site.host);
+    }
 
     indexer.flush();
-
-    spdlog::info("return {} paths for {} sites", output_paths.size(), site_count);
 
     auto paths = context.getResults().initOutputPaths(output_paths.size());
 
@@ -108,7 +103,6 @@ public:
 
     indexer.reset();
 
-    site_count = 0;
     output_paths.clear();
 
     return kj::READY_NOW;
@@ -120,14 +114,13 @@ public:
   size_t file_buf_len;
   char *file_buf;
 
-  size_t site_count;
   std::list<std::string> output_paths;
 };
 
 int main(int argc, char *argv[]) {
   spdlog::set_level(spdlog::level::debug);
 
-  if (argc != 3) {
+  if (argc != 2) {
     spdlog::error("bad args");
     return 1;
   }
@@ -161,7 +154,7 @@ int main(int argc, char *argv[]) {
 
     spdlog::info("creating client");
 
-    Indexer::Client indexer = kj::heap<IndexerImpl>(settings, std::stoi(argv[2]));
+    Indexer::Client indexer = kj::heap<IndexerImpl>(settings);
 
     spdlog::info("create request");
     auto request = master.registerIndexerRequest();

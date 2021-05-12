@@ -37,8 +37,8 @@ void to_json(nlohmann::json &j, const site &s)
   j["level"] = s.level;
   j["max_pages"] = s.max_pages;
   j["last_scanned"] = s.last_scanned;
-  j["indexed_part"] = s.indexed_part;
   j["indexed"] = s.indexed;
+  j["merged"] = s.merged;
 }
 
 void from_json(const nlohmann::json &j, site &s)
@@ -48,8 +48,8 @@ void from_json(const nlohmann::json &j, site &s)
   j.at("level").get_to(s.level);
   j.at("max_pages").get_to(s.max_pages);
   j.at("last_scanned").get_to(s.last_scanned);
-  j.at("indexed_part").get_to(s.indexed_part);
   j.at("indexed").get_to(s.indexed);
+  j.at("merged").get_to(s.merged);
 
   s.scraped = s.last_scanned > 0;
 }

@@ -49,6 +49,7 @@ config default_config() {
   c.indexer.thread_max_mem = 100 * 1024 * 1024;
   c.indexer.max_index_part_size = 10 * 1024 * 1024;
   c.indexer.htcap = 1 << 16;
+  c.indexer.pages_per_part = 1000;
 
   c.indexer.parts_path = "out/index_parts/";
   c.indexer.meta_path = "out/index_parts.json";
@@ -122,6 +123,8 @@ config read_config(std::string path) {
 
   j.at("indexer").at("htcap").get_to(s);
   c.indexer.htcap = 1 << s;
+
+  j.at("indexer").at("pages_per_part").get_to(c.indexer.pages_per_part);
 
   j.at("indexer").at("parts_path").get_to(c.indexer.parts_path);
   j.at("indexer").at("meta_path").get_to(c.indexer.meta_path);

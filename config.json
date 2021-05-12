@@ -20,6 +20,7 @@
         "thread_max_mem_mb": 400,
         "max_index_part_size_mb": 10,
         "htcap": 18,
+        "pages_per_part": 30,
         "parts_path": "out/index_parts/",
         "meta_path": "out/index_parts.json"
     },

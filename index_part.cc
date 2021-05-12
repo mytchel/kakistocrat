@@ -33,32 +33,33 @@ void index_part::load()
 
   uint32_t page_count = ((uint32_t *)backing)[0];
   uint32_t posting_count = ((uint32_t *)backing)[1];
+  uint32_t page_data_size = ((uint32_t *)backing)[2];
 
-  size_t offset = sizeof(uint32_t) * 2;
+  size_t offset = sizeof(uint32_t) * 3;
+
+  size_t offsets_size = sizeof(uint32_t) * 2 * page_count;
 
   uint32_t *page_offsets = (uint32_t *) (backing + offset);
-  uint8_t *page_data = backing + offset + page_count * sizeof(uint32_t);
+  uint8_t *page_data = backing + offset + offsets_size;
+
+  uint8_t *posting_data = backing + offset + offsets_size + page_data_size;
 
   pages.reserve(page_count);
 
-  spdlog::info("loading {} pages", page_count);
-
   for (size_t i = 0; i < page_count; i++) {
-    uint32_t p_offset = page_offsets[i];
-    uint32_t p_len = ((uint32_t *) page_data)[p_offset];
+    uint32_t p_offset = page_offsets[i*2];
+    uint32_t p_len = page_offsets[i*2+1];
 
-    pages.emplace_back((const char *) page_data + p_offset + sizeof(uint32_t), p_len);
-    spdlog::info("got page {} {}", i, pages.back());
-
-    offset = offset + page_count * sizeof(uint32_t) + p_offset + p_len;
+    pages.emplace_back((const char *) page_data + p_offset, p_len);
   }
 
+  size_t posting_offset = 0;
   for (size_t i = 0; i < posting_count; i++) {
-    key k(backing + offset);
-    offset += k.size();
+    key k(posting_data + posting_offset);
+    posting_offset += k.size();
 
-    posting p(backing + offset);
-    offset += p.size();
+    posting p(posting_data + posting_offset);
+    posting_offset += p.size();
 
     stores[0].emplace_front(k, std::move(p));
 
@@ -112,41 +113,41 @@ std::pair<size_t, size_t> save_pages_to_buf(
     std::vector<std::string> &pages,
     uint8_t *buffer, size_t buffer_len)
 {
-  uint32_t *offsets = (uint32_t *) buffer;
-  size_t offsets_size = sizeof(uint32_t) * pages.size();
+  uint32_t *offsets = ((uint32_t *) buffer) + 1;
+  size_t offsets_size = sizeof(uint32_t) * 2 * pages.size();
 
-  if (offsets_size >= buffer_len) {
+  if (offsets_size + sizeof(uint32_t) >= buffer_len) {
     spdlog::warn("buffer too small to save");
     return std::make_pair(0, 0);
   }
 
-  uint8_t *data = buffer + offsets_size;
+  uint8_t *data = buffer + sizeof(uint32_t) + offsets_size;
 
   uint32_t index = 0;
   uint32_t offset = 0;
 
   for (auto p: pages) {
-    size_t page_size = p.size() + sizeof(uint32_t);
-
-    if (offsets_size + offset + page_size >= buffer_len) {
+    if (offsets_size + offset + p.size() >= buffer_len) {
       spdlog::warn("buffer too small to save");
       return std::make_pair(0, 0);
     }
 
     offsets[index++] = offset;
+    offsets[index++] = p.size();
 
-    *((uint32_t *) &data[offset]) = p.size();
-
-    offset += sizeof(uint32_t);
-
+    size_t i = 0;
     for (auto c: p) {
       data[offset++] = c;
+      i++;
     }
 
     data[offset++] = 0;
+    i++;
   }
 
-  return std::make_pair(offset, pages.size());
+  ((uint32_t *) buffer)[0] = offset;
+
+  return std::make_pair(sizeof(uint32_t) + offsets_size + offset, pages.size());
 }
 
 void index_part::save(uint8_t *buffer, size_t buffer_len)

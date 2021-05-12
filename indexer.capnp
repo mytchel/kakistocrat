@@ -14,8 +14,7 @@ interface Crawler {
 }
 
 interface Indexer {
-    index @0 (sitePath :Text);
-    flush @1 () -> (outputPaths :List(Text));
+    index @0 (sitePaths :List(Text), outputBase :Text) -> (outputPaths :List(Text));
 }
 
 interface Merger {
