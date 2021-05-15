@@ -34,22 +34,22 @@ configure_file(x_seed/blacklist blacklist COPYONLY)
 
 configure_file(config.json config.json COPYONLY)
 
-if (FALSE)
-
 add_executable(search_server search_server.cc
+    ${capnp_sources}
+    ${capnp_headers}
+
     search.cc
-    crawler.cc
-    scrape_op.cc
-    scrape.cc
-    scorer.cc
-    tokenizer.cc
-    util.cc
-    str.c
-	hash.cc
-	posting.cc
-	vbyte.cc
-    index_part.cc
+
     index.cc
+    index_part.cc
+    tokenizer.cc
+    posting.cc
+    vbyte.cc
+    str.c
+
+    hash.cc
+    site.cc
+    util.cc
     config.cc)
 
 target_include_directories(search_server PUBLIC ${Boost_INCLUDE_DIR})
@@ -63,8 +63,6 @@ target_link_libraries(search_server spdlog::spdlog)
 target_link_libraries(search_server foonathan_memory)
 
 configure_file(templates/search.html templates/search.html COPYONLY)
-
-endif()
 
 capnp_generate_cpp(capnp_sources capnp_headers indexer.capnp)
 

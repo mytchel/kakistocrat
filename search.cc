@@ -20,26 +20,23 @@
 
 #include "spdlog/spdlog.h"
 
-#include "util.h"
-#include "scorer.h"
-#include "tokenizer.h"
 #include "search.h"
 
 namespace search {
 
 void searcher::load()
 {
-  scores.load();
+  //scores.load();
   index.load();
 }
 
 // This only returns documents that match all the terms.
 // Which may not be the best?
 // It is certainly not what I want.
-static std::list<std::pair<uint64_t, double>> intersect_postings(
-    std::vector<std::vector<std::pair<uint64_t, double>>> &postings)
+static std::list<std::pair<std::string, double>> intersect_postings(
+    std::vector<std::vector<std::pair<std::string, double>>> &postings)
 {
-  std::list<std::pair<uint64_t, double>> result;
+  std::list<std::pair<std::string, double>> result;
 
   spdlog::info("interset {}", postings.size());
 
@@ -51,17 +48,17 @@ static std::list<std::pair<uint64_t, double>> intersect_postings(
   std::vector<size_t> indexes(postings.size(), 0);
 
 	while (indexes[0] < postings[0].size()) {
-		auto id = postings[0][indexes[0]].first;
+		auto url = postings[0][indexes[0]].first;
 		bool canAdd = true;
 		for (size_t i = 1; i < postings.size(); i++) {
-			while (indexes[i] < postings[i].size() && postings[i][indexes[i]].first < id)
+			while (indexes[i] < postings[i].size() && postings[i][indexes[i]].first < url)
 				indexes[i]++;
 
 			if (indexes[i] == postings[i].size()) {
 				return result;
       }
 
-			if (postings[i][indexes[i]].first != id)
+			if (postings[i][indexes[i]].first != url)
 				canAdd = false;
 		}
 
@@ -72,7 +69,7 @@ static std::list<std::pair<uint64_t, double>> intersect_postings(
         rsv += w;
       }
 
-      result.emplace_back(id, rsv);
+      result.emplace_back(url, rsv);
 		}
 
 		indexes[0]++;
@@ -103,20 +100,20 @@ std::list<search_entry> searcher::search(char *line)
   spdlog::debug("got results {}", results_raw.size());
 
   for (auto &result: results_raw) {
-    uint64_t page_id = result.first;
-
+    /*
     auto page = scores.find_page(page_id);
     if (page == NULL) {
       spdlog::debug("failed to find page id: {}", page_id);
       continue;
     }
-
-    double score = result.second + result.second * page->score;
+*/
+    double score = result.second;// + result.second * page->score;
     if (signbit(score)) {
       score = 0;
     }
 
-    results.emplace_back(score, page_id, page->url, page->title, page->path);
+    //results.emplace_back(score, page->url, page->title, page->path);
+    results.emplace_back(score, result.first, "something", "somewhere");
   }
 
   results.sort(

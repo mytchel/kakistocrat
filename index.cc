@@ -584,17 +584,19 @@ void index::find_part_matches(
     std::string &term,
     std::vector<std::vector<std::pair<std::string, double>>> &postings)
 {
-  spdlog::info("find term {} in {}", term, part.path);
+  spdlog::debug("find term {} in {}", term, part.path);
 
   auto pair = part.find(term);
   if (pair != nullptr) {
     auto pairs = pair->second.decompress();
-    spdlog::info("have pair {} with {} docs", pair->first.str(), pairs.size());
+    spdlog::debug("have pair {} with {} docs", pair->first.str(), pairs.size());
     auto pairs_ranked = rank(pairs, part.pages, info.page_lengths, info.average_page_length);
 
-    spdlog::info("have ranked {} with {} docs", pair->first.str(), pairs_ranked.size());
+    spdlog::debug("have ranked {} with {} docs", pair->first.str(), pairs_ranked.size());
     postings.push_back(pairs_ranked);
-	}
+	} else {
+    spdlog::debug("nothing found");
+  }
 }
 
 static index_part load_part(index_part_info &info, size_t htcap)
@@ -635,6 +637,7 @@ void index::find_matches(
 
     while (term != terms.end()) {
       if (part.start <= *term && (part.end && *term < *part.end)) {
+        spdlog::debug("search {} for {}", part.path, *term);
         find_part_matches(index, *term, postings);
       } else {
         break;

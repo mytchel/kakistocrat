@@ -25,9 +25,6 @@
 
 #include "util.h"
 #include "config.h"
-#include "crawl.h"
-#include "scorer.h"
-#include "tokenizer.h"
 #include "search.h"
 
 using namespace nlohmann;
@@ -68,7 +65,6 @@ int main(int argc, char *argv[]) {
 
       crow::json::wvalue jj;
 
-      jj["page_id"] = result.page_id;
       jj["score"] = result.score;
       jj["url"] = result.url;
       jj["title"] = result.title;
@@ -109,7 +105,6 @@ int main(int argc, char *argv[]) {
 
       crow::json::wvalue jj;
 
-      jj["page_id"] = result.page_id;
       jj["score"] = result.score;
       jj["url"] = result.url;
       jj["title"] = result.title;
@@ -125,6 +120,7 @@ int main(int argc, char *argv[]) {
     return search_page.render(ctx);
   });
 
+  /*
   CROW_ROUTE(app, "/archive/")([&search_page, &searcher, file_buf_len](const crow::request &req){
     crow::mustache::context ctx;
 
@@ -172,6 +168,7 @@ int main(int argc, char *argv[]) {
 
     return response;
   });
+  */
 
   app.port(18080).multithreaded().run();
 

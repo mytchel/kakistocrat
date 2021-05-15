@@ -134,11 +134,19 @@ static std::string site_path(std::string base_dir, std::string host)
 
   util::make_path(dir_path);
 
-  return fmt::format("{}/{}.json", dir_path, host);
+  return fmt::format("{}/{}", dir_path, host);
+}
+
+std::string crawler::get_meta_path(const std::string &host) {
+  return fmt::format("{}.json", site_path(site_meta_path, host));
 }
 
 std::string crawler::get_data_path(const std::string &host) {
-  return site_path(site_data_path, host);
+  auto path = site_path(site_data_path, host);
+
+  util::make_path(path);
+
+  return path;
 }
 
 /*
@@ -190,6 +198,7 @@ page* site::find_add_page(std::string url, size_t level, std::string path)
     return p;
   }
 
+  page_count++;
   return m_site.add_page(url, path);
 }
 
@@ -274,9 +283,7 @@ void crawler::expand_links(site *isite)
 
       site *o_site = find_site(host);
       if (o_site == NULL) {
-        sites.emplace_back(
-              site_path(site_meta_path, host),
-              host, isite->level + 1);
+        sites.emplace_back(get_meta_path(host), host, isite->level + 1);
 
         o_site = &sites.back();
       }
@@ -299,17 +306,14 @@ void crawler::load_seed(std::vector<std::string> urls)
 
     auto site = find_site(host);
     if (site == NULL) {
-      sites.emplace_back(
-          site_path(site_meta_path, host),
-          host, 0);
+      spdlog::info("seed site {} is new", o);
+      sites.emplace_back(get_meta_path(host), host, 0);
       site = &sites.back();
     }
 
     site->find_add_page(o, 0);
 
     site->max_pages = levels[0].max_pages;
-
-    site->flush();
   }
 }
 

@@ -102,6 +102,160 @@ public:
   }
 };
 
+
+class index_manager {
+  struct index_part {
+    std::string path;
+    std::vector<crawl::site *> sites;
+
+    index_part(const std::string &path,
+               const std::vector<crawl::site *> &sites)
+      : path(path), sites(sites)
+    {}
+  };
+
+  std::list<index_part> index_parts;
+
+  std::vector<crawl::site *> sites_pending_index;
+  size_t sites_pending_index_page_count{0};
+
+  size_t min_pages;
+
+public:
+  index_manager(size_t m) : min_pages(m) {}
+
+  std::vector<std::string> get_parts() {
+    std::vector<std::string> parts;
+
+    parts.reserve(index_parts.size());
+
+    for (auto &p: index_parts) {
+      parts.emplace_back(p.path);
+    }
+
+    return parts;
+  }
+
+  index_part * find_part(const std::string &path) {
+    for (auto &p: index_parts) {
+      if (p.path == path) {
+        return &p;
+      }
+    }
+
+    return nullptr;
+  }
+
+
+  void mark_merged(const std::vector<std::string> &parts) {
+    for (auto &p: parts) {
+      auto pp = find_part(p);
+      if (pp == nullptr) {
+        spdlog::error("merged unknown part {}", p);
+        continue;
+      }
+
+      for (auto s: pp->sites) {
+        s->merged = true;
+      }
+    }
+  }
+
+  std::vector<crawl::site *> next_index(bool flush) {
+    std::vector<crawl::site *> sites;
+
+    if (!flush && sites_pending_index_page_count < min_pages) {
+      spdlog::debug("waiting on more pages, have {}", sites_pending_index_page_count);
+      return sites;
+    }
+
+    spdlog::info("do index for {} sites with total {} pages",
+        sites_pending_index.size(), sites_pending_index_page_count);
+
+    sites.insert(sites.begin(), sites_pending_index.begin(), sites_pending_index.end());
+
+    sites_pending_index_page_count = 0;
+    sites_pending_index.clear();
+
+    return sites;
+  }
+
+  std::vector<crawl::site *> pop_parts(crawl::site *site) {
+    std::vector<crawl::site *> removed_sites;
+
+    auto part = index_parts.begin();
+
+    while (part != index_parts.end()) {
+      bool site_in_part = false;
+
+      for (auto s: part->sites) {
+        if (s == site) {
+          site_in_part = true;
+          break;
+        }
+      }
+
+      if (site_in_part) {
+        for (auto s: part->sites) {
+          s->indexed = false;
+        }
+
+        removed_sites.insert(removed_sites.end(), part->sites.begin(), part->sites.end());
+
+        part = index_parts.erase(part);
+      } else {
+        part++;
+      }
+    }
+
+    return removed_sites;
+  }
+
+  void mark_indexable(crawl::site *s) {
+    auto removed = pop_parts(s);
+
+    for (auto ss: removed) {
+      add_indexable(ss);
+    }
+
+    add_indexable(s);
+  }
+
+  void add_parts(std::vector<crawl::site *> sites, std::list<std::string> parts) {
+    for (auto s: sites) {
+      s->indexed = true;
+
+      for (auto ss: sites_pending_index) {
+        spdlog::error("add parts with site that is in pending index? {}", s->m_site.host);
+      }
+
+      for (auto &p: index_parts) {
+        for (auto ss: p.sites) {
+          if (ss == s) {
+            spdlog::error("add parts with site that is in index part {} : {}", p.path, s->m_site.host);
+          }
+        }
+      }
+    }
+
+    for (auto &part: parts) {
+      index_parts.emplace_back(part, sites);
+    }
+  }
+
+private:
+  void add_indexable(crawl::site *ss) {
+    for (auto s: sites_pending_index) {
+      if (s == ss) {
+        return;
+      }
+    }
+
+    sites_pending_index_page_count += ss->page_count;
+    sites_pending_index.push_back(ss);
+  }
+};
+
 class MasterImpl final: public Master::Server,
                         public kj::TaskSet::ErrorHandler {
 
@@ -109,6 +263,7 @@ class MasterImpl final: public Master::Server,
   MasterImpl(kj::AsyncIoContext &io_context, const config &s)
     : settings(s), tasks(*this),
       timer(io_context.provider->getTimer()),
+      indexer_manager(s.indexer.pages_per_part),
       crawler(s)
   {
     crawler.load();
@@ -119,23 +274,22 @@ class MasterImpl final: public Master::Server,
     crawler.load_blacklist(blacklist);
     crawler.load_seed(initial_seed);
 
-    index_parts_pending_merge = search::load_parts(settings.indexer.meta_path);
-    index_part_id = index_parts_pending_merge.size();
+    //index_parts = search::load_parts(settings.indexer.meta_path);
+    next_index_part_id = 0;//index_parts.size();
 
-    for (auto &site: crawler.sites) {
-      if (site.scraped && !site.merged && !site.indexed) {
-        spdlog::info("setting site {} for indexing", site.m_site.host);
+    for (auto &s: crawler.sites) {
+      s.indexed = false;
+      s.merged = false;
 
-        site.load();
-
-        sites_pending_index.emplace_back(&site);
-        sites_pending_index_page_count += site.m_site.pages.size();
+      if (s.scraped) {
+        s.load();
+        indexer_manager.mark_indexable(&s);
       }
     }
 
     flush();
     checkCrawlers();
-    checkStartMerge();
+    checkIndexing();
 
     indexNext();
   }
@@ -180,7 +334,7 @@ class MasterImpl final: public Master::Server,
   }
 
   void flush() {
-    search::save_parts(settings.indexer.meta_path, index_parts_pending_merge);
+    //search::save_parts(settings.indexer.meta_path, index_parts);
 
     if (have_changes) {
       spdlog::info("periodic save: started");
@@ -204,21 +358,15 @@ class MasterImpl final: public Master::Server,
           }));
   }
 
-  void checkStartMerge() {
+  void checkIndexing() {
     tasks.add(timer.afterDelay(10 * kj::SECONDS).then(
           [this] () {
-            checkStartMerge();
+            checkIndexing();
           }));
 
     if (!merge_parts_pending.empty() || !merge_parts_merging.empty()) {
       return;
     }
-
-    if (index_parts_pending_merge.empty()) {
-      return;
-    }
-
-    spdlog::debug("check merge ready");
 
     bool all_indexed = true;
     bool all_merged = true;
@@ -247,17 +395,11 @@ class MasterImpl final: public Master::Server,
       return;
     }
 
-    if (next_site == nullptr) {
-      next_site = crawler.get_next_site();
-    }
-
-    if (next_site == nullptr) {
+    auto site = crawler.get_next_site();
+    if (site == nullptr) {
       spdlog::info("no sites to crawl");
       return;
     }
-
-    auto site = next_site;
-    next_site = nullptr;
 
     site->flush();
 
@@ -299,6 +441,7 @@ class MasterImpl final: public Master::Server,
           site->last_scanned = time(NULL);
 
           size_t page_count = site->m_site.pages.size();
+          spdlog::debug("saving scraped site with {} pages", page_count);
 
           // Need to write the changes for this site
           // so the indexer has something to load.
@@ -313,9 +456,7 @@ class MasterImpl final: public Master::Server,
 
           have_changes = true;
 
-          sites_pending_index.emplace_back(site);
-          sites_pending_index_page_count += page_count;
-
+          indexer_manager.mark_indexable(site);
           indexNext();
 
           auto it = std::find(ready_crawlers.begin(), ready_crawlers.end(), proc);
@@ -361,9 +502,9 @@ class MasterImpl final: public Master::Server,
       info.average_page_length = 0;
     }
 
-    info.word_parts = std::vector<search::index_part_info>(merge_out_w.begin(), merge_out_w.end());
-    info.pair_parts = std::vector<search::index_part_info>(merge_out_p.begin(), merge_out_p.end());
-    info.trine_parts = std::vector<search::index_part_info>(merge_out_t.begin(), merge_out_t.end());
+    info.word_parts = merge_out_w;
+    info.pair_parts = merge_out_p;
+    info.trine_parts = merge_out_t;
 
     info.save();
 
@@ -371,12 +512,9 @@ class MasterImpl final: public Master::Server,
     merge_out_p.clear();
     merge_out_t.clear();
 
-    for (auto s: sites_merging) {
-      s->merged = true;
-    }
+    indexer_manager.mark_merged(index_parts_merging);
 
     index_parts_merging.clear();
-    sites_merging.clear();
   }
 
   void mergeNext() {
@@ -477,11 +615,7 @@ class MasterImpl final: public Master::Server,
       start++;
     }
 
-    index_parts_merging = index_parts_pending_merge;
-    sites_merging = sites_pending_merge;
-
-    index_parts_pending_merge.clear();
-    sites_pending_merge.clear();
+    index_parts_merging = indexer_manager.get_parts();
 
     mergeNext();
   }
@@ -493,15 +627,10 @@ class MasterImpl final: public Master::Server,
       return;
     }
 
-    if (!flush && sites_pending_index_page_count < settings.indexer.pages_per_part) {
-      spdlog::debug("waiting on more pages, have {}", sites_pending_index_page_count);
+    auto sites = indexer_manager.next_index(flush);
+    if (sites.empty()) {
       return;
     }
-
-    auto sites = std::move(sites_pending_index);
-
-    sites_pending_index_page_count = 0;
-    sites_pending_index.clear();
 
     auto indexer = ready_indexers.front();
     ready_indexers.pop_front();
@@ -510,7 +639,7 @@ class MasterImpl final: public Master::Server,
 
     auto request = indexer->indexRequest();
 
-    std::string output = fmt::format("{}/{}", settings.indexer.parts_path, index_part_id++);
+    std::string output = fmt::format("{}/{}", settings.indexer.parts_path, next_index_part_id++);
 
     auto paths = request.initSitePaths(sites.size());
     size_t i = 0;
@@ -522,17 +651,19 @@ class MasterImpl final: public Master::Server,
     request.setOutputBase(output);
 
     tasks.add(request.send().then(
-        [this, sites(std::move(sites)), indexer] (auto result) {
+        [this, sites(std::move(sites)), output, indexer] (auto result) {
           for (auto &s: sites) {
             spdlog::info("index finished for {}", s->m_site.path);
-            sites_pending_merge.push_back(s);
-            s->indexed = true;
           }
+
+          std::list<std::string> parts;
 
           for (auto p: result.getOutputPaths()) {
             spdlog::info("index new part {}", std::string(p));
-            index_parts_pending_merge.emplace_back(p);
+            parts.emplace_back(p);
           }
+
+          indexer_manager.add_parts(sites, parts);
 
           ready_indexers.push_back(indexer);
 
@@ -597,36 +728,29 @@ class MasterImpl final: public Master::Server,
 
   crawl::crawler crawler;
 
-  crawl::site *next_site = nullptr;
-
   std::list<Crawler::Client> crawlers;
   std::list<Crawler::Client *> ready_crawlers;
 
   // Indexing
 
+  index_manager indexer_manager;
+
   std::list<Indexer::Client> indexers;
   std::list<Indexer::Client *> ready_indexers;
 
-  size_t index_part_id;
-
-  std::list<crawl::site *> sites_pending_index;
-  size_t sites_pending_index_page_count;
+  size_t next_index_part_id;
 
   // Merging
-
-  std::list<std::string> index_parts_pending_merge;
-  std::list<crawl::site *> sites_pending_merge;
 
   std::list<Merger::Client> mergers;
   std::list<Merger::Client *> ready_mergers;
 
-  std::list<std::string> index_parts_merging;
-  std::list<crawl::site *> sites_merging;
+  std::vector<std::string> index_parts_merging;
 
   std::list<std::pair<std::string, std::optional<std::string>>> merge_parts_pending;
   std::list<std::pair<std::string, std::optional<std::string>>> merge_parts_merging;
 
-  std::list<search::index_part_info> merge_out_w, merge_out_p, merge_out_t;
+  std::vector<search::index_part_info> merge_out_w, merge_out_p, merge_out_t;
 };
 
 int main(int argc, char *argv[]) {

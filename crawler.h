@@ -17,18 +17,34 @@ struct site {
   size_t level;
 
   time_t last_scanned{0};
+  size_t max_pages{0};
+
+  size_t page_count{0};
 
   bool scraped{false};
   bool scraping{false};
-  bool indexing{false};
-  bool indexed{false};
-  bool merged{false};
-  size_t max_pages{0};
 
-  void flush() { m_site.flush(); }
-  void reload() { m_site.reload(); }
-  void load() { m_site.load(); }
-  void save() { m_site.save(); }
+  bool indexed;
+  bool merged;
+
+  void flush() {
+    page_count = m_site.pages.size();
+    m_site.flush();
+  }
+
+  void reload() {
+    m_site.reload();
+  }
+
+  void load() {
+    m_site.load();
+    page_count = m_site.pages.size();
+  }
+
+  void save() {
+    page_count = m_site.pages.size();
+    m_site.save();
+  }
 
   site() {}
 
@@ -83,6 +99,7 @@ struct crawler {
     size_t max_add_sites,
     size_t next_max_page);
 
+  std::string get_meta_path(const std::string &host);
   std::string get_data_path(const std::string &host);
 
   //scrape::site make_scrape_site(site *s,
