@@ -55,6 +55,7 @@ config default_config() {
   c.indexer.meta_path = "out/index_parts.json";
 
   c.merger.max_index_part_size = 200 * 1024 * 1024;
+  c.merger.frequency_minutes = 10;
   c.merger.htcap = 1 << 16;
 
   c.merger.parts_path = "out/index_merged/";
@@ -138,6 +139,7 @@ config read_config(std::string path) {
   j.at("merger").at("max_index_part_size_mb").get_to(s_mb);
   c.merger.max_index_part_size = s_mb * 1024 * 1024;
 
+  j.at("merger").at("frequency_minutes").get_to(c.merger.frequency_minutes);
   j.at("merger").at("htcap").get_to(s);
   c.merger.htcap = 1 << s;
 

@@ -53,6 +53,8 @@ struct config {
     std::optional<size_t> n_threads;
     size_t max_index_part_size;
 
+    size_t frequency_minutes;
+
     size_t htcap;
 
     std::string meta_path;

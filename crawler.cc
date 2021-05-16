@@ -149,28 +149,6 @@ std::string crawler::get_data_path(const std::string &host) {
   return path;
 }
 
-/*
-scrape::site crawler::make_scrape_site(site *s,
-    size_t site_max_con, size_t max_site_part_size, size_t max_page_size)
-{
-  std::list<scrape::page> pages;
-
-  for (auto &p: s->pages) {
-    pages.emplace_back(p.url, p.path, p.last_scanned);
-  }
-
-  scrape::site out(
-              s->host, pages,
-              get_data_path(s->host),
-              levels[s->level].max_pages,
-              site_max_con,
-              max_site_part_size,
-              max_page_size);
-
-  return std::move(out);
-}
-*/
-
 bool crawler::check_blacklist(const std::string &host)
 {
   for (auto &b: blacklist) {

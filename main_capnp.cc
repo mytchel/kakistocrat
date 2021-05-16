@@ -368,6 +368,12 @@ class MasterImpl final: public Master::Server,
       return;
     }
 
+    if (time(NULL) < last_merge + settings.merger.frequency_minutes * 60) {
+      return;
+    }
+
+    last_merge = time(NULL);
+
     bool all_indexed = true;
     bool all_merged = true;
 
@@ -461,7 +467,6 @@ class MasterImpl final: public Master::Server,
 
           auto it = std::find(ready_crawlers.begin(), ready_crawlers.end(), proc);
           if (it == ready_crawlers.end()) {
-            spdlog::info("crawler {} transition to ready", (uintptr_t) proc);
             ready_crawlers.push_back(proc);
           }
 
@@ -515,6 +520,8 @@ class MasterImpl final: public Master::Server,
     indexer_manager.mark_merged(index_parts_merging);
 
     index_parts_merging.clear();
+
+    last_merge = time(NULL);
   }
 
   void mergeNext() {
@@ -751,6 +758,8 @@ class MasterImpl final: public Master::Server,
   std::list<std::pair<std::string, std::optional<std::string>>> merge_parts_merging;
 
   std::vector<search::index_part_info> merge_out_w, merge_out_p, merge_out_t;
+
+  time_t last_merge{0};
 };
 
 int main(int argc, char *argv[]) {

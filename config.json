@@ -27,6 +27,7 @@
     "merger": {
         "n_threads": 3,
         "max_index_part_size_mb": 200,
+        "frequency_minutes": 1,
         "htcap": 18,
         "parts_path": "out/index_merged/",
         "meta_path": "out/index.json"
