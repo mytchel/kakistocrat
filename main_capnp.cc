@@ -69,7 +69,7 @@ public:
 
     spdlog::info("server setup for {}", bindAddress);
 
-    tasks.add(io_context.provider->getNetwork().parseAddress(bindAddress, 1234)
+    tasks.add(io_context.provider->getNetwork().parseAddress(bindAddress)
         .then([this, readerOpts](kj::Own<kj::NetworkAddress>&& addr) {
 
       //spdlog::info("server ready: {}", std::string(addr->toString()));
@@ -718,6 +718,14 @@ class MasterImpl final: public Master::Server,
     return kj::READY_NOW;
   }
 
+  kj::Promise<void> registerSearcher(RegisterSearcherContext context) override {
+    spdlog::info("got register searcher");
+
+    searchers.push_back(context.getParams().getSearcher());
+
+    return kj::READY_NOW;
+  }
+
   void taskFailed(kj::Exception&& exception) override {
     spdlog::warn("task failed: {}", std::string(exception.getDescription()));
     kj::throwFatalException(kj::mv(exception));
@@ -760,18 +768,14 @@ class MasterImpl final: public Master::Server,
   std::vector<search::index_part_info> merge_out_w, merge_out_p, merge_out_t;
 
   time_t last_merge{0};
+
+  // Searching
+
+  std::list<Searcher::Client> searchers;
 };
 
 int main(int argc, char *argv[]) {
   spdlog::set_level(spdlog::level::debug);
-
-  if (argc != 2) {
-    std::cerr << "usage: " << argv[0] << " ADDRESS[:PORT]\n"
-        "Runs the server bound to the given address/port.\n"
-        "ADDRESS may be '*' to bind to all local addresses.\n"
-        ":PORT may be omitted to choose a port automatically." << std::endl;
-    return 1;
-  }
 
   config settings = read_config();
 

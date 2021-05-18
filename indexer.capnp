@@ -4,6 +4,7 @@ interface Master {
     registerCrawler @0 (crawler :Crawler);
     registerIndexer @1 (indexer :Indexer);
     registerMerger @2 (merger :Merger);
+    registerSearcher @3 (searcher :Searcher);
 }
 
 interface Crawler {
@@ -21,5 +22,9 @@ interface Merger {
     merge @0 (start :Text, end :Text,
               indexPartPaths :List(Text),
               wOut :Text, pOut :Text, tOut :Text);
+}
+
+interface Searcher {
+    search @0 (query :Text) -> (results: List(Text));
 }
 

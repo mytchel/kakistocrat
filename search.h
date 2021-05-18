@@ -21,7 +21,7 @@ struct searcher {
   //scorer::scores scores;
   search::index index;
 
-  searcher(config &c)
+  searcher(const config &c)
     : index(c.merger.meta_path, c.merger.htcap) {}//,
       //scores(c.scores_path)
   //{}

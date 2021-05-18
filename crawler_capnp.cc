@@ -71,7 +71,7 @@ class CrawlerImpl final: public Crawler::Server,
   };
 
 public:
-  CrawlerImpl(const config &settings, kj::AsyncIoContext &io_context)
+  CrawlerImpl(kj::AsyncIoContext &io_context, const config &settings)
     : settings(settings), tasks(*this),
       curl(io_context, settings.crawler.thread_max_connections),
       max_sites(settings.crawler.thread_max_sites),
@@ -198,10 +198,7 @@ public:
 int main(int argc, char *argv[]) {
   spdlog::set_level(spdlog::level::debug);
 
-  if (argc != 2) {
-    spdlog::error("bad args");
-    return 1;
-  }
+  std::string bindAddress = "localhost:1234";
 
   spdlog::info("read config");
   config settings = read_config();
@@ -211,7 +208,7 @@ int main(int argc, char *argv[]) {
   kj::UnixEventPort::captureSignal(SIGINT);
   auto ioContext = kj::setupAsyncIo();
 
-  auto addrPromise = ioContext.provider->getNetwork().parseAddress(argv[1], 2572)
+  auto addrPromise = ioContext.provider->getNetwork().parseAddress(bindAddress)
   .then([](kj::Own<kj::NetworkAddress> addr) {
       spdlog::info("using addr {}", std::string(addr->toString().cStr()));
       return addr->connect().attach(kj::mv(addr));
@@ -232,7 +229,7 @@ int main(int argc, char *argv[]) {
 
     spdlog::info("creating client");
 
-    Crawler::Client crawler = kj::heap<CrawlerImpl>(settings, ioContext);
+    Crawler::Client crawler = kj::heap<CrawlerImpl>(ioContext, settings);
 
     spdlog::info("create request");
     auto request = master.registerCrawlerRequest();

@@ -166,3 +166,31 @@ target_link_libraries(merger_capnp foonathan_memory)
 target_link_libraries(merger_capnp CapnProto::capnp-rpc)
 
 
+add_executable(search_capnp search_capnp.cc
+    ${capnp_sources}
+    ${capnp_headers}
+
+    search.cc
+
+    index_part.cc
+    index.cc
+    posting.cc
+    vbyte.cc
+    tokenizer.cc
+    str.c
+
+    hash.cc
+    site.cc
+    util.cc
+    config.cc)
+
+target_include_directories(search_capnp PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+
+target_link_libraries(search_capnp Threads::Threads)
+target_link_libraries(search_capnp nlohmann_json::nlohmann_json)
+target_link_libraries(search_capnp spdlog::spdlog)
+target_link_libraries(search_capnp foonathan_memory)
+target_link_libraries(search_capnp CapnProto::capnp-rpc)
+target_link_libraries(search_capnp CapnProto::kj-http)
+
+

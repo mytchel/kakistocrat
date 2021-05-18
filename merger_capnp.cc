@@ -139,10 +139,7 @@ public:
 int main(int argc, char *argv[]) {
   spdlog::set_level(spdlog::level::debug);
 
-  if (argc != 2) {
-    spdlog::error("bad args");
-    return 1;
-  }
+  std::string bindAddress = "localhost:1234";
 
   spdlog::info("read config");
   config settings = read_config();
@@ -152,7 +149,7 @@ int main(int argc, char *argv[]) {
   kj::UnixEventPort::captureSignal(SIGINT);
   auto ioContext = kj::setupAsyncIo();
 
-  auto addrPromise = ioContext.provider->getNetwork().parseAddress(argv[1], 2572)
+  auto addrPromise = ioContext.provider->getNetwork().parseAddress(bindAddress)
   .then([](kj::Own<kj::NetworkAddress> addr) {
       spdlog::info("using addr {}", std::string(addr->toString().cStr()));
       return addr->connect().attach(kj::mv(addr));
