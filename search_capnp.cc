@@ -77,7 +77,7 @@ public:
 
     auto params = context.getParams();
 
-    std::string query = params.getQuery();
+    std::string query = params.getWord();
 
     return kj::READY_NOW;
   }
@@ -103,44 +103,55 @@ public:
     kj::HttpHeaders respHeaders(*hTable);
     respHeaders.set(hContentType, "text/html");
 
-    if (query == "") {
-      auto body = kj::str(fmt::format("Hello there. I need something to work with"));
+    std::string result_body;
 
-      auto stream = response.send(200, "OK", respHeaders, body.size());
-      auto promise = stream->write(body.begin(), body.size());
-      return promise.attach(kj::mv(stream), kj::mv(body));
+    if (query != "") {
+      char query_c[1024];
+      strncpy(query_c, query.cStr(), sizeof(query_c));
+
+      auto results = searcher.search(query_c);
+
+      for (auto &result: results) {
+        result_body += fmt::format("<li>{}:<a href=\"{}\">{}</a>:<a href=\"{}\">{}</a></li>",
+            result.score,
+            result.url,
+            result.title,
+            result.url,
+            result.path);
+      }
     }
 
-    char query_c[1024];
-    strncpy(query_c, query.cStr(), sizeof(query_c));
+    auto body = kj::str(fmt::format(R"HTML(
+<html>
+    <head>
+        <title>{} | Search</title>
+    </head>
+    <body>
+        <div id="search">
+            <form method="GET" action="/">
+                <label for="q">Search</label>
+                <input type="text" id="q" name="q" value="{}"></input>
+                <input type="submit" value="Search"></input>
+            </form>
+        </div>
+        <div id="results">
+            <ul>
+            {}
+            </ul>
+        </div>
+    </body>
+</html>
+        )HTML", std::string(query), std::string(query), result_body));
 
-    auto results = searcher.search(query_c);
-
-    std::string body = "<h1>got stuff</h1><ul>";
-    for (auto &result: results) {
-      body += fmt::format("<li>{}:<a href=\"{}\">{}</a>:<a href=\"{}\">{}</a></li>",
-          result.score,
-          result.url,
-          result.title,
-          result.url,
-          result.path);
-    }
-
-    body += "</ul>";
-
-    auto bodyStr = kj::str(body);
-
-    auto stream = response.send(200, "OK", respHeaders, bodyStr.size());
-    auto promise = stream->write(bodyStr.begin(), bodyStr.size());
-    return promise.attach(kj::mv(stream), kj::mv(bodyStr));
+    auto stream = response.send(200, "OK", respHeaders, body.size());
+    auto promise = stream->write(body.begin(), body.size());
+    return promise.attach(kj::mv(stream), kj::mv(body));
   }
 
   void taskFailed(kj::Exception&& exception) override {
     spdlog::warn("task failed: {}", std::string(exception.getDescription()));
     kj::throwFatalException(kj::mv(exception));
   }
-
-  //std::string message = "Hello there.";
 
   const config &settings;
 

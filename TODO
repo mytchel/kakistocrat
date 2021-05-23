@@ -1,31 +1,34 @@
 TODO:
 
-Better memory management to avoid crashes.
-  This is getting there. It is likely to be a slow process.
-
 Save page output to an archive format.
-
-Save links as urls, not pages ids.
-Do away with page ids all together.
 
 Roadmap:
 
-Try out capnproto for communication probably with something else,
-zookeeper?
-
-Distributed crawl
-Distributed index
 Concurrent/Distributed search
 
 Scorer that works properly.
     Will need to start with a users seed and expand.
 
-    Lower scores for longer urls?
-
-    Definatly lower for query params.
-
     Needs to not rule out results that are not in all postings.
 
+    Score should be something like
+        (distance from users seed + page rank) * url dislike * relevance
+        where url dislike is something like:
+            Lower scores for longer urls?
+            Definatly lower for query params.
+
+        I'm think give up on individual user page rank. Just use the
+        distance for it. Should be good enough anyway.
+
+    http://www.ams.org/publicoutreach/feature-column/fcarc-pagerank
+    https://github.com/louridas/pagerank/tree/master/cpp
+
+        dangling pages necesitate doing some weird stuff so that the matrix
+        converges.
+
+        I have no idea how to make this distributed.
+
+        https://www.sciencedirect.com/science/article/pii/S0304397514002709
 
 
 

@@ -312,4 +312,9 @@ std::string url_decode(const std::string &in) {
   return out;
 }
 
+float get_rand() {
+  return static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+}
+
+
 }

@@ -23,6 +23,9 @@ bool bare_minimum_valid_url(const std::string &url);
 std::vector<std::string> load_list(const std::string &path);
 
 std::string url_decode(const std::string &in);
+
+float get_rand();
+
 };
 
 #endif

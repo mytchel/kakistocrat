@@ -40,7 +40,6 @@ static std::list<std::pair<std::string, double>> intersect_postings(
 
   spdlog::info("interset {}", postings.size());
 
-  try {
   if (postings.size() == 0) {
     return result;
   }
@@ -74,9 +73,6 @@ static std::list<std::pair<std::string, double>> intersect_postings(
 
 		indexes[0]++;
 	}
-  } catch (const std::exception& e) {
-    spdlog::warn("failed to intersect");
-    }
 
 	return result;
 }

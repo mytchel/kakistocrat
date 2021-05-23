@@ -70,6 +70,8 @@ add_executable(main_capnp main_capnp.cc
     ${capnp_sources}
     ${capnp_headers}
 
+    capnp_server.cc
+
     crawler.cc
 
     index.cc
@@ -164,6 +166,43 @@ target_link_libraries(merger_capnp nlohmann_json::nlohmann_json)
 target_link_libraries(merger_capnp spdlog::spdlog)
 target_link_libraries(merger_capnp foonathan_memory)
 target_link_libraries(merger_capnp CapnProto::capnp-rpc)
+
+
+add_executable(scorer_master_capnp scorer_master_capnp.cc
+    ${capnp_sources}
+    ${capnp_headers}
+
+    capnp_server.cc
+
+    hash.cc
+    site.cc
+    util.cc
+    config.cc)
+
+target_include_directories(scorer_master_capnp PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+
+target_link_libraries(scorer_master_capnp Threads::Threads)
+target_link_libraries(scorer_master_capnp nlohmann_json::nlohmann_json)
+target_link_libraries(scorer_master_capnp spdlog::spdlog)
+target_link_libraries(scorer_master_capnp foonathan_memory)
+target_link_libraries(scorer_master_capnp CapnProto::capnp-rpc)
+
+add_executable(scorer_worker_capnp scorer_worker_capnp.cc
+    ${capnp_sources}
+    ${capnp_headers}
+
+    hash.cc
+    site.cc
+    util.cc
+    config.cc)
+
+target_include_directories(scorer_worker_capnp PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+
+target_link_libraries(scorer_worker_capnp Threads::Threads)
+target_link_libraries(scorer_worker_capnp nlohmann_json::nlohmann_json)
+target_link_libraries(scorer_worker_capnp spdlog::spdlog)
+target_link_libraries(scorer_worker_capnp foonathan_memory)
+target_link_libraries(scorer_worker_capnp CapnProto::capnp-rpc)
 
 
 add_executable(search_capnp search_capnp.cc
