@@ -178,8 +178,9 @@ public:
       request.setUrl(url);
 
       builder.add(request.send().then(
-            [this] (auto result) {
-              double s = result.getCounter();
+            [this, url] (auto result) {
+              uint32_t s = result.getCounter();
+              spdlog::info("got counter response: {} : {}", s, std::string(url));
               return s * param_e / (val_c * pageCount * log(pageCount));
             },
             [] (auto exception) {
@@ -189,9 +190,10 @@ public:
     }
 
     return kj::joinPromises(builder.finish()).then(
-        [KJ_CPCAP(context)] (auto results) mutable {
+        [url, KJ_CPCAP(context)] (auto results) mutable {
           for (auto s: results) {
             if (s > 0) {
+              spdlog::info("got score response: {} : {}", s, std::string(url));
               context.getResults().setScore(s);
               return;
             }

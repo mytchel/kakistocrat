@@ -55,7 +55,7 @@ struct site {
   page* find_page(const std::string &url);
   page* find_page_by_path(const std::string &path);
 
-  page* find_add_page(std::string url, size_t level, std::string path = "");
+  page* find_add_page(const std::string &url, size_t level, const std::string &path = "");
 };
 
 void to_json(nlohmann::json &j, const site &s);

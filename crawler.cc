@@ -160,11 +160,19 @@ bool crawler::check_blacklist(const std::string &host)
   return false;
 }
 
-page* site::find_add_page(std::string url, size_t level, std::string path)
+page* site::find_page(const std::string &url)
+{
+  spdlog::debug("find page {}", url);
+  load();
+
+  return m_site.find_page(url);
+}
+
+page* site::find_add_page(const std::string &url, size_t n_level, const std::string &path)
 {
   load();
 
-  if (level > level) level = level;
+  if (level > n_level) level = n_level;
 
   auto p = m_site.find_page(url);
   if (p != NULL) {
@@ -289,7 +297,7 @@ void crawler::load_seed(std::vector<std::string> urls)
       site = &sites.back();
     }
 
-    site->find_add_page(o, 0);
+    auto p = site->find_add_page(o, 0);
 
     site->max_pages = levels[0].max_pages;
   }

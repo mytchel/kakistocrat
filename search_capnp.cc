@@ -49,12 +49,165 @@ class SearcherImpl final:
             public kj::HttpService,
             public kj::TaskSet::ErrorHandler {
 
+  struct adaptor {
+  public:
+    adaptor(kj::PromiseFulfiller<void> &fulfiller,
+            SearcherImpl &searcher,
+            const std::string &query,
+            Response& response)
+        : fulfiller(fulfiller),
+          searcher(searcher),
+          query(query),
+          response(response)
+    {
+      if (query != "") {
+        search();
+      } else {
+        respond();
+      }
+    }
+
+    void search() {
+      char query_c[1024];
+      strncpy(query_c, query.c_str(), sizeof(query_c));
+
+      auto matched_pages = searcher.searcher.search(query_c);
+
+      if (matched_pages.empty()) {
+        respond();
+        return;
+      }
+
+      pending = 0;
+      for (auto &page: matched_pages) {
+        auto request = searcher.master.getPageInfoRequest();
+
+        request.setUrl(page.url);
+
+        searcher.tasks.add(request.send().then(
+              [this, page] (auto result) {
+                spdlog::info("got page info for {}", page.url);
+
+                float score = result.getScore();
+                std::string title = result.getTitle();
+                std::string path = result.getPath();
+
+                spdlog::info("got page info for {} : {} '{}' '{}'", page.url, score, title, path);
+
+                if (title != "" && path != "") {
+                  results.emplace_back(
+                      page.url,
+                      result.getTitle(),
+                      result.getPath(),
+                      page.score,
+                      result.getScore());
+                }
+
+                pending--;
+                if (pending == 0) {
+                  respond();
+                }
+              }));
+
+        pending++;
+        if (pending > 10) {
+          break;
+        }
+      }
+    }
+
+    void respond() {
+      std::string result_body;
+
+      std::sort(results.begin(), results.end(),
+          [] (auto &a, auto &b) {
+              double aa = a.score * a.rank;
+              double bb = b.score * b.rank;
+
+              return aa > bb;
+          });
+
+      for (auto &result: results) {
+        result_body += fmt::format("<li>{:.2f} : {:.8f}  <a href=\"{}\">{}</a>  <a href=\"{}\">{}</a></li>",
+            result.score,
+            result.rank,
+            result.url,
+            result.title,
+            result.url,
+            result.path);
+      }
+
+      body = kj::str(fmt::format(R"HTML(
+  <html>
+      <head>
+          <title>{} | Search</title>
+      </head>
+      <body>
+          <div id="search">
+              <form method="GET" action="/">
+                  <label for="q">Search</label>
+                  <input type="text" id="q" name="q" value="{}"></input>
+                  <input type="submit" value="Search"></input>
+              </form>
+          </div>
+          <div id="results">
+              <ul>
+              {}
+              </ul>
+          </div>
+      </body>
+  </html>
+          )HTML", std::string(query), std::string(query), result_body));
+
+      kj::HttpHeaders respHeaders(*searcher.hTable);
+      respHeaders.set(searcher.hContentType, "text/html");
+
+      stream = response.send(200, "OK", respHeaders, body.size());
+      searcher.tasks.add(stream->write(body.begin(), body.size()).then(
+            [this] () {
+              spdlog::info("finished sending");
+              finish();
+            }));
+    }
+
+    void finish() {
+      fulfiller.fulfill();
+    }
+
+    kj::PromiseFulfiller<void> &fulfiller;
+    SearcherImpl &searcher;
+    std::string query;
+    Response &response;
+
+    struct search_match {
+      std::string url;
+      std::string title;
+      std::string path;
+      float score;
+      float rank;
+
+      search_match(const std::string &url,
+                   const std::string &title,
+                   const std::string &path,
+                   float score, float rank)
+        : url(url), title(title), path(path),
+          score(score), rank(rank)
+      {}
+    };
+
+    size_t pending;
+    std::vector<search_match> results;
+
+    kj::String body;
+    kj::Own<kj::AsyncOutputStream> stream;
+  };
+
 public:
   SearcherImpl(kj::AsyncIoContext &io_context,
       kj::HttpHeaderTable::Builder &builder,
       kj::Own<kj::NetworkAddress> &listenAddr,
-      const config &s)
-    : settings(s), searcher(s),
+      const config &s, Master::Client master)
+    : settings(s), searcher(s), master(master),
       urlBase(kj::Url::parse("http://localhost/")),
       tasks(*this), timer(io_context.provider->getTimer())
   {
@@ -100,52 +253,7 @@ public:
       }
     }
 
-    kj::HttpHeaders respHeaders(*hTable);
-    respHeaders.set(hContentType, "text/html");
-
-    std::string result_body;
-
-    if (query != "") {
-      char query_c[1024];
-      strncpy(query_c, query.cStr(), sizeof(query_c));
-
-      auto results = searcher.search(query_c);
-
-      for (auto &result: results) {
-        result_body += fmt::format("<li>{}:<a href=\"{}\">{}</a>:<a href=\"{}\">{}</a></li>",
-            result.score,
-            result.url,
-            result.title,
-            result.url,
-            result.path);
-      }
-    }
-
-    auto body = kj::str(fmt::format(R"HTML(
-<html>
-    <head>
-        <title>{} | Search</title>
-    </head>
-    <body>
-        <div id="search">
-            <form method="GET" action="/">
-                <label for="q">Search</label>
-                <input type="text" id="q" name="q" value="{}"></input>
-                <input type="submit" value="Search"></input>
-            </form>
-        </div>
-        <div id="results">
-            <ul>
-            {}
-            </ul>
-        </div>
-    </body>
-</html>
-        )HTML", std::string(query), std::string(query), result_body));
-
-    auto stream = response.send(200, "OK", respHeaders, body.size());
-    auto promise = stream->write(body.begin(), body.size());
-    return promise.attach(kj::mv(stream), kj::mv(body));
+    return kj::newAdaptedPromise<void, adaptor>(*this, query, response);
   }
 
   void taskFailed(kj::Exception&& exception) override {
@@ -156,6 +264,8 @@ public:
   const config &settings;
 
   search::searcher searcher;
+
+  Master::Client master;
 
   kj::Url urlBase;
 
@@ -203,6 +313,12 @@ int main(int argc, char *argv[]) {
   auto rpcSystem = capnp::makeRpcClient(network);
 
   {
+    capnp::MallocMessageBuilder message;
+    auto hostId = message.getRoot<capnp::rpc::twoparty::VatId>();
+    hostId.setSide(capnp::rpc::twoparty::Side::SERVER);
+
+    Master::Client master = rpcSystem.bootstrap(hostId).castAs<Master>();
+
     spdlog::info("creating client");
 
     kj::HttpHeaderTable::Builder builder;
@@ -210,15 +326,10 @@ int main(int argc, char *argv[]) {
     Searcher::Client searcher = kj::heap<SearcherImpl>(ioContext,
         builder,
         listenAddr,
-        settings);
+        settings,
+        master);
 
     spdlog::info("client made");
-
-    capnp::MallocMessageBuilder message;
-    auto hostId = message.getRoot<capnp::rpc::twoparty::VatId>();
-    hostId.setSide(capnp::rpc::twoparty::Side::SERVER);
-
-    Master::Client master = rpcSystem.bootstrap(hostId).castAs<Master>();
 
     spdlog::info("create request");
     auto request = master.registerSearcherRequest();

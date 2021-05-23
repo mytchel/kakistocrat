@@ -622,7 +622,7 @@ class MasterImpl final: public Master::Server,
   }
 
   kj::Promise<void> registerCrawler(RegisterCrawlerContext context) override {
-    spdlog::info("got register crawler");
+    spdlog::debug("got register crawler");
 
     crawlers.push_back(context.getParams().getCrawler());
 
@@ -634,7 +634,7 @@ class MasterImpl final: public Master::Server,
   }
 
   kj::Promise<void> registerIndexer(RegisterIndexerContext context) override {
-    spdlog::info("got register indexer");
+    spdlog::debug("got register indexer");
 
     indexers.push_back(context.getParams().getIndexer());
 
@@ -645,7 +645,7 @@ class MasterImpl final: public Master::Server,
   }
 
   kj::Promise<void> registerMerger(RegisterMergerContext context) override {
-    spdlog::info("got register merger");
+    spdlog::debug("got register merger");
 
     mergers.push_back(context.getParams().getMerger());
     ready_mergers.push_back(&mergers.back());
@@ -658,10 +658,10 @@ class MasterImpl final: public Master::Server,
   }
 
   kj::Promise<void> registerScorer(RegisterScorerContext context) override {
-    spdlog::info("got register scorer");
+    spdlog::debug("got register scorer");
 
-    // scorers.push_back(context.getParams().getScorer());
-    auto scorer = context.getParams().getScorer();
+    scorers.push_back(context.getParams().getScorer());
+    auto scorer = scorers.back();
 
     auto request = scorer.scoreRequest();
 
@@ -690,11 +690,87 @@ class MasterImpl final: public Master::Server,
   }
 
   kj::Promise<void> registerSearcher(RegisterSearcherContext context) override {
-    spdlog::info("got register searcher");
+    spdlog::debug("got register searcher");
 
     searchers.push_back(context.getParams().getSearcher());
 
     return kj::READY_NOW;
+  }
+
+  kj::Promise<float> getScore(const std::string &url) {
+    if (scorers.empty()) {
+      return kj::Promise<float>(0.0);
+    }
+
+    auto scorer = scorers.back();
+    auto request = scorer.getScoreRequest();
+
+    request.setUrl(url);
+
+    return request.send().then(
+        [this] (auto result)  {
+          float score = result.getScore();
+          return score;
+        },
+        [this] (auto exception) {
+          spdlog::warn("get score failed: {}", std::string(exception.getDescription()));
+          return 0;
+        });
+  }
+
+  kj::Promise<void> getScore(GetScoreContext context) override {
+    spdlog::debug("get score");
+
+    auto url = context.getParams().getUrl();
+
+    return getScore(url).then(
+        [this, KJ_CPCAP(context)] (auto score) mutable {
+          context.getResults().setScore(score);
+        },
+        [this] (auto exception) {
+          spdlog::warn("get score failed: {}", std::string(exception.getDescription()));
+        });
+  }
+
+  kj::Promise<void> getPageInfo(GetPageInfoContext context) override {
+    spdlog::debug("get page info");
+
+    std::string url = context.getParams().getUrl();
+
+    auto host = util::get_host(url);
+
+    auto site = crawler.find_site(host);
+    if (site == nullptr) {
+      spdlog::info("unknown site {}", host);
+      return kj::READY_NOW;
+    }
+
+    auto page = site->find_page(url);
+    if (page == nullptr) {
+      spdlog::info("have site {} but not page {}", host, url);
+      return kj::READY_NOW;
+    }
+
+    if (page->last_scanned == 0) {
+      spdlog::info("page not scraped {} : {} {} {} {}", url, page->last_scanned, page->url, page->title, page->path);
+      return kj::READY_NOW;
+    }
+
+    spdlog::info("have page {} : {} {} {} {}", url, page->last_scanned, page->url, page->title, page->path);
+
+    auto results = context.getResults();
+
+    results.setTitle(page->title);
+    results.setPath(page->path);
+
+    return getScore(url).then(
+        [this, url, KJ_CPCAP(context), KJ_CPCAP(results)] (auto score) mutable {
+          spdlog::info("got score for page {} {}", score, url);
+          results.setScore(score);
+        },
+        [this] (auto exception) {
+          spdlog::warn("get score failed: {}", std::string(exception.getDescription()));
+        });
   }
 
   void taskFailed(kj::Exception&& exception) override {

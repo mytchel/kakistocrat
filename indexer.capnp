@@ -39,7 +39,7 @@ interface Scorer {
 
     score @1 (sitePaths :List(Text));
 
-    getScore @2 (url :Text) -> (score :Float64);
+    getScore @2 (url :Text) -> (score :Float32);
 
     addWalk @3 (site :Text, url :Text, hits :UInt32) -> (found :Bool);
 }

@@ -82,7 +82,7 @@ class ScorerWorkerImpl final: public ScorerWorker::Server,
       coupons = next_coupons;
       next_coupons = 0;
 
-      return counpons > 0;
+      return coupons > 0;
     }
 
     void iterate() {
@@ -172,7 +172,7 @@ public:
     return kj::READY_NOW;
   }
 
-  kj::Promise<void> iterateFinish(IterateFinishContext) override {
+  kj::Promise<void> iterateFinish(IterateFinishContext context) override {
     bool r = false;
     for (auto &node: nodes) {
       r |= node.second.iterate_finish();

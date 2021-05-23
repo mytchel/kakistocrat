@@ -53,7 +53,7 @@ void site_map::reload() {
   file.open(path, std::ios::in);
 
   if (!file.is_open()) {
-    //spdlog::warn("error opening file {}", path);
+    spdlog::warn("error opening file {}", path);
     return;
   }
 
@@ -96,11 +96,14 @@ void site_map::save() {
   file << j;
 
   file.close();
+
+  changed = false;
 }
 
 page* site_map::find_page(const std::string &url)
 {
   for (auto &p: pages) {
+    spdlog::info("check {} == {}", url, p.url);
     if (p.url == url) {
       return &p;
     }
