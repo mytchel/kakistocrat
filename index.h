@@ -408,6 +408,9 @@ struct index {
     find_matches(char *line);
 };
 
+std::list<std::pair<std::string, double>>
+intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &postings);
+
 }
 
 #endif

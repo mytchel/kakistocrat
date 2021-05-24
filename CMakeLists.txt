@@ -209,8 +209,6 @@ add_executable(search_capnp search_capnp.cc
     ${capnp_sources}
     ${capnp_headers}
 
-    search.cc
-
     index_part.cc
     index.cc
     posting.cc

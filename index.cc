@@ -622,24 +622,32 @@ void index::find_matches(
 
   for (auto &part: part_info) {
     if (term == terms.end()) {
+      spdlog::info("checked all terms");
       break;
     }
 
     if (*term < part.start) {
+      spdlog::info("term {} all checked", *term);
       term++;
     }
 
     if (part.end && *term > *part.end) {
+      spdlog::info("term {} > part end {}", *term, *part.end);
       continue;
     }
+
+    spdlog::info("load part {} to check terms", part.path);
 
     auto index = load_part(part, htcap);
 
     while (term != terms.end()) {
-      if (part.start <= *term && (part.end && *term < *part.end)) {
-        spdlog::debug("search {} for {}", part.path, *term);
+      spdlog::info("is term {} in {}", *term, part.start);
+
+      if (part.start <= *term && (!part.end || *term < *part.end)) {
+        spdlog::info("search {} for {}", part.path, *term);
         find_part_matches(index, *term, postings);
       } else {
+        spdlog::info("stop?");
         break;
       }
 
@@ -654,6 +662,15 @@ std::vector<std::vector<std::pair<std::string, double>>> index::find_matches(cha
 
   auto terms = split_terms(line);
 
+  for (auto &t: terms.words)
+    spdlog::info("word '{}'", t);
+
+  for (auto &t: terms.pairs)
+    spdlog::info("pair '{}'", t);
+
+  for (auto &t: terms.trines)
+    spdlog::info("trine '{}'", t);
+
   std::vector<std::vector<std::pair<std::string, double>>> postings;
 
   find_matches(info.word_parts, terms.words, postings);
@@ -661,6 +678,73 @@ std::vector<std::vector<std::pair<std::string, double>>> index::find_matches(cha
   find_matches(info.trine_parts, terms.trines, postings);
 
   return postings;
+}
+
+// This only returns documents that match all the terms.
+// Which may not be the best?
+// It is certainly not what I want.
+std::list<std::pair<std::string, double>>
+intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &postings)
+{
+  std::list<std::pair<std::string, double>> result;
+
+  spdlog::info("interset {}", postings.size());
+
+  if (postings.size() == 0) {
+    spdlog::info("have nothing");
+    return result;
+  }
+
+  std::vector<size_t> indexes(postings.size(), 0);
+
+  double sum_scores = 0;
+
+  bool done = false;
+
+	while (indexes[0] < postings[0].size()) {
+		auto url = postings[0][indexes[0]].first;
+		bool canAdd = true;
+		for (size_t i = 1; i < postings.size(); i++) {
+			while (indexes[i] < postings[i].size() && postings[i][indexes[i]].first < url)
+				indexes[i]++;
+
+			if (indexes[i] == postings[i].size()) {
+        done = true;
+        break;
+      }
+
+			if (postings[i][indexes[i]].first != url)
+				canAdd = false;
+		}
+
+    if (done) {
+      break;
+    }
+
+    if (canAdd) {
+	    double rsv = 0;
+			for (size_t i = 0; i < postings.size(); i++) {
+				double w = postings[i][indexes[i]].second;
+        rsv += w;
+      }
+
+      sum_scores += rsv;
+      result.emplace_back(url, rsv);
+		}
+
+		indexes[0]++;
+	}
+
+  spdlog::info("total sum {} for {} postings", sum_scores, result.size());
+
+  if (sum_scores > 0) {
+    for (auto &p: result) {
+      spdlog::info("{} : {}", p.second, p.first);
+      p.second /= sum_scores;
+    }
+  }
+
+	return result;
 }
 
 }

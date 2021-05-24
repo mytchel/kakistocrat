@@ -24,7 +24,6 @@
 #include "util.h"
 #include "config.h"
 #include "index.h"
-#include "search.h"
 
 #include "indexer.capnp.h"
 
@@ -71,35 +70,37 @@ class SearcherImpl final:
       char query_c[1024];
       strncpy(query_c, query.c_str(), sizeof(query_c));
 
-      auto matched_pages = searcher.searcher.search(query_c);
+      auto postings = searcher.index.find_matches(query_c);
 
-      if (matched_pages.empty()) {
+      if (postings.empty()) {
         respond();
         return;
       }
 
+      auto intersected = search::intersect_postings(postings);
+
       pending = 0;
-      for (auto &page: matched_pages) {
+      for (auto &page: intersected) {
         auto request = searcher.master.getPageInfoRequest();
 
-        request.setUrl(page.url);
+        request.setUrl(page.first);
 
         searcher.tasks.add(request.send().then(
               [this, page] (auto result) {
-                spdlog::info("got page info for {}", page.url);
+                spdlog::info("got page info for {}", page.first);
 
                 float score = result.getScore();
                 std::string title = result.getTitle();
                 std::string path = result.getPath();
 
-                spdlog::info("got page info for {} : {} '{}' '{}'", page.url, score, title, path);
+                spdlog::info("got page info for {} : {} '{}' '{}'", page.first, score, title, path);
 
                 if (title != "" && path != "") {
                   results.emplace_back(
-                      page.url,
+                      page.first,
                       result.getTitle(),
                       result.getPath(),
-                      page.score,
+                      page.second,
                       result.getScore());
                 }
 
@@ -110,7 +111,7 @@ class SearcherImpl final:
               }));
 
         pending++;
-        if (pending > 10) {
+        if (pending > 30) {
           break;
         }
       }
@@ -119,10 +120,22 @@ class SearcherImpl final:
     void respond() {
       std::string result_body;
 
+      double sum_rank = 0;
+      for (auto &r: results) {
+        sum_rank += r.rank;
+      }
+
+      if (sum_rank > 0) {
+        for (auto &r: results) {
+          spdlog::info("rank {} : {}", r.url, r.rank);
+          r.rank /= sum_rank;
+        }
+      }
+
       std::sort(results.begin(), results.end(),
           [] (auto &a, auto &b) {
-              double aa = a.score * a.rank;
-              double bb = b.score * b.rank;
+              double aa = (0.7 * a.score) + (0.3 * a.rank);
+              double bb = (0.7 * b.score) + (0.3 * b.rank);
 
               return aa > bb;
           });
@@ -207,11 +220,13 @@ public:
       kj::HttpHeaderTable::Builder &builder,
       kj::Own<kj::NetworkAddress> &listenAddr,
       const config &s, Master::Client master)
-    : settings(s), searcher(s), master(master),
+    : settings(s),
+      index(s.merger.meta_path, s.merger.htcap),
+      master(master),
       urlBase(kj::Url::parse("http://localhost/")),
       tasks(*this), timer(io_context.provider->getTimer())
   {
-    searcher.load();
+    index.load();
 
     hAccept = builder.add("Accept");
     hContentType = builder.add("Content-Type");
@@ -263,7 +278,7 @@ public:
 
   const config &settings;
 
-  search::searcher searcher;
+  search::index index;
 
   Master::Client master;
 

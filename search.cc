@@ -30,53 +30,6 @@ void searcher::load()
   index.load();
 }
 
-// This only returns documents that match all the terms.
-// Which may not be the best?
-// It is certainly not what I want.
-static std::list<std::pair<std::string, double>> intersect_postings(
-    std::vector<std::vector<std::pair<std::string, double>>> &postings)
-{
-  std::list<std::pair<std::string, double>> result;
-
-  spdlog::info("interset {}", postings.size());
-
-  if (postings.size() == 0) {
-    return result;
-  }
-
-  std::vector<size_t> indexes(postings.size(), 0);
-
-	while (indexes[0] < postings[0].size()) {
-		auto url = postings[0][indexes[0]].first;
-		bool canAdd = true;
-		for (size_t i = 1; i < postings.size(); i++) {
-			while (indexes[i] < postings[i].size() && postings[i][indexes[i]].first < url)
-				indexes[i]++;
-
-			if (indexes[i] == postings[i].size()) {
-				return result;
-      }
-
-			if (postings[i][indexes[i]].first != url)
-				canAdd = false;
-		}
-
-    if (canAdd) {
-	    double rsv = 0;
-			for (size_t i = 0; i < postings.size(); i++) {
-				double w = postings[i][indexes[i]].second;
-        rsv += w;
-      }
-
-      result.emplace_back(url, rsv);
-		}
-
-		indexes[0]++;
-	}
-
-	return result;
-}
-
 std::list<search_entry> searcher::search(char *line)
 {
   std::list<search_entry> results;

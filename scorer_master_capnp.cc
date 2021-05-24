@@ -52,7 +52,7 @@ public:
   {
   }
 
-  float param_B = 100;
+  float param_B = 1000;
   float param_e = 0.1;
   float val_c = 0.0;
 
@@ -69,7 +69,7 @@ public:
     // https://www.sciencedirect.com/science/article/pii/S0304397514002709
     // I gave up on math for a reason.
     //float sp = 1 + t * (1 + s) - E(pow(e, t * w));
-    float sp = 1;
+    float sp = 0.1;
 
     val_c = 2 / (sp * param_e);
     uint32_t K = val_c * log(pageCount);
