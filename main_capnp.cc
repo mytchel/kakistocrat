@@ -108,13 +108,11 @@ public:
       return sites;
     }
 
-    spdlog::info("do index for {} sites with total {} pages",
-        sites_pending_index.size(), sites_pending_index_page_count);
-
+    
     sites.insert(sites.begin(), sites_pending_index.begin(), sites_pending_index.end());
 
-    sites_pending_index_page_count = 0;
     sites_pending_index.clear();
+    sites_pending_index_page_count = 0;
 
     return sites;
   }
@@ -223,6 +221,7 @@ class MasterImpl final: public Master::Server,
       if (s.scraped) {
         s.load();
         indexer_manager.mark_indexable(&s);
+        s.flush();
       }
     }
 
@@ -234,9 +233,6 @@ class MasterImpl final: public Master::Server,
   }
 
   void checkCrawlers() {
-    // TODO
-    return;
-
     spdlog::info("checking {} crawlers", crawlers.size());
 
     for (auto &c: crawlers) {
@@ -261,8 +257,13 @@ class MasterImpl final: public Master::Server,
           }
         },
         [this, &c] (auto exception) {
-          spdlog::info("crawler {} error checking can crawl", (uintptr_t) &c);
-          // TODO: remove crawler
+          spdlog::warn("crawler {} error checking can crawl, removing", (uintptr_t) &c);
+
+          ready_crawlers.remove(&c);
+          crawlers.remove_if(
+              [&c] (auto cc) {
+                return &cc == &c;
+              });
         }));
     }
 
@@ -402,7 +403,6 @@ class MasterImpl final: public Master::Server,
           have_changes = true;
 
           indexer_manager.mark_indexable(site);
-          indexNext();
 
           auto it = std::find(ready_crawlers.begin(), ready_crawlers.end(), proc);
           if (it == ready_crawlers.end()) {
@@ -566,21 +566,7 @@ class MasterImpl final: public Master::Server,
     mergeNext();
   }
 
-  void indexNext(bool flush = false) {
-
-    if (ready_indexers.empty()) {
-      spdlog::info("no ready indexers");
-      return;
-    }
-
-    auto sites = indexer_manager.next_index(flush);
-    if (sites.empty()) {
-      return;
-    }
-
-    auto indexer = ready_indexers.front();
-    ready_indexers.pop_front();
-
+  void indexSites(Indexer::Client *indexer, std::vector<crawl::site *> sites) {
     spdlog::info("request index for {} sites", sites.size());
 
     auto request = indexer->indexRequest();
@@ -612,13 +598,62 @@ class MasterImpl final: public Master::Server,
           indexer_manager.add_parts(sites, parts);
 
           ready_indexers.push_back(indexer);
-
-          indexNext();
         },
         [this, indexer] (auto exception) {
           spdlog::warn("got exception while indexing {}", std::string(exception.getDescription()));
           // TODO store sites somehow.
         }));
+  }
+
+  void indexNext(bool flush = false) {
+    tasks.add(timer.afterDelay(30 * kj::SECONDS).then(
+          [this] () {
+            indexNext();
+          }));
+
+    if (ready_indexers.empty()) {
+      spdlog::info("no ready indexers");
+      return;
+    }
+
+    auto sites = indexer_manager.next_index(flush);
+    if (sites.empty()) {
+      return;
+    }
+
+    std::vector<std::vector<crawl::site *>> parts(ready_indexers.size());
+    
+    size_t page_count = 0;
+    size_t part_page_count = 0;
+    size_t part_i = 0;
+
+    for (auto site: sites) {
+      part_page_count += site->page_count;
+      page_count += site->page_count;
+
+      parts[part_i].push_back(site);
+
+      if (part_page_count >= settings.indexer.pages_per_part) {
+        part_i = (part_i + 1) % parts.size();
+      }
+    }
+    
+    if (page_count < 2 * settings.indexer.pages_per_part) {
+      for (part_i = 1; part_i < parts.size(); part_i++) {
+        parts[0].insert(parts[0].end(),
+            parts[part_i].begin(), parts[part_i].end());
+      }
+    }
+
+    
+    for (part_i = 0; part_i < parts.size(); part_i++) {
+      if (parts[part_i].empty()) break;
+
+      auto indexer = ready_indexers.front();
+      ready_indexers.pop_front();
+
+      indexSites(indexer, parts[part_i]);
+    }
   }
 
   kj::Promise<void> registerCrawler(RegisterCrawlerContext context) override {
@@ -639,7 +674,6 @@ class MasterImpl final: public Master::Server,
     indexers.push_back(context.getParams().getIndexer());
 
     ready_indexers.push_back(&indexers.back());
-    indexNext();
 
     return kj::READY_NOW;
   }

@@ -47,6 +47,7 @@ struct site_map {
 
     if (loaded) {
       loaded = false;
+      spdlog::debug("clear {}", path);
       pages.clear();
     }
   }
@@ -56,23 +57,17 @@ struct site_map {
   void save();
 
   // For json
-  site_map() {
-    spdlog::info("new site, fully unknown");
-  }
+  site_map() {}
 
   site_map(const std::string &p)
     : path(p), host(""), loaded(false), changed(false)
-  {
-    spdlog::info("new unloaded {}", p);
-  }
+  {}
 
   site_map(const std::string &p, const std::string &h)
     : path(p), host(h),
       loaded(true),
       changed(true)
-  {
-    spdlog::info("new created {}", p);
-  }
+  {}
 
   page* find_page(const std::string &url);
   page* find_page_by_path(const std::string &path);
