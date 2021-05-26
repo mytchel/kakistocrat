@@ -103,7 +103,6 @@ void site_map::save() {
 page* site_map::find_page(const std::string &url)
 {
   for (auto &p: pages) {
-    spdlog::info("check {} == {}", url, p.url);
     if (p.url == url) {
       return &p;
     }

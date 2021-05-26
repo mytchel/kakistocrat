@@ -300,7 +300,7 @@ int main(int argc, char *argv[]) {
   spdlog::set_level(spdlog::level::debug);
 
   std::string bindAddress = "localhost:1234";
-  std::string listenAddress = "localhost:8080";
+  std::string listenAddress = "192.168.0.2:8000";
 
   spdlog::info("read config");
   config settings = read_config();

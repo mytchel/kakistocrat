@@ -48,22 +48,16 @@ class ScorerWorkerImpl final: public ScorerWorker::Server,
   class node {
   public:
 
-    ScorerWorkerImpl &worker;
     std::string url;
-    std::vector<std::pair<std::string, size_t>> links;
+    std::vector<std::pair<uint32_t, size_t>> links;
 
     size_t next_coupons{0};
 
     size_t coupons{0};
     uint32_t counter{0};
 
-    node(ScorerWorkerImpl &worker, const page &p)
-      : worker(worker), url(p.url), links(p.links.begin(), p.links.end())
-    {
-      for (auto &l: links) {
-        spdlog::info("link {} -> {}", url, l.first);
-      }
-    }
+    node(const std::string &url, std::vector<std::pair<uint32_t, size_t>> links)
+      : url(url), links(links) {}
 
     // TODO: have all over finish and swap out counter for
     // a different one that was just calculated.
@@ -85,30 +79,103 @@ class ScorerWorkerImpl final: public ScorerWorker::Server,
       return coupons > 0;
     }
 
-    void iterate() {
+    void iterate(ScorerWorkerImpl &worker) {
       spdlog::info("iterate {}, {} = {}", counter, coupons, url);
 
       if (links.empty()) {
         return;
       }
 
+      std::vector<uint32_t> ll;
+      std::vector<uint32_t> hits;
+
+      for (size_t l = 0; l < links.size(); l++) {
+        for (size_t i = 0; i < links[l].second; i++) {
+          ll.push_back(l);
+          hits.push_back(0);
+        }
+      }
+
       for (size_t i = 0; i < coupons; i++) {
         if (util::get_rand() > 1 - worker.param_e) {
-          spdlog::info("iterate early stop after {}", i);
           break;
         }
 
-        // TODO: link frequency
-        // and only do add walk at the end with the sum
-        size_t l = util::get_rand() * links.size();
-        worker.addWalk(links[l].first, 1);
+        size_t l = util::get_rand() * hits.size();
+        hits[l]++;
+      }
+
+      std::vector<uint32_t> link_hits(links.size());
+
+      for (size_t i = 0; i < hits.size(); i++) {
+        link_hits[ll[i]] += hits[i];
+      }
+
+      for (size_t i = 0; i < link_hits.size(); i++) {
+        if (link_hits[i] > 0) {
+          worker.addWalk(links[i].first, link_hits[i]);
+        }
       }
     }
   };
 
+  struct adaptor {
+  public:
+    adaptor(kj::PromiseFulfiller<void> &fulfiller,
+            ScorerWorkerImpl &worker,
+            std::vector<node*> nodes)
+      : fulfiller(fulfiller),
+        worker(worker),
+        nodes(nodes)
+    {
+      process();
+    }
+
+    void process() {
+      spdlog::debug("iterate process, active walks {}", worker.active_walks);
+
+      if (worker.active_walks > 0) {
+        spdlog::debug("still have active walks {}, waiting", worker.active_walks);
+        worker.tasks.add(worker.timer.afterDelay(100 * kj::MILLISECONDS).then(
+          [this] () {
+            spdlog::debug("continue processing");
+            process();
+          }
+        ));
+        return;
+      }
+ 
+      while (!nodes.empty()) {
+        if (worker.active_walks > 10000) {
+          spdlog::debug("active walks {}, waiting", worker.active_walks);
+          worker.tasks.add(worker.timer.afterDelay(100 * kj::MILLISECONDS).then(
+            [this] () {
+              spdlog::debug("continue processing");
+              process();
+            }
+          ));
+          return;
+        }
+
+        auto node = nodes.back();
+        nodes.pop_back();
+
+        node->iterate(worker);
+      }
+
+      spdlog::debug("iterate step finished");
+      fulfiller.fulfill();
+    }
+
+    kj::PromiseFulfiller<void> &fulfiller;
+    ScorerWorkerImpl &worker;
+    std::vector<node*> nodes;
+  };
+
 public:
-  ScorerWorkerImpl(const config &s, Scorer::Client master)
-    : settings(s), tasks(*this), master(master)
+  ScorerWorkerImpl(kj::AsyncIoContext &io_context, const config &s, Scorer::Client master)
+    : settings(s), tasks(*this), timer(io_context.provider->getTimer()),
+      master(master)
   {
   }
 
@@ -118,7 +185,12 @@ public:
 
     spdlog::info("get score {}", url);
 
-    auto it = nodes.find(url);
+    uint32_t id = urlToId(url, false);
+    if (id == 0) {
+      return kj::READY_NOW;
+    }
+
+    auto it = nodes.find(id);
     if (it != nodes.end()) {
       spdlog::info("get score {} = {}", url, it->second.counter);
       context.getResults().setCounter(it->second.counter);
@@ -141,7 +213,13 @@ public:
     for (auto p: site.pages) {
       if (p.last_scanned > 0) {
         spdlog::info("add page {}", p.url);
-        nodes.emplace(p.url, node(*this, p));
+
+        std::vector<std::pair<uint32_t, size_t>> links;
+        for (auto &l: p.links) {
+          links.emplace_back(urlToId(l.first, true), l.second);
+        }
+
+        nodes.emplace(urlToId(p.url, true), node(p.url, links));
         c++;
       }
     }
@@ -165,11 +243,17 @@ public:
   }
 
   kj::Promise<void> iterate(IterateContext) override {
-    for (auto &node: nodes) {
-      node.second.iterate();
-    }
+    std::vector<node *> l_nodes;
 
-    return kj::READY_NOW;
+    spdlog::debug("iterate setup");
+    
+    for (auto &node: nodes) {
+      l_nodes.push_back(&node.second);
+    }
+    
+    spdlog::debug("iterate start");
+
+    return kj::newAdaptedPromise<void, adaptor>(*this, l_nodes);
   }
 
   kj::Promise<void> iterateFinish(IterateFinishContext context) override {
@@ -183,20 +267,27 @@ public:
     return kj::READY_NOW;
   }
 
-  void addWalk(const std::string &url, uint32_t hits) {
-    auto it = nodes.find(url);
+  void addWalk(uint32_t id, uint32_t hits) {
+    auto it = nodes.find(id);
     if (it != nodes.end()) {
       it->second.add(hits);
 
     } else {
+      auto url = urlFromId(id);
+      if (url == nullptr) {
+        spdlog::warn("got bad url id somehow: {}", id);
+        return;
+      }
+
       auto request = master.addWalkRequest();
-      request.setUrl(url);
+      request.setUrl(*url);
       request.setHits(hits);
+
+      active_walks++;
 
       tasks.add(request.send().then(
             [this] (auto result) {
-              auto r = result.getFound();
-              //spdlog::info("remote add walk got {}", r);
+              active_walks--;
             }));
     }
   }
@@ -207,13 +298,47 @@ public:
     std::string url = params.getUrl();
     auto hits = params.getHits();
 
-    auto it = nodes.find(url);
+
+    uint32_t id = urlToId(url, false);
+    if (id == 0) {
+      return kj::READY_NOW;
+    }
+
+    auto it = nodes.find(id);
     if (it != nodes.end()) {
       spdlog::info("got remote walk for {}", url);
       it->second.add(hits);
     }
 
     return kj::READY_NOW;
+  }
+
+  uint32_t urlToId(const std::string &u, bool make = false) {
+    auto it = urls_to_id.find(u);
+    if (it == urls_to_id.end()) {
+      if (!make) {
+        return 0;
+      }
+
+      uint32_t id = ++next_url_id;
+
+      urls_to_id.emplace(u, id);
+      urls.emplace(id, u);
+
+      return id;
+
+    } else {
+      return it->second;
+    }
+  }
+
+  const std::string * urlFromId(uint32_t id) {
+    auto it = urls.find(id);
+    if (it != urls.end()) {
+      return &it->second;
+    } else {
+      return nullptr;
+    }
   }
 
   void taskFailed(kj::Exception&& exception) override {
@@ -226,10 +351,17 @@ public:
   Scorer::Client master;
 
   kj::TaskSet tasks;
+  kj::Timer &timer;
 
   float param_e;
 
-  std::unordered_map<std::string, node> nodes;
+  std::unordered_map<uint32_t, node> nodes;
+
+  std::unordered_map<uint32_t, std::string> urls;
+  std::unordered_map<std::string, uint32_t> urls_to_id;
+  uint32_t next_url_id{0};
+
+  size_t active_walks{0};
 };
 
 int main(int argc, char *argv[]) {
@@ -266,7 +398,7 @@ int main(int argc, char *argv[]) {
 
     spdlog::info("creating client");
 
-    ScorerWorker::Client worker = kj::heap<ScorerWorkerImpl>(settings, master);
+    ScorerWorker::Client worker = kj::heap<ScorerWorkerImpl>(ioContext, settings, master);
 
     spdlog::info("create request");
     auto request = master.registerScorerWorkerRequest();

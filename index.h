@@ -311,9 +311,9 @@ struct indexer {
   void flush() {
     spdlog::info("flushing {}", base_path);
 
-    word_t.print_usage(fmt::format("{}-words", base_path));
-    pair_t.print_usage(fmt::format("{}-pair", base_path));
-    trine_t.print_usage(fmt::format("{}-trine", base_path));
+    word_t.print_usage(fmt::format("{} words  ", base_path));
+    pair_t.print_usage(fmt::format("{} pair   ", base_path));
+    trine_t.print_usage(fmt::format("{} trine  ", base_path));
 
     auto path = save();
 

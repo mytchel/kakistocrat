@@ -266,36 +266,22 @@ public:
 
     spdlog::info("got walk for {}", url);
 
-    auto builder = kj::heapArrayBuilder<kj::Promise<bool>>(workers.size());
-
     for (auto &worker: workers) {
       auto request = worker.addWalkRequest();
       request.setSite(site);
       request.setUrl(url);
       request.setHits(hits);
 
-      builder.add(request.send().then(
+      tasks.add(request.send().then(
             [] (auto result) {
-              return result.getFound();
+              
             },
             [] (auto exception) {
               spdlog::warn("add walk failed: {}", std::string(exception.getDescription()));
-              return false;
             }));
     }
 
-    return kj::joinPromises(builder.finish()).then(
-        [KJ_CPCAP(context)] (auto results) mutable {
-          bool r = false;
-          for (auto rr: results) {
-            if (rr) {
-              r = true;
-              break;
-            }
-          }
-
-          context.getResults().setFound(r);
-        });
+    return kj::READY_NOW;
   }
 
   void taskFailed(kj::Exception&& exception) override {
