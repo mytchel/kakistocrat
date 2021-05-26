@@ -41,7 +41,7 @@ interface Scorer {
 
     getScore @2 (url :Text) -> (score :Float32);
 
-    addWalk @3 (site :Text, url :Text, hits :UInt32) -> (found :Bool);
+    addWalk @3 (site :Text, url :Text, hits :UInt32);
 }
 
 interface ScorerWorker {

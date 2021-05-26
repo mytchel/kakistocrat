@@ -305,10 +305,12 @@ class MasterImpl final: public Master::Server,
           }));
 
     if (!merge_parts_pending.empty() || !merge_parts_merging.empty()) {
+      spdlog::debug("merge in progress");
       return;
     }
 
     if (time(NULL) < last_merge + settings.merger.frequency_minutes * 60) {
+      spdlog::debug("last merge too recent");
       return;
     }
 
@@ -331,8 +333,11 @@ class MasterImpl final: public Master::Server,
     }
 
     if (all_indexed && !all_merged) {
-      spdlog::debug("starting merge");
+      spdlog::info("starting merge");
       startMerging();
+    } else {
+      spdlog::debug("not merging, all indexed = {}, all merged = {}",
+        all_indexed, all_merged);
     }
   }
 
@@ -460,7 +465,7 @@ class MasterImpl final: public Master::Server,
 
     index_parts_merging.clear();
 
-    last_merge = time(NULL);
+    last_merge = 0;
   }
 
   void mergeNext() {
