@@ -684,7 +684,7 @@ std::vector<std::vector<std::pair<std::string, double>>> index::find_matches(cha
 // Which may not be the best?
 // It is certainly not what I want.
 std::list<std::pair<std::string, double>>
-intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &postings)
+intersect_postings_strict(std::vector<std::vector<std::pair<std::string, double>>> &postings)
 {
   std::list<std::pair<std::string, double>> result;
 
@@ -705,8 +705,9 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
 		auto url = postings[0][indexes[0]].first;
 		bool canAdd = true;
 		for (size_t i = 1; i < postings.size(); i++) {
-			while (indexes[i] < postings[i].size() && postings[i][indexes[i]].first < url)
+			while (indexes[i] < postings[i].size() && postings[i][indexes[i]].first < url) {
 				indexes[i]++;
+      }
 
 			if (indexes[i] == postings[i].size()) {
         done = true;
@@ -746,5 +747,88 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
 
 	return result;
 }
+
+std::list<std::pair<std::string, double>>
+intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &postings)
+{
+  std::list<std::pair<std::string, double>> result;
+
+  spdlog::info("interset {}", postings.size());
+
+  if (postings.size() == 0) {
+    spdlog::info("have nothing");
+    return result;
+  }
+
+  std::vector<size_t> indexes(postings.size(), 0);
+
+  for (size_t i = 0; i < postings.size(); i++) {
+    spdlog::debug("posting {}", i);
+    for (size_t j = 0; j < postings[i].size(); j++) {
+      spdlog::debug("    {}", postings[i][j].first);
+    }
+  }
+  
+  spdlog::debug("intersecting");
+
+  double sum_scores = 0;
+  bool done = false; 
+  while (!done) { 
+		auto url = postings[0][indexes[0]].first;
+
+		for (size_t i = 1; i < postings.size(); i++) {
+      if (indexes[i] < postings[i].size()) {
+        if (postings[i][indexes[i]].first < url) {
+          url = postings[i][indexes[i]].first;
+        }
+      }
+    }
+  
+    spdlog::debug("min url: '{}'", url);
+    
+    double score = 0;
+    size_t matches = 0;
+
+		for (size_t i = 0; i < postings.size(); i++) {
+      if (indexes[i] < postings[i].size()) {
+        spdlog::debug("compare min url '{}' to posting {}.{} url '{}'",
+              url, i, indexes[i], postings[i][indexes[i]].first);
+
+        if (postings[i][indexes[i]].first == url) {
+          spdlog::debug("add score {} from posting {}", postings[i][indexes[i]].second, i);
+          score += postings[i][indexes[i]].second;
+          matches++;
+          indexes[i]++;
+        }
+      }
+    }
+
+    spdlog::debug("url {} has score {} from {} postings", url, score, matches);
+
+    score *= matches;
+    sum_scores += score;
+    result.emplace_back(url, score);
+
+    done = true; 
+	  for (size_t i = 0; i < postings.size(); i++) {
+      if (indexes[i] < postings[i].size()) {
+        done = false;
+        break;
+      }
+    }
+  }
+
+  spdlog::info("total sum {} for {} postings", sum_scores, result.size());
+
+  if (sum_scores > 0) {
+    for (auto &p: result) {
+      p.second /= sum_scores;
+      spdlog::info("{} : {}", p.second, p.first);
+    }
+  }
+
+	return result;
+}
+
 
 }
