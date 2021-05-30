@@ -294,20 +294,17 @@ public:
 
   kj::Promise<void> addWalk(AddWalkContext context) override {
     auto params = context.getParams();
-    auto site = params.getSite();
     std::string url = params.getUrl();
     auto hits = params.getHits();
 
-
     uint32_t id = urlToId(url, false);
-    if (id == 0) {
-      return kj::READY_NOW;
-    }
-
-    auto it = nodes.find(id);
-    if (it != nodes.end()) {
-      spdlog::info("got remote walk for {}", url);
-      it->second.add(hits);
+    if (id != 0) {
+      auto it = nodes.find(id);
+      if (it != nodes.end()) {
+        spdlog::info("got remote walk for {}", url);
+        it->second.add(hits);
+        context.getResults().setFound(true);
+      }
     }
 
     return kj::READY_NOW;

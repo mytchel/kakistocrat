@@ -52,6 +52,16 @@ void from_json(const nlohmann::json &j, site &s)
   j.at("merged").get_to(s.merged);
 
   s.scraped = s.last_scanned > 0;
+
+/*
+  if (util::has_suffix(s.m_site.path, "capnp")) {
+    std::string new_path = s.m_site.path.substr(0, s.m_site.path.length() - 5);
+    new_path += "json";
+
+    spdlog::debug("convert capnp to json for initial load {} -> {}", s.m_site.path, new_path);
+    s.m_site.path = new_path;
+  }
+  */
 }
 
 void crawler::save()
@@ -122,6 +132,7 @@ static std::string host_hash(const std::string &host) {
   for (auto &c: host)
 		result = (c + 31 * result);
 
+  // TODO: make this way smaller. 1<<10 or so
 	result = result & ((1<<15) - 1);
 
   return std::to_string(result);
@@ -300,6 +311,8 @@ void crawler::load_seed(std::vector<std::string> urls)
     auto p = site->find_add_page(o, 0);
 
     site->max_pages = levels[0].max_pages;
+
+    site->flush();
   }
 }
 

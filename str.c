@@ -50,11 +50,7 @@ void str_tolower(struct str *s) {
 }
 
 void str_tostem(struct str *s) {
-  if (s->len > 3 && strcmp(s->store + s->len - 3, "ing") == 0) {
-    s->len -= 3;
-    s->store[s->len] = '\0';
-
-  } else if (s->len > 1 && strcmp(s->store + s->len - 1, "s") == 0) {
+  if (s->len > 1 && strcmp(s->store + s->len - 1, "s") == 0) {
     s->len -= 1;
     s->store[s->len] = '\0';
   }

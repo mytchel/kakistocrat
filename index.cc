@@ -130,42 +130,39 @@ void indexer::index_site(site_map &site, char *file_buf, size_t file_buf_len) {
 
         std::string s(str_c(&tok_buffer));
 
-        if (s.size() > 2) {
+        page_length++;
 
-          page_length++;
+        insert(search::words, s, index_id);
 
-          insert(search::words, s, index_id);
+        if (word_allow_extra(s)) {
+          if (str_length(&tok_buffer_trine) > 0) {
+            str_cat(&tok_buffer_trine, " ");
+            str_cat(&tok_buffer_trine, str_c(&tok_buffer));
 
-          if (word_allow_extra(s)) {
-            if (str_length(&tok_buffer_trine) > 0) {
-              str_cat(&tok_buffer_trine, " ");
-              str_cat(&tok_buffer_trine, str_c(&tok_buffer));
+            std::string s(str_c(&tok_buffer_trine));
 
-              std::string s(str_c(&tok_buffer_trine));
+            insert(search::trines, s, index_id);
 
-              insert(search::trines, s, index_id);
-
-              str_resize(&tok_buffer_trine, 0);
-            }
-
-            if (str_length(&tok_buffer_pair) > 0) {
-              str_cat(&tok_buffer_pair, " ");
-              str_cat(&tok_buffer_pair, str_c(&tok_buffer));
-
-              std::string s(str_c(&tok_buffer_pair));
-
-              insert(search::pairs, s, index_id);
-
-              str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
-            }
-
-            str_resize(&tok_buffer_pair, 0);
-            str_cat(&tok_buffer_pair, str_c(&tok_buffer));
-
-          } else {
-            str_resize(&tok_buffer_pair, 0);
             str_resize(&tok_buffer_trine, 0);
           }
+
+          if (str_length(&tok_buffer_pair) > 0) {
+            str_cat(&tok_buffer_pair, " ");
+            str_cat(&tok_buffer_pair, str_c(&tok_buffer));
+
+            std::string s(str_c(&tok_buffer_pair));
+
+            insert(search::pairs, s, index_id);
+
+            str_cat(&tok_buffer_trine, str_c(&tok_buffer_pair));
+          }
+
+          str_resize(&tok_buffer_pair, 0);
+          str_cat(&tok_buffer_pair, str_c(&tok_buffer));
+
+        } else {
+          str_resize(&tok_buffer_pair, 0);
+          str_resize(&tok_buffer_trine, 0);
         }
       }
     } while (token != tokenizer::END);
@@ -769,33 +766,28 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
     }
   }
   
-  spdlog::debug("intersecting");
-
   double sum_scores = 0;
-  bool done = false; 
-  while (!done) { 
-		auto url = postings[0][indexes[0]].first;
+  while (true) { 
+		std::string url = "";
 
 		for (size_t i = 1; i < postings.size(); i++) {
       if (indexes[i] < postings[i].size()) {
-        if (postings[i][indexes[i]].first < url) {
+        if (url == "" || postings[i][indexes[i]].first < url) {
           url = postings[i][indexes[i]].first;
         }
       }
     }
+
+    if (url == "") {
+      break;
+    }
   
-    spdlog::debug("min url: '{}'", url);
-    
     double score = 0;
     size_t matches = 0;
 
 		for (size_t i = 0; i < postings.size(); i++) {
       if (indexes[i] < postings[i].size()) {
-        spdlog::debug("compare min url '{}' to posting {}.{} url '{}'",
-              url, i, indexes[i], postings[i][indexes[i]].first);
-
         if (postings[i][indexes[i]].first == url) {
-          spdlog::debug("add score {} from posting {}", postings[i][indexes[i]].second, i);
           score += postings[i][indexes[i]].second;
           matches++;
           indexes[i]++;
@@ -803,19 +795,11 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
       }
     }
 
-    spdlog::debug("url {} has score {} from {} postings", url, score, matches);
-
     score *= matches;
+    spdlog::debug("url {} -- {} : {}", matches, score, url);
+
     sum_scores += score;
     result.emplace_back(url, score);
-
-    done = true; 
-	  for (size_t i = 0; i < postings.size(); i++) {
-      if (indexes[i] < postings[i].size()) {
-        done = false;
-        break;
-      }
-    }
   }
 
   spdlog::info("total sum {} for {} postings", sum_scores, result.size());

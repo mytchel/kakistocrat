@@ -203,6 +203,13 @@ class MasterImpl final: public Master::Server,
       indexer_manager(s.indexer.pages_per_part),
       crawler(s)
   {
+    tasks.add(timer.afterDelay(1 * kj::SECONDS).then(
+      [this] () {
+        setup();
+      }));
+  }
+
+  void setup() {
     crawler.load();
 
     std::vector<std::string> blacklist = util::load_list(settings.blacklist_path);

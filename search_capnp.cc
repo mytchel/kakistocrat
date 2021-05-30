@@ -79,6 +79,11 @@ class SearcherImpl final:
 
       auto intersected = search::intersect_postings(postings);
 
+      intersected.sort(
+          [] (auto &a, auto &b) {
+              return a.second > b.second;
+          });
+
       pending = 0;
       for (auto &page: intersected) {
         auto request = searcher.master.getPageInfoRequest();
@@ -111,7 +116,7 @@ class SearcherImpl final:
               }));
 
         pending++;
-        if (pending > 30) {
+        if (pending > 50) {
           break;
         }
       }
@@ -134,15 +139,12 @@ class SearcherImpl final:
 
       std::sort(results.begin(), results.end(),
           [] (auto &a, auto &b) {
-              double aa = (0.7 * a.score) + (0.3 * a.rank);
-              double bb = (0.7 * b.score) + (0.3 * b.rank);
-
-              return aa > bb;
+              return a.score() > b.score();
           });
 
       for (auto &result: results) {
-        result_body += fmt::format("<li>{:.2f} : {:.8f}  <a href=\"{}\">{}</a>  <a href=\"{}\">{}</a></li>",
-            result.score,
+        result_body += fmt::format("<li>{:.6f} : {:.8f}  <a href=\"{}\">{}</a>  <a href=\"{}\">{}</a></li>",
+            result.match,
             result.rank,
             result.url,
             result.title,
@@ -196,16 +198,20 @@ class SearcherImpl final:
       std::string url;
       std::string title;
       std::string path;
-      float score;
+      float match;
       float rank;
 
       search_match(const std::string &url,
                    const std::string &title,
                    const std::string &path,
-                   float score, float rank)
+                   float match, float rank)
         : url(url), title(title), path(path),
-          score(score), rank(rank)
+          match(match), rank(rank)
       {}
+
+      float score() {
+        return (0.7 * match) + (0.3 * match * rank);
+      }
     };
 
     size_t pending;

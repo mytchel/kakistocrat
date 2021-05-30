@@ -53,6 +53,8 @@ struct site_map {
   }
 
   void reload();
+  void load_json();
+  void load_capnp();
   void load();
   void save();
 

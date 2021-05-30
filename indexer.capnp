@@ -1,5 +1,29 @@
 @0xd8ebb90861928a85;
 
+struct Link {
+  url @0 :Text;
+  count @1 :UInt32;
+}
+
+struct Page {
+  url @0 :Text;
+  aliases @1 :List(Text);
+
+  path @2 :Text;
+  title @3 :Text;
+
+  lastScanned @4 :UInt64;
+
+  links @5 :List(Link);
+}
+
+struct Site {
+  path @0 :Text;
+  host @1 :Text;
+
+  pages @2 :List(Page);
+}
+
 interface Master {
     registerCrawler @0 (crawler :Crawler);
 
@@ -41,7 +65,7 @@ interface Scorer {
 
     getScore @2 (url :Text) -> (score :Float32);
 
-    addWalk @3 (site :Text, url :Text, hits :UInt32);
+    addWalk @3 (url :Text, hits :UInt32);
 }
 
 interface ScorerWorker {
@@ -51,7 +75,7 @@ interface ScorerWorker {
     setup @2 (k :UInt32, e :Float32);
     iterate @3 ();
     iterateFinish @4 () -> (running :Bool);
-    addWalk @5 (site :Text, url :Text, hits :UInt32) -> (found :Bool);
+    addWalk @5 (url :Text, hits :UInt32) -> (found :Bool);
 }
 
 interface Searcher {

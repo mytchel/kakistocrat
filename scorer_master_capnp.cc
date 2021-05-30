@@ -52,7 +52,7 @@ public:
   {
   }
 
-  float param_B = 1000;
+  float param_B = 100;
   float param_e = 0.1;
   float val_c = 0.0;
 
@@ -260,21 +260,41 @@ public:
 
   kj::Promise<void> addWalk(AddWalkContext context) override {
     auto params = context.getParams();
-    auto site = params.getSite();
     std::string url = params.getUrl();
     auto hits = params.getHits();
 
-    spdlog::info("got walk for {}", url);
+    auto site = util::get_host(url);
 
-    for (auto &worker: workers) {
-      auto request = worker.addWalkRequest();
-      request.setSite(site);
+/*
+    auto it = siteWorkers.find(site);
+    if (it != siteWorkers.end()) {
+      spdlog::info("add walk to one {}", url);
+      auto request = it->second.addWalkRequest();
       request.setUrl(url);
       request.setHits(hits);
 
       tasks.add(request.send().then(
-            [] (auto result) {
-              
+            [] (auto result) {},
+            [] (auto exception) {
+              spdlog::warn("add walk failed: {}", std::string(exception.getDescription()));
+            }));
+
+      return kj::READY_NOW;
+    }
+*/
+
+    spdlog::info("add walk to all {}", url);
+    for (auto &worker: workers) {
+      auto request = worker.addWalkRequest();
+      request.setUrl(url);
+      request.setHits(hits);
+
+      tasks.add(request.send().then(
+            [this, &worker, site] (auto result) {
+              bool found = result.getFound();
+              if (found) {
+                siteWorkers.emplace(site, worker);
+              }
             },
             [] (auto exception) {
               spdlog::warn("add walk failed: {}", std::string(exception.getDescription()));
@@ -303,6 +323,8 @@ public:
   size_t pageCount;
 
   size_t iterations;
+
+  std::unordered_map<std::string, ScorerWorker::Client&> siteWorkers;
 };
 
 int main(int argc, char *argv[]) {

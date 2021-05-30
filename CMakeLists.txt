@@ -177,6 +177,8 @@ add_executable(scorer_worker_capnp scorer_worker_capnp.cc
     ${capnp_sources}
     ${capnp_headers}
 
+    site_capnp.cc
+
     hash.cc
     site.cc
     util.cc
