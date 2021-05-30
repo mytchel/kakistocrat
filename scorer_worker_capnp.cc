@@ -59,9 +59,7 @@ class ScorerWorkerImpl final: public ScorerWorker::Server,
     node(const std::string &url, std::vector<std::pair<uint32_t, size_t>> links)
       : url(url), links(links) {}
 
-    // TODO: have all over finish and swap out counter for
-    // a different one that was just calculated.
-    void reset(uint32_t K) {
+    void setup(uint32_t K) {
       coupons = K;
       counter = 0;
       next_coupons = 0;
@@ -134,26 +132,10 @@ class ScorerWorkerImpl final: public ScorerWorker::Server,
     void process() {
       spdlog::debug("iterate process, active walks {}", worker.active_walks);
 
-      if (worker.active_walks > 0) {
-        spdlog::debug("still have active walks {}, waiting", worker.active_walks);
-        worker.tasks.add(worker.timer.afterDelay(100 * kj::MILLISECONDS).then(
-          [this] () {
-            spdlog::debug("continue processing");
-            process();
-          }
-        ));
-        return;
-      }
- 
       while (!nodes.empty()) {
         if (worker.active_walks > 10000) {
           spdlog::debug("active walks {}, waiting", worker.active_walks);
-          worker.tasks.add(worker.timer.afterDelay(100 * kj::MILLISECONDS).then(
-            [this] () {
-              spdlog::debug("continue processing");
-              process();
-            }
-          ));
+          worker.addPendingWalk(this);
           return;
         }
 
@@ -233,14 +215,22 @@ public:
     uint32_t K = context.getParams().getK();
     param_e = context.getParams().getE();
 
-    spdlog::info("setup for scoring {}, {}", K, param_e);
+    output_path = context.getParams().getPath();
+
+    spdlog::info("setup for scoring {}, {} -> {}", K, param_e, output_path);
 
     for (auto &n: nodes) {
-      n.second.reset(K);
+      n.second.setup(K);
     }
 
     return kj::READY_NOW;
   }
+
+  kj::Promise<void> save(SaveContext context) override {
+    
+    return kj::READY_NOW;
+  }
+
 
   kj::Promise<void> iterate(IterateContext) override {
     std::vector<node *> l_nodes;
@@ -288,6 +278,9 @@ public:
       tasks.add(request.send().then(
             [this] (auto result) {
               active_walks--;
+              if (active_walks == 0) {
+                bumpPendingWalk();
+              }
             }));
     }
   }
@@ -301,13 +294,29 @@ public:
     if (id != 0) {
       auto it = nodes.find(id);
       if (it != nodes.end()) {
-        spdlog::info("got remote walk for {}", url);
         it->second.add(hits);
         context.getResults().setFound(true);
       }
     }
 
     return kj::READY_NOW;
+  }
+
+  void addPendingWalk(adaptor *a) {
+    adaptors_pending_walks.push_back(a);
+  }
+
+  void bumpPendingWalk() {
+    for (auto a: adaptors_pending_walks) {
+      tasks.add(kj::Promise<void>(kj::READY_NOW).then(
+          [a] () {
+            spdlog::debug("continue processing");
+            a->process();
+          }
+        ));
+    }
+
+    adaptors_pending_walks.clear();
   }
 
   uint32_t urlToId(const std::string &u, bool make = false) {
@@ -352,11 +361,15 @@ public:
 
   float param_e;
 
+  std::string output_path;
+
   std::unordered_map<uint32_t, node> nodes;
 
   std::unordered_map<uint32_t, std::string> urls;
   std::unordered_map<std::string, uint32_t> urls_to_id;
   uint32_t next_url_id{0};
+
+  std::vector<adaptor *> adaptors_pending_walks;
 
   size_t active_walks{0};
 };

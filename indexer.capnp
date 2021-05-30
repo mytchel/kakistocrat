@@ -60,6 +60,7 @@ interface Merger {
 
 interface Scorer {
     registerScorerWorker @0 (worker :ScorerWorker);
+    registerScoreReader @4 (reader :ScoreReader);
 
     score @1 (sitePaths :List(Text));
 
@@ -72,10 +73,19 @@ interface ScorerWorker {
     addSite @0 (sitePath :Text) -> (pageCount :UInt32);
     getCounter @1 (url :Text) -> (counter :UInt32);
 
-    setup @2 (k :UInt32, e :Float32);
+    setup @2 (k :UInt32, e :Float32, path :Text);
+
     iterate @3 ();
     iterateFinish @4 () -> (running :Bool);
-    addWalk @5 (url :Text, hits :UInt32) -> (found :Bool);
+    
+    save @5 ();
+
+    addWalk @6 (url :Text, hits :UInt32) -> (found :Bool);
+}
+
+interface ScoreReader {
+    setup @0 (path :Text);
+    read @1 (url :Text) -> (counter :UInt32);
 }
 
 interface Searcher {

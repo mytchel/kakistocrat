@@ -14,6 +14,8 @@ std::string get_host(const std::string &url);
 std::string get_path(const std::string &url);
 std::string get_dir(const std::string &path);
 
+std::string get_host_from_meta_path(const std::string &path);
+
 std::vector<std::string> split_path(std::string s);
 
 void make_path(const std::string &path);

@@ -26,6 +26,7 @@
 #include "util.h"
 #include "config.h"
 #include "site.h"
+#include "hash.h"
 #include "capnp_server.h"
 
 #include "indexer.capnp.h"
@@ -46,13 +47,22 @@ using nlohmann::json;
 class ScorerImpl final: public Scorer::Server,
                               public kj::TaskSet::ErrorHandler {
 
+/*
+  struct worker {
+    ScorerWorker::Client client;
+
+    std::string output;
+  };
+*/
+
 public:
   ScorerImpl(kj::AsyncIoContext &io_context, const config &s)
-    : settings(s), tasks(*this), timer(io_context.provider->getTimer())
+    : settings(s), tasks(*this), timer(io_context.provider->getTimer()),
+      siteWorkers(site_hash_cap, nullptr)
   {
   }
 
-  float param_B = 100;
+  float param_B = 5;
   float param_e = 0.1;
   float val_c = 0.0;
 
@@ -82,6 +92,7 @@ public:
     }
 
     workerOps = workers.size();
+    iterateRunning = true;
 
     for (auto &worker: workers) {
       auto request = worker.setupRequest();
@@ -99,9 +110,32 @@ public:
     }
   }
 
+  void save() {
+    workerOps = workers.size();
+
+    for (auto &worker: workers) {
+      auto request = worker.saveRequest();
+      tasks.add(request.send().then(
+        [this] (auto result) {
+          spdlog::debug("worker iterate done");
+          if (--workerOps == 0) {
+            spdlog::info("new scores saved");
+          }
+        }));
+    }
+  }
+
   void iterate() {
-    if (iterations == 0) {
+    if (iterations == 0 || !iterateRunning) {
       spdlog::info("finished scoring");
+
+      if (!iterateRunning) {
+        spdlog::info("converged early, still have {} iterations",
+          iterations);
+      }
+
+      save();
+
       return;
 
     } else {
@@ -111,6 +145,7 @@ public:
     spdlog::info("iterating {}", iterations);
 
     workerOps = workers.size();
+    iterateRunning = false;
 
     for (auto &worker: workers) {
       auto request = worker.iterateRequest();
@@ -144,10 +179,14 @@ public:
       tasks.add(request.send().then(
             [this] (auto result) {
               spdlog::debug("worker iterate finish done");
+
+              bool running = result.getRunning();
+              iterateRunning |= running;
+
               if (--workerOps == 0) {
 
                 spdlog::info("iterator workers all done");
-
+      
                 iterate();
               }
             },
@@ -171,34 +210,27 @@ public:
     auto params = context.getParams();
     auto url = params.getUrl();
 
-    auto builder = kj::heapArrayBuilder<kj::Promise<double>>(workers.size());
+    auto site = util::get_host(url);
 
-    for (auto &worker: workers) {
-      auto request = worker.getCounterRequest();
-      request.setUrl(url);
-
-      builder.add(request.send().then(
-            [this, url] (auto result) {
-              uint32_t s = result.getCounter();
-              spdlog::info("got counter response: {} : {}", s, std::string(url));
-              return s * param_e / (val_c * pageCount * log(pageCount));
-            },
-            [] (auto exception) {
-              spdlog::warn("add walk failed: {}", std::string(exception.getDescription()));
-              return 0;
-            }));
+    uint32_t site_hash = hash(site, site_hash_cap);
+    auto worker = siteWorkers[site_hash];
+    if (worker == nullptr) {
+      return kj::READY_NOW;
     }
 
-    return kj::joinPromises(builder.finish()).then(
-        [url, KJ_CPCAP(context)] (auto results) mutable {
-          for (auto s: results) {
-            if (s > 0) {
-              spdlog::info("got score response: {} : {}", s, std::string(url));
-              context.getResults().setScore(s);
-              return;
-            }
-          }
-        });
+    auto request = worker->getCounterRequest();
+    request.setUrl(url);
+
+    return request.send().then(
+          [this, url, KJ_CPCAP(context)] (auto result) mutable {
+            uint32_t counter = result.getCounter();
+            spdlog::info("got counter response: {} : {}", counter, std::string(url));
+            float score =  counter * param_e / (val_c * pageCount * log(pageCount));
+            context.getResults().setScore(score);
+          },
+          [] (auto exception) {
+            spdlog::warn("add walk failed: {}", std::string(exception.getDescription()));
+          });
   }
 
   void addSites(std::vector<std::string> sites) {
@@ -214,28 +246,36 @@ public:
 
     spdlog::info("adding {} sites to {} workers", sites.size(), workers.size());
 
-    size_t i = 0;
+    size_t next_worker = 0;
     for (auto s: sites) {
       addingSites++;
 
-      auto request = workers[i % workers.size()].addSiteRequest();
+      auto site_host = util::get_host_from_meta_path(s);
+
+      uint32_t site_hash = hash(site_host, site_hash_cap);
+      auto worker = siteWorkers[site_hash];
+      if (worker == nullptr) {
+        // hopefully even enough.
+        siteWorkers[site_hash] = &workers[next_worker++ % workers.size()];
+        worker = siteWorkers[site_hash];
+      }
+
+      auto request = worker->addSiteRequest();
 
       request.setSitePath(s);
 
       tasks.add(request.send().then(
-            [this, i] (auto result) {
-              size_t n = result.getPageCount();
+          [this] (auto result) {
+            size_t n = result.getPageCount();
 
-              spdlog::debug("added site to worker {} got {} pages", i, n);
+            spdlog::debug("added site to worker, got {} pages", n);
 
-              pageCount += n;
+            pageCount += n;
 
-              if (--addingSites == 0) {
-                startScoring();
-              }
-            }));
-
-      i++;
+            if (--addingSites == 0) {
+              startScoring();
+            }
+          }));
     }
   }
 
@@ -265,41 +305,24 @@ public:
 
     auto site = util::get_host(url);
 
-/*
-    auto it = siteWorkers.find(site);
-    if (it != siteWorkers.end()) {
-      spdlog::info("add walk to one {}", url);
-      auto request = it->second.addWalkRequest();
-      request.setUrl(url);
-      request.setHits(hits);
-
-      tasks.add(request.send().then(
-            [] (auto result) {},
-            [] (auto exception) {
-              spdlog::warn("add walk failed: {}", std::string(exception.getDescription()));
-            }));
-
+    uint32_t site_hash = hash(site, site_hash_cap);
+    auto worker = siteWorkers[site_hash];
+    if (worker == nullptr) {
+      spdlog::debug("drop walk for {}", url);
       return kj::READY_NOW;
     }
-*/
 
-    spdlog::info("add walk to all {}", url);
-    for (auto &worker: workers) {
-      auto request = worker.addWalkRequest();
-      request.setUrl(url);
-      request.setHits(hits);
+    spdlog::debug("add walk for {}", url);
 
-      tasks.add(request.send().then(
-            [this, &worker, site] (auto result) {
-              bool found = result.getFound();
-              if (found) {
-                siteWorkers.emplace(site, worker);
-              }
-            },
-            [] (auto exception) {
-              spdlog::warn("add walk failed: {}", std::string(exception.getDescription()));
-            }));
-    }
+    auto request = worker->addWalkRequest();
+    request.setUrl(url);
+    request.setHits(hits);
+
+    tasks.add(request.send().then(
+          [this, &worker, site] (auto result) {},
+          [] (auto exception) {
+            spdlog::warn("add walk failed: {}", std::string(exception.getDescription()));
+          }));
 
     return kj::READY_NOW;
   }
@@ -320,11 +343,13 @@ public:
 
   size_t workerOps;
 
-  size_t pageCount;
+  uint64_t pageCount;
 
   size_t iterations;
+  bool iterateRunning;
 
-  std::unordered_map<std::string, ScorerWorker::Client&> siteWorkers;
+  size_t site_hash_cap{1<<12};
+  std::vector<ScorerWorker::Client *> siteWorkers;
 };
 
 int main(int argc, char *argv[]) {

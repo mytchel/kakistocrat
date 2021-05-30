@@ -62,6 +62,28 @@ std::string get_proto(const std::string &url) {
   return "";
 }
 
+std::string get_host_from_meta_path(const std::string &path) {
+  std::string host;
+  std::string part;
+  
+  for (auto c: path) {
+    if (c == '/') {
+      host = "";
+      part = "";
+
+    } else if (c == '.') {
+      host += part;
+      part = ".";
+    } else {
+      part += c;
+    }
+  }
+
+  spdlog::info("got host from path {} -> {}", path, host);
+
+  return host;
+}
+
 std::string get_host(const std::string &url) {
   int chars = 0, slashes = 0;
   bool need_host = false;
