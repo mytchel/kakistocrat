@@ -194,6 +194,27 @@ target_link_libraries(scorer_worker_capnp CapnProto::kj-async)
 target_link_libraries(scorer_worker_capnp CapnProto::kj)
 
 
+add_executable(scorer_reader_capnp scorer_reader_capnp.cc
+    ${capnp_sources}
+    ${capnp_headers}
+
+    hash.cc
+    site.cc
+    util.cc
+    config.cc)
+
+target_include_directories(scorer_reader_capnp PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+
+target_link_libraries(scorer_reader_capnp Threads::Threads)
+target_link_libraries(scorer_reader_capnp nlohmann_json::nlohmann_json)
+target_link_libraries(scorer_reader_capnp spdlog::spdlog)
+target_link_libraries(scorer_reader_capnp foonathan_memory)
+target_link_libraries(scorer_reader_capnp CapnProto::capnp-rpc)
+target_link_libraries(scorer_reader_capnp CapnProto::capnp)
+target_link_libraries(scorer_reader_capnp CapnProto::kj-async)
+target_link_libraries(scorer_reader_capnp CapnProto::kj)
+
+
 
 add_executable(search_capnp search_capnp.cc
     ${capnp_sources}

@@ -44,7 +44,7 @@
 
 using nlohmann::json;
 
-class ScorerWorkerImpl final: public ScorerWorker::Server,
+class ScoreWorkerImpl final: public ScoreWorker::Server,
                               public kj::TaskSet::ErrorHandler {
 
   struct node {
@@ -59,17 +59,15 @@ class ScorerWorkerImpl final: public ScorerWorker::Server,
     uint32_t next_coupons{0};
 
     uint32_t coupons{0};
-    uint32_t new_counter{0};
-
     uint32_t counter{0};
 
-    node(const std::string &url, uint32_t counter, std::vector<uint32_t> links = {})
-      : url(url), counter(counter), links(links)
+    node(const std::string &url, std::vector<uint32_t> links)
+      : url(url), links(links)
     {}
 
     void setup(uint32_t K, uint32_t bias) {
       coupons = K;
-      new_counter = bias;
+      counter = bias;
       extra = bias;
 
       next_coupons = 0;
@@ -82,7 +80,7 @@ class ScorerWorkerImpl final: public ScorerWorker::Server,
     bool iterate_finish() {
       next_coupons += extra;
 
-      new_counter += next_coupons;
+      counter += next_coupons;
       coupons = next_coupons;
 
       next_coupons = 0;
@@ -90,11 +88,7 @@ class ScorerWorkerImpl final: public ScorerWorker::Server,
       return coupons > 0;
     }
 
-    void finish() {
-      counter = new_counter;
-    }
-
-    void iterate(ScorerWorkerImpl &worker) {
+    void iterate(ScoreWorkerImpl &worker) {
       if (links.empty()) {
         return;
       }
@@ -122,13 +116,15 @@ class ScorerWorkerImpl final: public ScorerWorker::Server,
         }
       }
 
-      spdlog::debug("{:6} : {:4} : {}", new_counter, total_hits, url);
+      if (total_hits > 0) {
+        spdlog::debug("{:6} : {:4} : {}", counter, total_hits, url);
+      }
     }
   };
 
   struct adaptor {
     adaptor(kj::PromiseFulfiller<void> &fulfiller,
-            ScorerWorkerImpl &worker,
+            ScoreWorkerImpl &worker,
             std::vector<node*> nodes)
       : fulfiller(fulfiller),
         worker(worker),
@@ -150,37 +146,28 @@ class ScorerWorkerImpl final: public ScorerWorker::Server,
         node->iterate(worker);
       }
 
+      worker.sendWalks();
+
+      // Don't fullfill until walks all finished.
+      if (worker.sendingWalks) {
+        worker.addPendingWalk(this);
+        return;
+      }
+
       spdlog::debug("iterate step finished");
       fulfiller.fulfill();
     }
 
     kj::PromiseFulfiller<void> &fulfiller;
-    ScorerWorkerImpl &worker;
+    ScoreWorkerImpl &worker;
     std::vector<node*> nodes;
   };
 
 public:
-  ScorerWorkerImpl(kj::AsyncIoContext &io_context, const config &s, Scorer::Client master)
+  ScoreWorkerImpl(kj::AsyncIoContext &io_context, const config &s, Scorer::Client master)
     : settings(s), tasks(*this), timer(io_context.provider->getTimer()),
       master(master)
-  {
-  }
-
-  kj::Promise<void> getCounter(GetCounterContext context) override {
-    auto params = context.getParams();
-    std::string url = params.getUrl();
-
-    uint32_t id = urlToId(url, false);
-    if (id != 0) {
-      auto it = nodes.find(id);
-      if (it != nodes.end()) {
-        spdlog::info("get score {} = {}", url, it->second.counter);
-        context.getResults().setCounter(it->second.counter);
-      }
-    }
-
-    return kj::READY_NOW;
-  }
+  {}
 
   kj::Promise<void> addSite(AddSiteContext context) override {
     spdlog::info("add site");
@@ -198,16 +185,15 @@ public:
         spdlog::info("add page {}", p.url);
 
         std::vector<uint32_t> links;
+        links.reserve(p.links.size());
+
         for (auto &l: p.links) {
           links.emplace_back(urlToId(l.first, true));
         }
 
         auto id = urlToId(p.url, true);
-        auto it = nodes.try_emplace(id, p.url, 0, links);
 
-        if (!it.second) {
-          it.first->second.links = links;
-        }
+        nodes.try_emplace(id, p.url, links);
 
         c++;
       }
@@ -254,7 +240,7 @@ public:
   }
 
   kj::Promise<void> save(SaveContext context) override {
-   spdlog::debug("load {}", output_path);
+    spdlog::debug("save {}", output_path);
 
     int fd = open(output_path.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0664);
     if (fd < 0) {
@@ -278,39 +264,9 @@ public:
     writePackedMessageToFd(fd, message);
 
     close(fd);
+
+    // TODO: clear here?
  
-    return kj::READY_NOW;
-  }
-
-  kj::Promise<void> load(LoadContext context) override {
-    nodes.clear();
-
-    auto params = context.getParams();
-    
-    output_path = params.getPath();
-
-    spdlog::debug("load {}", output_path);
-
-    int fd = open(output_path.c_str(), O_RDONLY);
-    if (fd < 0) {
-      spdlog::warn("failed to open {}", output_path);
-      return kj::READY_NOW;
-    }
-
-    ::capnp::PackedFdMessageReader message(fd);
-
-    ScoreBlock::Reader reader = message.getRoot<ScoreBlock>();
-
-    for (auto n: reader.getNodes()) {
-      std::string url = n.getUrl();
-      uint32_t counter = n.getCounter();
-
-      nodes.emplace(urlToId(url, true), node(url, counter));
-    }
-
-    // Or earlier?
-    close(fd);
-
     return kj::READY_NOW;
   }
 
@@ -362,6 +318,10 @@ public:
   }
 
   void sendWalks() {
+    if (walks.empty()) {
+      return;
+    }
+
     spdlog::info("sending {} walks", walks.size());
 
     auto request = master.addWalksRequest();
@@ -396,6 +356,8 @@ public:
     spdlog::info("got remote walk request");
     auto params = context.getParams();
 
+    size_t matched = 0;
+
     for (auto walk: params.getWalks()) {
       std::string url = walk.getUrl();
       auto hits = walk.getHits();
@@ -404,11 +366,13 @@ public:
       if (id != 0) {
         auto it = nodes.find(id);
         if (it != nodes.end()) {
+          matched++;
           it->second.add(hits);
         }
       }
     }
 
+    spdlog::info("remote walk request matched with {} nodes", matched);
     return kj::READY_NOW;
   }
 
@@ -524,10 +488,10 @@ int main(int argc, char *argv[]) {
 
     spdlog::info("creating client");
 
-    ScorerWorker::Client worker = kj::heap<ScorerWorkerImpl>(ioContext, settings, master);
+    ScoreWorker::Client worker = kj::heap<ScoreWorkerImpl>(ioContext, settings, master);
 
     spdlog::info("create request");
-    auto request = master.registerScorerWorkerRequest();
+    auto request = master.registerScoreWorkerRequest();
     request.setWorker(worker);
 
     spdlog::info("send scorer register");

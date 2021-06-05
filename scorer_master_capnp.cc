@@ -30,7 +30,6 @@
 #include "capnp_server.h"
 
 #include "indexer.capnp.h"
-
 #include <kj/debug.h>
 #include <kj/string.h>
 #include <kj/async-io.h>
@@ -47,6 +46,20 @@ using nlohmann::json;
 class ScorerImpl final: public Scorer::Server,
                         public kj::TaskSet::ErrorHandler {
 
+  struct details {
+    std::vector<std::string> output_paths;
+    uint64_t pageCount;
+    float param_B = 5;
+    float param_e = 0.001;
+    float val_sp = 100;
+    float val_c = 0.0;
+    float val_K = 0.0;
+    float val_bias = 0.0;
+  };
+
+  details currentDetails{{}, 0, 5, 0.001, 100, 0, 0, 0};
+  details newDetails{{}, 0, 5, 0.001, 100, 0, 0, 0};
+
 /*
   struct worker {
     ScorerWorker::Client client;
@@ -59,17 +72,16 @@ public:
   ScorerImpl(kj::AsyncIoContext &io_context, const config &s)
     : settings(s), tasks(*this), timer(io_context.provider->getTimer()),
       siteWorkers(site_hash_cap, nullptr),
+      siteReaders(site_hash_cap, nullptr),
       output_path(fmt::format("{}/main.json", settings.scores_path))
   {
+    util::make_path(settings.scores_path);
+
+    load();
   }
 
-  float param_B = 5;
-  float param_e = 0.001;
-  float val_c = 0.0;
-  float val_bias = 0.0;
-
   void startScoring() {
-    if (pageCount == 0) {
+    if (newDetails.pageCount == 0) {
       spdlog::warn("score 0 pages?");
       return;
     }
@@ -82,16 +94,15 @@ public:
     // I gave up on math for a reason.
 
     // float sp = 1 + t * (1 + s) - E(pow(e, t * w));
-    float sp = 100;
 
-    val_c = 2 / (sp * param_e);
-    uint32_t K = val_c * log(pageCount);
-    iterations = param_B * log(pageCount / param_e);
+    newDetails.val_c = 2 / (newDetails.val_sp * newDetails.param_e);
+    newDetails.val_K = newDetails.val_c * log(newDetails.pageCount);
+    iterations = newDetails.param_B * log(newDetails.pageCount / newDetails.param_e);
 
-    val_bias = K;//1 + 5 * K / iterations;
+    newDetails.val_bias = newDetails.val_K;//1 + 5 * K / iterations;
 
     spdlog::info("start scoring {} pages, c = {}, K = {}, seed bias = {}, iterations = {}",
-        pageCount, val_c, K, val_bias, iterations);
+        newDetails.pageCount, newDetails.val_c, newDetails.val_K, newDetails.val_bias, iterations);
 
     if (iterations == 0) {
       iterations = 1;
@@ -100,19 +111,20 @@ public:
     workerOps = workers.size();
     iterateRunning = true;
 
-    output_paths.clear();
+    // TODO: seperate active and new paths
+    newDetails.output_paths.clear();
 
     size_t i = 0;
     for (auto &worker: workers) {
-      output_paths.emplace_back(
+      newDetails.output_paths.emplace_back(
             fmt::format("{}/block{}.capnp",
               settings.scores_path, i++));
 
       auto request = worker.setupRequest();
-      request.setK(K);
-      request.setE(param_e);
-      request.setBias(val_bias);
-      request.setPath(output_paths.back());
+      request.setK(newDetails.val_K);
+      request.setE(newDetails.param_e);
+      request.setBias(newDetails.val_bias);
+      request.setPath(newDetails.output_paths.back());
 
       tasks.add(request.send().then(
             [this] (auto result) {
@@ -170,13 +182,9 @@ public:
               spdlog::debug("worker iterate done");
               if (--workerOps == 0) {
 
-                spdlog::info("iterator workers all done. wait then iterate again");
+                spdlog::info("iterator workers all done");
 
-                tasks.add(timer.afterDelay(5 * kj::SECONDS).then(
-                      [this] () {
-                        spdlog::info("iterator again");
-                        iterateFinish();
-                      }));
+                iterateFinish();
               }
             },
             [this] (auto exception) {
@@ -212,10 +220,56 @@ public:
     }
   }
 
-  kj::Promise<void> registerScorerWorker(RegisterScorerWorkerContext context) override {
+  kj::Promise<void> registerScoreWorker(RegisterScoreWorkerContext context) override {
     spdlog::info("got register worker request");
 
     workers.push_back(context.getParams().getWorker());
+
+    return kj::READY_NOW;
+  }
+
+  void setupReaders() {
+    spdlog::info("setup readers {} for paths {}", ready_readers.size(), output_paths_pending.size());
+
+    while (!output_paths_pending.empty() && !ready_readers.empty()) {
+      auto path = output_paths_pending.back();
+      output_paths_pending.pop_back();
+
+      spdlog::info("setup readers for {}", path);
+
+      auto reader = ready_readers.back();
+      ready_readers.pop_back();
+
+      auto request = reader->loadRequest();
+
+      request.setPath(path);
+
+      tasks.add(request.send().then(
+        [this, reader, path] (auto result) {
+          spdlog::info("reader setup for {}", path);
+
+          for (auto host: result.getHosts()) {
+            uint32_t site_hash = hash(host, site_hash_cap);
+
+            if (siteReaders[site_hash] == nullptr) {
+              siteReaders[site_hash] = reader;
+
+            } else if (siteReaders[site_hash] != reader) {
+              spdlog::warn("hash collision for different readers!");
+
+              // shouldn't happen
+            }
+          }
+        }));
+    }
+  }
+
+  kj::Promise<void> registerScoreReader(RegisterScoreReaderContext context) override {
+    spdlog::info("got register reader request");
+
+    readers.push_back(context.getParams().getReader());
+    ready_readers.push_back(&readers.back());
+    setupReaders();
 
     return kj::READY_NOW;
   }
@@ -226,22 +280,27 @@ public:
     auto params = context.getParams();
     auto url = params.getUrl();
 
-    auto site = util::get_host(url);
+    auto site_host = util::get_host(url);
 
-    uint32_t site_hash = hash(site, site_hash_cap);
-    auto worker = siteWorkers[site_hash];
-    if (worker == nullptr) {
+    uint32_t site_hash = hash(site_host, site_hash_cap);
+    auto reader = siteReaders[site_hash];
+    if (reader == nullptr) {
       return kj::READY_NOW;
     }
 
-    auto request = worker->getCounterRequest();
+    auto request = reader->getCounterRequest();
     request.setUrl(url);
 
     return request.send().then(
           [this, url, KJ_CPCAP(context)] (auto result) mutable {
             uint32_t counter = result.getCounter();
             spdlog::info("got counter response: {} : {}", counter, std::string(url));
-            float score =  counter * param_e / (val_c * pageCount * log(pageCount));
+            float score =  counter * currentDetails.param_e / 
+                (currentDetails.val_c * currentDetails.pageCount * log(currentDetails.pageCount));
+            spdlog::info("score = {} * {} / ({} * {} * {} = {}",
+                counter, currentDetails.param_e, currentDetails.val_c,
+                currentDetails.pageCount, log(currentDetails.pageCount), score);
+
             context.getResults().setScore(score);
           },
           [] (auto exception) {
@@ -254,16 +313,36 @@ public:
 
     spdlog::debug("save {}", output_path);
 
-    json j = {{ "blocks", output_paths }};
+    json j = {
+        { "blocks", newDetails.output_paths },
+        { "val_sp", newDetails.val_sp },
+        { "val_K", newDetails.val_K },
+        { "val_c", newDetails.val_c },
+        { "page_count", newDetails.pageCount }};
 
     file.open(output_path, std::ios::out | std::ios::trunc);
     if (!file.is_open()) {
-      spdlog::warn("error opening file{}", output_path);
+      spdlog::warn("error opening file {}", output_path);
       return;
-     }
+    }
 
-     file << j;
-     file.close();
+    file << j;
+    file.close();
+
+    ready_readers.clear();
+
+    for (auto &reader: readers) {
+      ready_readers.push_back(&reader);
+    }
+
+    currentDetails = newDetails;
+
+    output_paths_pending.clear();
+    for (auto &path: currentDetails.output_paths) {
+      output_paths_pending.push_back(path);
+    }
+
+    setupReaders();
   }
 
   void load() {
@@ -280,7 +359,11 @@ public:
     try {
       json j = json::parse(file);
 
-      j.at("blocks").get_to(output_paths);
+      j.at("blocks").get_to(currentDetails.output_paths);
+      j.at("val_sp").get_to(currentDetails.val_sp);
+      j.at("val_K").get_to(currentDetails.val_K);
+      j.at("val_c").get_to(currentDetails.val_c);
+      j.at("page_count").get_to(currentDetails.pageCount);
 
     } catch (const std::exception &e) {
       spdlog::warn("failed to load {}", output_path);
@@ -288,26 +371,21 @@ public:
 
     file.close();
 
-    if (workers.size() != output_paths.size()) {
-      spdlog::warn("workers != output paths sizes. we fucked");
-      return;
+    if (readers.size() != currentDetails.output_paths.size()) {
+      spdlog::warn("readers != output paths sizes {} != {}",
+        readers.size(), currentDetails.output_paths.size());
     }
-      
-    workerOps = workers.size();
-
-    size_t i = 0;
-    for (auto &worker: workers) {
-      auto request = worker.loadRequest();
-      request.setPath(output_paths[i++]);
-
-      tasks.add(request.send().then(
-        [this] (auto result) {
-          spdlog::debug("worker load done");
-          if (--workerOps == 0) {
-            spdlog::info("workers all loaded");
-          }
-        }));
+     
+    output_paths_pending.clear();
+    for (auto &path: currentDetails.output_paths) {
+      output_paths_pending.push_back(path);
     }
+ 
+    spdlog::info("loaded score details, val sp {}, k {}, c {} page count {}",
+        currentDetails.val_sp, currentDetails.val_K,
+        currentDetails.val_c, currentDetails.pageCount);
+
+    setupReaders();
   }
 
   void addSites() {
@@ -346,7 +424,7 @@ public:
 
             spdlog::debug("added site to worker, got {} pages", n);
 
-            pageCount += n;
+            newDetails.pageCount += n;
 
             if (--addingSites == 0) {
               addSeed();
@@ -382,7 +460,7 @@ public:
   kj::Promise<void> score(ScoreContext context) override {
     spdlog::info("got score request");
 
-    pageCount = 0;
+    newDetails.pageCount = 0;
     addingSites = 0;
 
     auto params = context.getParams();
@@ -408,7 +486,7 @@ public:
 
     auto params = context.getParams();
 
-    std::map<ScorerWorker::Client *,
+    std::map<ScoreWorker::Client *,
         std::vector<std::pair<std::string, uint32_t>>
       > requestWalks;
 
@@ -427,6 +505,8 @@ public:
       auto it = requestWalks.try_emplace(worker);
       it.first->second.emplace_back(url, hits);
     }
+
+    spdlog::info("walks request sending to {} workers", requestWalks.size());
 
     for (auto &r: requestWalks) {
       auto request = r.first->addWalksRequest();
@@ -458,7 +538,12 @@ public:
 
   const config &settings;
 
-  std::vector<ScorerWorker::Client> workers;
+  std::vector<ScoreWorker::Client> workers;
+  
+  std::list<ScoreReader::Client> readers;
+
+  std::vector<ScoreReader::Client *> ready_readers;
+  std::vector<std::string> output_paths_pending;
 
   kj::TaskSet tasks;
   kj::Timer &timer;
@@ -467,8 +552,6 @@ public:
 
   size_t workerOps;
 
-  uint64_t pageCount;
-
   size_t iterations;
   bool iterateRunning;
 
@@ -476,10 +559,12 @@ public:
   std::vector<std::string> scoring_seed;
 
   std::string output_path;
-  std::vector<std::string> output_paths;
 
   size_t site_hash_cap{1<<12};
-  std::vector<ScorerWorker::Client *> siteWorkers;
+
+  std::vector<ScoreWorker::Client *> siteWorkers;
+  
+  std::vector<ScoreReader::Client *> siteReaders;
 };
 
 int main(int argc, char *argv[]) {

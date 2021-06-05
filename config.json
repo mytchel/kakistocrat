@@ -1,26 +1,26 @@
 {
     "seed": "seed",
     "blacklist": "blacklist",
-    "frequency_d": 1,
+    "frequency_d": 3,
     "crawler": {
         "n_threads": 3,
         "site_data_path": "out/site_data",
         "site_meta_path": "out/site_meta",
         "sites_path": "out/sites.json",
-        "thread_max_sites": 5,
+        "thread_max_sites": 20,
         "thread_max_connections": 50,
         "site_max_connections": 5,
         "max_site_part_size_mb": 50,
         "max_page_size_mb": 1,
-        "levels": [ { "p": 10, "s": 1 }, { "p": 1, "s": 0 } ]
+        "levels": [ { "p": 1000, "s": 1000 }, { "p": 100, "s": 50 }, { "p": 1, "s": 0 } ]
     },
-    "index_parts": 4,
+    "index_parts": 50,
     "indexer": {
         "n_threads": 3,
         "thread_max_mem_mb": 400,
         "max_index_part_size_mb": 10,
         "htcap": 18,
-        "pages_per_part": 30,
+        "pages_per_part": 100000,
         "parts_path": "out/index_parts/",
         "meta_path": "out/index_parts.json"
     },
@@ -32,6 +32,6 @@
         "parts_path": "out/index_merged/",
         "meta_path": "out/index.json"
     },
-    "scores_path": "out/scores.json"
+    "scores_path": "out/scores"
 }
 

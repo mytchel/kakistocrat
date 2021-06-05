@@ -73,7 +73,7 @@ interface Merger {
 }
 
 interface Scorer {
-    registerScorerWorker @0 (worker :ScorerWorker);
+    registerScoreWorker @0 (worker :ScoreWorker);
     registerScoreReader @4 (reader :ScoreReader);
 
     score @1 (sitePaths :List(Text), seed :List(Text));
@@ -83,12 +83,9 @@ interface Scorer {
     addWalks @3 (walks :List(ScoreWalk));
 }
 
-interface ScorerWorker {
+interface ScoreWorker {
     addSite @0 (sitePath :Text) -> (pageCount :UInt32);
-    setSeed @7 (url :Text);
-    load @8 (path :Text);
-
-    getCounter @1 (url :Text) -> (counter :UInt32);
+    setSeed @1 (url :Text);
 
     setup @2 (k :UInt32, e :Float32, bias :UInt32, path :Text);
 
@@ -101,8 +98,8 @@ interface ScorerWorker {
 }
 
 interface ScoreReader {
-    setup @0 (path :Text);
-    read @1 (url :Text) -> (counter :UInt32);
+    load @0 (path :Text) -> (hosts :List(Text));
+    getCounter @1 (url :Text) -> (counter :UInt32);
 }
 
 interface Searcher {

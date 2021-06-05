@@ -708,6 +708,7 @@ class MasterImpl final: public Master::Server,
 
     std::vector<std::string> initial_seed = util::load_list(settings.seed_path);
 
+    scorers.clear();
     scorers.push_back(context.getParams().getScorer());
     auto scorer = scorers.back();
 
