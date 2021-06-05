@@ -706,6 +706,8 @@ class MasterImpl final: public Master::Server,
   kj::Promise<void> registerScorer(RegisterScorerContext context) override {
     spdlog::debug("got register scorer");
 
+    std::vector<std::string> initial_seed = util::load_list(settings.seed_path);
+
     scorers.push_back(context.getParams().getScorer());
     auto scorer = scorers.back();
 
@@ -722,11 +724,16 @@ class MasterImpl final: public Master::Server,
 
     auto paths = request.initSitePaths(sites.size());
 
-    size_t i = 0;
-    for (auto s: sites) {
-      paths.set(i++, s->m_site.path);
+    for (size_t i = 0; i < sites.size(); i++) {
+      paths.set(i, sites[i]->m_site.path);
     }
+    
+    auto seed = request.initSeed(initial_seed.size());
 
+    for (size_t i = 0; i < initial_seed.size(); i++) {
+      seed.set(i, initial_seed[i]);
+    }
+    
     tasks.add(request.send().then(
           [] (auto result) {
             spdlog::info("scoring finished");

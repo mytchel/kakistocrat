@@ -24,6 +24,20 @@ struct Site {
   pages @2 :List(Page);
 }
 
+struct ScoreNode {
+  url @0 :Text;
+  counter @1 :UInt32;
+}
+
+struct ScoreBlock {
+  nodes @0 :List(ScoreNode);
+}
+
+struct ScoreWalk {
+  url @0 :Text;
+  hits @1 :UInt32;
+}
+
 interface Master {
     registerCrawler @0 (crawler :Crawler);
 
@@ -62,25 +76,28 @@ interface Scorer {
     registerScorerWorker @0 (worker :ScorerWorker);
     registerScoreReader @4 (reader :ScoreReader);
 
-    score @1 (sitePaths :List(Text));
+    score @1 (sitePaths :List(Text), seed :List(Text));
 
     getScore @2 (url :Text) -> (score :Float32);
 
-    addWalk @3 (url :Text, hits :UInt32);
+    addWalks @3 (walks :List(ScoreWalk));
 }
 
 interface ScorerWorker {
     addSite @0 (sitePath :Text) -> (pageCount :UInt32);
+    setSeed @7 (url :Text);
+    load @8 (path :Text);
+
     getCounter @1 (url :Text) -> (counter :UInt32);
 
-    setup @2 (k :UInt32, e :Float32, path :Text);
+    setup @2 (k :UInt32, e :Float32, bias :UInt32, path :Text);
 
     iterate @3 ();
     iterateFinish @4 () -> (running :Bool);
     
     save @5 ();
 
-    addWalk @6 (url :Text, hits :UInt32) -> (found :Bool);
+    addWalks @6 (walks :List(ScoreWalk));
 }
 
 interface ScoreReader {

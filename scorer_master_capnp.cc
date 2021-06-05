@@ -45,7 +45,7 @@
 using nlohmann::json;
 
 class ScorerImpl final: public Scorer::Server,
-                              public kj::TaskSet::ErrorHandler {
+                        public kj::TaskSet::ErrorHandler {
 
 /*
   struct worker {
@@ -58,13 +58,15 @@ class ScorerImpl final: public Scorer::Server,
 public:
   ScorerImpl(kj::AsyncIoContext &io_context, const config &s)
     : settings(s), tasks(*this), timer(io_context.provider->getTimer()),
-      siteWorkers(site_hash_cap, nullptr)
+      siteWorkers(site_hash_cap, nullptr),
+      output_path(fmt::format("{}/main.json", settings.scores_path))
   {
   }
 
   float param_B = 5;
-  float param_e = 0.1;
+  float param_e = 0.001;
   float val_c = 0.0;
+  float val_bias = 0.0;
 
   void startScoring() {
     if (pageCount == 0) {
@@ -78,14 +80,18 @@ public:
     // s = arbitrary constant
     // https://www.sciencedirect.com/science/article/pii/S0304397514002709
     // I gave up on math for a reason.
-    //float sp = 1 + t * (1 + s) - E(pow(e, t * w));
-    float sp = 0.1;
+
+    // float sp = 1 + t * (1 + s) - E(pow(e, t * w));
+    float sp = 100;
 
     val_c = 2 / (sp * param_e);
     uint32_t K = val_c * log(pageCount);
     iterations = param_B * log(pageCount / param_e);
-    spdlog::info("start scoring {} pages, c = {}, K = {}, iterations = {}",
-        pageCount, val_c, K, iterations);
+
+    val_bias = K;//1 + 5 * K / iterations;
+
+    spdlog::info("start scoring {} pages, c = {}, K = {}, seed bias = {}, iterations = {}",
+        pageCount, val_c, K, val_bias, iterations);
 
     if (iterations == 0) {
       iterations = 1;
@@ -94,10 +100,19 @@ public:
     workerOps = workers.size();
     iterateRunning = true;
 
+    output_paths.clear();
+
+    size_t i = 0;
     for (auto &worker: workers) {
+      output_paths.emplace_back(
+            fmt::format("{}/block{}.capnp",
+              settings.scores_path, i++));
+
       auto request = worker.setupRequest();
       request.setK(K);
       request.setE(param_e);
+      request.setBias(val_bias);
+      request.setPath(output_paths.back());
 
       tasks.add(request.send().then(
             [this] (auto result) {
@@ -110,7 +125,7 @@ public:
     }
   }
 
-  void save() {
+  void saveWorkers() {
     workerOps = workers.size();
 
     for (auto &worker: workers) {
@@ -119,6 +134,7 @@ public:
         [this] (auto result) {
           spdlog::debug("worker iterate done");
           if (--workerOps == 0) {
+            save();
             spdlog::info("new scores saved");
           }
         }));
@@ -134,7 +150,7 @@ public:
           iterations);
       }
 
-      save();
+      saveWorkers();
 
       return;
 
@@ -233,23 +249,82 @@ public:
           });
   }
 
-  void addSites(std::vector<std::string> sites) {
+  void save() {
+    std::ofstream file;
+
+    spdlog::debug("save {}", output_path);
+
+    json j = {{ "blocks", output_paths }};
+
+    file.open(output_path, std::ios::out | std::ios::trunc);
+    if (!file.is_open()) {
+      spdlog::warn("error opening file{}", output_path);
+      return;
+     }
+
+     file << j;
+     file.close();
+  }
+
+  void load() {
+    std::ifstream file;
+
+    spdlog::debug("load {}", output_path);
+
+    file.open(output_path, std::ios::in);
+    if (!file.is_open()) {
+      spdlog::warn("error opening file{}", output_path);
+      return;
+    }
+
+    try {
+      json j = json::parse(file);
+
+      j.at("blocks").get_to(output_paths);
+
+    } catch (const std::exception &e) {
+      spdlog::warn("failed to load {}", output_path);
+    }
+
+    file.close();
+
+    if (workers.size() != output_paths.size()) {
+      spdlog::warn("workers != output paths sizes. we fucked");
+      return;
+    }
+      
+    workerOps = workers.size();
+
+    size_t i = 0;
+    for (auto &worker: workers) {
+      auto request = worker.loadRequest();
+      request.setPath(output_paths[i++]);
+
+      tasks.add(request.send().then(
+        [this] (auto result) {
+          spdlog::debug("worker load done");
+          if (--workerOps == 0) {
+            spdlog::info("workers all loaded");
+          }
+        }));
+    }
+  }
+
+  void addSites() {
     if (workers.empty()) {
       spdlog::info("putting off add sites");
 
       tasks.add(timer.afterDelay(5 * kj::SECONDS).then(
-            [this, sites] () mutable {
-              addSites(sites);
+            [this] () mutable {
+              addSites();
             }));
       return;
     }
 
-    spdlog::info("adding {} sites to {} workers", sites.size(), workers.size());
+    spdlog::info("adding {} sites to {} workers", scoring_sites.size(), workers.size());
 
     size_t next_worker = 0;
-    for (auto s: sites) {
-      addingSites++;
-
+    for (auto s: scoring_sites) {
       auto site_host = util::get_host_from_meta_path(s);
 
       uint32_t site_hash = hash(site_host, site_hash_cap);
@@ -264,6 +339,7 @@ public:
 
       request.setSitePath(s);
 
+      addingSites++;
       tasks.add(request.send().then(
           [this] (auto result) {
             size_t n = result.getPageCount();
@@ -272,6 +348,30 @@ public:
 
             pageCount += n;
 
+            if (--addingSites == 0) {
+              addSeed();
+            }
+          }));
+    }
+  }
+
+  void addSeed() {
+    for (auto &s: scoring_seed) {
+      auto site_host = util::get_host(s);
+
+      uint32_t site_hash = hash(site_host, site_hash_cap);
+      auto worker = siteWorkers[site_hash];
+      if (worker == nullptr) {
+        continue;
+      }
+
+      auto request = worker->setSeedRequest();
+
+      request.setUrl(s);
+
+      addingSites++;
+      tasks.add(request.send().then(
+          [this] (auto result) {
             if (--addingSites == 0) {
               startScoring();
             }
@@ -286,43 +386,67 @@ public:
     addingSites = 0;
 
     auto params = context.getParams();
-
-    std::vector<std::string> sites;
+    
+    scoring_sites.clear();
+    scoring_seed.clear();
 
     for (auto s: params.getSitePaths()) {
-      sites.emplace_back(s);
+      scoring_sites.emplace_back(s);
     }
 
-    addSites(sites);
+    for (auto s: params.getSeed()) {
+      scoring_seed.emplace_back(s);
+    }
+
+    addSites();
 
     return kj::READY_NOW;
   }
 
-  kj::Promise<void> addWalk(AddWalkContext context) override {
+  kj::Promise<void> addWalks(AddWalksContext context) override {
+    spdlog::info("walks request");
+
     auto params = context.getParams();
-    std::string url = params.getUrl();
-    auto hits = params.getHits();
 
-    auto site = util::get_host(url);
+    std::map<ScorerWorker::Client *,
+        std::vector<std::pair<std::string, uint32_t>>
+      > requestWalks;
 
-    uint32_t site_hash = hash(site, site_hash_cap);
-    auto worker = siteWorkers[site_hash];
-    if (worker == nullptr) {
-      spdlog::debug("drop walk for {}", url);
-      return kj::READY_NOW;
+    for (auto walk: params.getWalks()) {
+      std::string url = walk.getUrl();
+      auto hits = walk.getHits();
+
+      auto site = util::get_host(url);
+
+      uint32_t site_hash = hash(site, site_hash_cap);
+      auto worker = siteWorkers[site_hash];
+      if (worker == nullptr) {
+        continue;
+      }
+
+      auto it = requestWalks.try_emplace(worker);
+      it.first->second.emplace_back(url, hits);
     }
 
-    spdlog::debug("add walk for {}", url);
+    for (auto &r: requestWalks) {
+      auto request = r.first->addWalksRequest();
 
-    auto request = worker->addWalkRequest();
-    request.setUrl(url);
-    request.setHits(hits);
+      auto w = request.initWalks(r.second.size());
 
-    tasks.add(request.send().then(
-          [this, &worker, site] (auto result) {},
-          [] (auto exception) {
-            spdlog::warn("add walk failed: {}", std::string(exception.getDescription()));
-          }));
+      spdlog::info("sending {} walks", r.second.size());
+
+      for (size_t i = 0; i < r.second.size(); i++) {
+        auto ww = w[i];
+        ww.setUrl(r.second[i].first);
+        ww.setHits(r.second[i].second);
+      }
+
+      tasks.add(request.send().then(
+            [] (auto result) {},
+            [] (auto exception) {
+              spdlog::warn("add walk failed: {}", std::string(exception.getDescription()));
+            }));
+    }
 
     return kj::READY_NOW;
   }
@@ -347,6 +471,12 @@ public:
 
   size_t iterations;
   bool iterateRunning;
+
+  std::vector<std::string> scoring_sites;
+  std::vector<std::string> scoring_seed;
+
+  std::string output_path;
+  std::vector<std::string> output_paths;
 
   size_t site_hash_cap{1<<12};
   std::vector<ScorerWorker::Client *> siteWorkers;

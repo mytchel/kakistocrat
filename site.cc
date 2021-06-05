@@ -111,7 +111,9 @@ void site_map::load_capnp()
       n.links.emplace_back(l.getUrl(), l.getCount());
     }
   }
-  
+ 
+  close(fd);
+
   spdlog::debug("read and parsed {}", path);
 }
 
@@ -162,6 +164,8 @@ void site_map::save() {
   }
 
   writePackedMessageToFd(fd, message);
+  
+  close(fd);
 
   path = new_path;
 }

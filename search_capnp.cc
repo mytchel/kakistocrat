@@ -113,10 +113,19 @@ class SearcherImpl final:
                 if (pending == 0) {
                   respond();
                 }
+              },
+              [this, page] (auto exception) {
+                spdlog::warn("error getting page info {}: {}", page.first, 
+                    std::string(exception.getDescription()));
+
+                pending--;
+                if (pending == 0) {
+                  respond();
+                }
               }));
 
         pending++;
-        if (pending > 50) {
+        if (pending > 300) {
           break;
         }
       }

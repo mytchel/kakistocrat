@@ -28,7 +28,6 @@ namespace search {
 
 static bool word_allow_extra(std::string s)
 {
-  if (s.size() < 4) return false;
   if (s.size() > 30) return false;
 
   for (auto c: s) {
@@ -748,13 +747,11 @@ intersect_postings_strict(std::vector<std::vector<std::pair<std::string, double>
 std::list<std::pair<std::string, double>>
 intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &postings)
 {
-  std::list<std::pair<std::string, double>> result;
-
   spdlog::info("interset {}", postings.size());
 
   if (postings.size() == 0) {
     spdlog::info("have nothing");
-    return result;
+    return {};
   }
 
   std::vector<size_t> indexes(postings.size(), 0);
@@ -765,12 +762,14 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
       spdlog::debug("    {}", postings[i][j].first);
     }
   }
-  
-  double sum_scores = 0;
+
+  size_t url_max_len = 0;
+  std::list<std::pair<std::string, double>> result;
+
   while (true) { 
 		std::string url = "";
 
-		for (size_t i = 1; i < postings.size(); i++) {
+		for (size_t i = 0; i < postings.size(); i++) {
       if (indexes[i] < postings[i].size()) {
         if (url == "" || postings[i][indexes[i]].first < url) {
           url = postings[i][indexes[i]].first;
@@ -781,7 +780,12 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
     if (url == "") {
       break;
     }
-  
+
+    size_t p_len = util::get_path(url).length();
+    if (p_len > url_max_len) {
+      url_max_len = p_len;
+    }
+
     double score = 0;
     size_t matches = 0;
 
@@ -795,24 +799,57 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
       }
     }
 
-    score *= matches;
+    score *= matches * matches;
     spdlog::debug("url {} -- {} : {}", matches, score, url);
 
-    sum_scores += score;
     result.emplace_back(url, score);
   }
 
-  spdlog::info("total sum {} for {} postings", sum_scores, result.size());
+  if (url_max_len  == 0) {
+    spdlog::info("bad url max len");
+    return {};
+  }
 
-  if (sum_scores > 0) {
-    for (auto &p: result) {
-      p.second /= sum_scores;
-      spdlog::info("{} : {}", p.second, p.first);
+  double sum_scores = 0;
+
+  for (auto &p: result) {
+    spdlog::info("raw        {} : {}", p.second, p.first);
+
+    size_t p_len = util::get_path(p.first).length();
+
+    if (p_len > 0) {
+      
+      float c = p_len  / url_max_len;
+
+      float a = 1.0 - 0.8 * c;
+
+      p.second *= a;
+    
+      spdlog::info("adjust url {} / {}", p_len, url_max_len);
     }
+
+    if (p.first.find("?") != std::string::npos) {
+      p.second *= 0.1;
+      spdlog::info("q   adjust");
+    }
+
+    spdlog::info("url adjust {} : {}", p.second, p.first);
+
+    sum_scores += p.second;
+  }
+
+  if (sum_scores <= 0) {
+    spdlog::warn("bad sum score");
+    return {};
+  }
+
+  for (auto &p: result) {
+    p.second /= sum_scores;
+
+    spdlog::info("sum adjust {} : {}", p.second, p.first);
   }
 
 	return result;
 }
-
 
 }
