@@ -52,16 +52,6 @@ void from_json(const nlohmann::json &j, site &s)
   j.at("merged").get_to(s.merged);
 
   s.scraped = s.last_scanned > 0;
-
-/*
-  if (util::has_suffix(s.m_site.path, "capnp")) {
-    std::string new_path = s.m_site.path.substr(0, s.m_site.path.length() - 5);
-    new_path += "json";
-
-    spdlog::debug("convert capnp to json for initial load {} -> {}", s.m_site.path, new_path);
-    s.m_site.path = new_path;
-  }
-  */
 }
 
 void crawler::save()
@@ -112,18 +102,30 @@ void crawler::load()
 
   file.close();
 
+  for (auto &site: sites) {
+    sites_map.emplace(site.host, &site);
+  }
+
   spdlog::debug("load {} finished", sites_path);
 }
 
-site * crawler::find_site(const std::string &host)
+site* crawler::find_site(const std::string &host)
 {
-  for (auto &i: sites) {
-    if (i.host == host) {
-      return &i;
-    }
+  auto it = sites_map.find(host);
+  if (it == sites_map.end()) {
+    return nullptr;
   }
 
-  return NULL;
+  return it->second;
+}
+
+site* crawler::add_site(const std::string &host, size_t level)
+{
+  auto &site = sites.emplace_back(get_meta_path(host), host, level);
+
+  sites_map.emplace(host, &site);
+
+  return &site;
 }
 
 static std::string host_hash(const std::string &host) {
@@ -182,23 +184,24 @@ page* site::find_add_page(const std::string &url, size_t n_level, const std::str
     return p;
   }
 
-  p = find_page_by_path(path);
-  if (p != NULL) {
-    return p;
+  if (path != "") {
+    p = find_page_by_path(path);
+    if (p != NULL) {
+      return p;
+    }
   }
 
-  page_count++;
   return add_page(url, path);
 }
 
-void crawler::enable_references(
+void crawler::expand(
     site *isite,
     size_t max_add_sites,
     size_t next_max_pages)
 {
-  std::map<std::string, size_t> sites_link_count;
+  std::unordered_map<std::string, std::vector<uint32_t>> links_map;
   
-  spdlog::info("enable references start {}", isite->host);
+  spdlog::info("expand {} starting", isite->host);
 
   isite->load();
 
@@ -206,57 +209,7 @@ void crawler::enable_references(
     for (auto &l: page.links) {
       auto &link_url = isite->urls[l.first];
       auto host = util::get_host(link_url);
-      if (host == isite->host) continue;
 
-      auto it = sites_link_count.try_emplace(host, l.second);
-      if (!it.second) {
-        it.first->second += l.second;
-      }
-    }
-  }
-
-  std::list<std::string> linked_sites;
-
-  for (auto &s: sites_link_count) {
-    linked_sites.push_back(s.first);
-  }
-
-  linked_sites.sort(
-      [&sites_link_count](std::string a, std::string b) {
-        auto aa = sites_link_count.find(a);
-        auto bb = sites_link_count.find(b);
-        return aa->second > bb->second;
-      });
-
-  size_t add_sites = 0;
-  for (auto &host: linked_sites) {
-    auto site = find_site(host);
-    if (site != NULL) {
-      site->max_pages += next_max_pages;
-      add_sites++;
-
-      spdlog::debug("site {} is adding available pages {} to {}",
-          isite->host, next_max_pages, site->host);
-
-      if (add_sites >= max_add_sites) {
-        break;
-      }
-    }
-  }
-  
-  spdlog::info("enable references done {}", isite->host);
-}
-
-void crawler::expand_links(site *isite)
-{
-  spdlog::info("expand links start {}", isite->host);
-
-  std::set<site *> edited;
-
-  for (auto &p: isite->pages) {
-    for (auto &l: p.links) {
-      auto &link_url = isite->urls[l.first];
-      auto host = util::get_host(link_url);
       if (host == "") continue;
       if (host == isite->host) continue;
 
@@ -264,32 +217,63 @@ void crawler::expand_links(site *isite)
         continue;
       }
 
-      site *o_site = find_site(host);
-      if (o_site == NULL) {
-        sites.emplace_back(get_meta_path(host), host, isite->level + 1);
+      auto it = links_map.try_emplace(host);
+      it.first->second.push_back(l.first);
+    }
+  }
 
-        o_site = &sites.back();
-      }
+  spdlog::info("expand {} got {} links", isite->host, links_map.size());
 
-      o_site->find_add_page(link_url, isite->level + 1);
-   
-      edited.insert(o_site);
+  std::list<std::pair<std::string, std::vector<uint32_t>>> links(links_map.begin(), links_map.end());
+
+/*
+  for (auto &s: links_map) {
+    links.emplace_back(s.first, s.second);
+  }
+*/
+
+  links.sort([](auto &a, auto &b) {
+      return a.second.size() > b.second.size();
+    });
+  
+  spdlog::info("expand {} sorted {} linkes", isite->host, links.size());
+
+  size_t add_sites = 0;
+  for (auto &l: links) {
+    auto &host = l.first;
+    auto &host_links = l.second;
+
+    auto o_site = find_site(host);
+    if (o_site == NULL) {
+      o_site = add_site(host, isite->level + 1);
     }
 
-    if (edited.size() > 100) {
-      for (auto e: edited) {
-        e->flush();
-      }
+    size_t with_dups = host_links.size();
 
-      edited.clear();
+    auto it = std::unique(host_links.begin(), host_links.end());
+    host_links.resize(std::distance(host_links.begin(), it));
+
+    spdlog::debug("expand {} adding {} ({} unique) links to {}",
+      isite->host, with_dups, host_links.size(), o_site->host);
+
+    for (auto l: host_links) {
+      auto &link_url = isite->urls[l]; 
+      o_site->find_add_page(link_url, isite->level + 1);
+    }
+
+    o_site->max_pages += next_max_pages;
+    add_sites++;
+
+    if (o_site->pages.size() < 5) {
+      o_site->flush();
+    }
+
+    if (add_sites >= max_add_sites) {
+      break;
     }
   }
   
-  for (auto e: edited) {
-    e->flush();
-  }
-
-  spdlog::info("expand links done {}", isite->host);
+  spdlog::info("expand {} done", isite->host);
 }
 
 void crawler::load_seed(std::vector<std::string> urls)
@@ -306,8 +290,7 @@ void crawler::load_seed(std::vector<std::string> urls)
     auto site = find_site(host);
     if (site == NULL) {
       spdlog::info("seed site {} is new", o);
-      sites.emplace_back(get_meta_path(host), host, 0);
-      site = &sites.back();
+      site = add_site(host, 0);
     }
 
     auto p = site->find_add_page(o, 0);

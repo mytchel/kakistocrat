@@ -133,12 +133,8 @@ public:
         break;
       }
 
-      spdlog::info("checking {} for op", s.host);
-
       auto m_op = s.get_next();
       if (m_op) {
-        spdlog::info("got op for {}", s.host);
-
         auto op = *m_op;
 
         ops.emplace_back(op);

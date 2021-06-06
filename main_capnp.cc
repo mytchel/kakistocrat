@@ -267,10 +267,12 @@ class MasterImpl final: public Master::Server,
           spdlog::warn("crawler {} error checking can crawl, removing", (uintptr_t) &c);
 
           ready_crawlers.remove(&c);
+/*
           crawlers.remove_if(
               [&c] (auto cc) {
                 return &cc == &c;
               });
+              */
         }));
     }
 
@@ -299,7 +301,7 @@ class MasterImpl final: public Master::Server,
       have_changes = false;
     }
 
-    tasks.add(timer.afterDelay(10 * kj::SECONDS).then(
+    tasks.add(timer.afterDelay(60 * kj::SECONDS).then(
           [this] () {
             flush();
           }));
@@ -387,14 +389,18 @@ class MasterImpl final: public Master::Server,
 
           site->reload();
 
-          crawler.expand_links(site);
+          size_t max_add_sites = 0;
+          size_t next_max_pages = 0;
 
           if (site->level + 1 < crawler.levels.size()) {
             auto level = crawler.levels[site->level];
             auto next_level = crawler.levels[site->level + 1];
 
-            crawler.enable_references(site, level.max_add_sites, next_level.max_pages);
+            max_add_sites = level.max_add_sites;
+            next_max_pages = next_level.max_pages;
           }
+          
+          crawler.expand(site, max_add_sites, next_max_pages);
 
           site->last_scanned = time(NULL);
 
@@ -738,6 +744,9 @@ class MasterImpl final: public Master::Server,
     tasks.add(request.send().then(
           [] (auto result) {
             spdlog::info("scoring finished");
+          },
+          [] (auto exception) {
+            spdlog::warn("scoring failed");
           }));
 
     return kj::READY_NOW;

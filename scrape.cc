@@ -86,8 +86,6 @@ site::~site() {
 }
 
 std::string make_path(const std::string &output_dir, const std::string &url) {
-  spdlog::info("make path '{}' '{}'", output_dir, url);
-
   auto host = util::get_host(url);
   if (host.empty()) {
     return "junk_path";
@@ -503,7 +501,6 @@ std::optional<site_op *> site::get_next() {
         spdlog::debug("{} get next robots", host);
         return new site_op_robots(this, buf, buf_max);
       } else {
-        spdlog::debug("{} get next robots out of bufs", host);
         return {};
       }
     }
@@ -520,7 +517,6 @@ std::optional<site_op *> site::get_next() {
       spdlog::debug("{} get next sitemap {}", host, url);
       return new site_op_sitemap(this, buf, buf_max, url);
     } else {
-      spdlog::debug("{} get next sitemap out of bufs", host);
       return {};
     }
   }
@@ -530,15 +526,12 @@ std::optional<site_op *> site::get_next() {
   }
 
   if (url_unchanged.size() + url_scanned.size() + url_scanning.size() >= max_pages) {
-    spdlog::debug("{} over max", host);
     return {};
 
   } else if (url_pending.empty()) {
-    spdlog::debug("{} no pending", host);
     return {};
 
   } else if (should_finish()) {
-    spdlog::debug("{} should finish", host);
     return {};
   }
 
@@ -553,24 +546,20 @@ std::optional<site_op *> site::get_next() {
     return new site_op_page(this, buf, buf_max, page);
 
   } else {
-    spdlog::debug("{} get next page out of bufs", host);
     return {};
   }
 }
 
 bool site::finished() {
   if (!got_robots) {
-    spdlog::debug("{} not finished, no robots", host);
     return false;
   }
 
   if (!sitemap_url_getting.empty() || !sitemap_url_pending.empty()) {
-    spdlog::debug("{} not finished, pending sitemaps", host);
     return false;
   }
 
   if (!url_scanning.empty()) {
-    spdlog::debug("{} has active", host);
     return false;
   }
 

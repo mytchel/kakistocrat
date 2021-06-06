@@ -44,6 +44,7 @@ struct crawler {
   std::vector<crawl_level> levels;
 
   std::list<site> sites;
+  std::unordered_map<std::string, site*> sites_map;
 
   std::vector<std::string> blacklist;
 
@@ -55,6 +56,7 @@ struct crawler {
   {}
 
   site* find_site(const std::string &host);
+  site* add_site(const std::string &host, size_t level);
 
   void load_seed(std::vector<std::string> seed);
 
@@ -67,9 +69,7 @@ struct crawler {
   bool have_next_site();
   site* get_next_site();
 
-  void expand_links(site *isite);
-
-  void enable_references(
+  void expand(
     site *isite,
     size_t max_add_sites,
     size_t next_max_page);

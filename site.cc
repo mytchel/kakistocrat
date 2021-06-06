@@ -25,60 +25,6 @@
 
 #include <capnp/serialize-packed.h>
 
-using nlohmann::json;
-
-void to_json(json &j, const page &p) {
-  j = json{
-      {"u", p.url},
-      {"p", p.path},
-      {"t", p.title},
-      {"aliases", p.aliases},
-      {"links", p.links},
-      {"s", p.last_scanned}};
-}
-
-void from_json(const json &j, page &p) {
-  j.at("u").get_to(p.url);
-  j.at("p").get_to(p.path);
-  j.at("t").get_to(p.title);
-
-  j.at("aliases").get_to(p.aliases);
-  j.at("links").get_to(p.links);
-
-  j.at("s").get_to(p.last_scanned);
-}
-
-void site_map::load_json() {
-  std::ifstream file;
-
-  spdlog::debug("read {}", path);
-
-  file.open(path, std::ios::in);
-
-  if (!file.is_open()) {
-    spdlog::warn("error opening file {}", path);
-    return;
-  }
-
-  spdlog::debug("parse {}", path);
-
-  try {
-    json j = json::parse(file);
-
-    j.at("host").get_to(host);
-    //j.at("last_scanned").get_to(last_scanned);
-    j.at("pages").get_to(pages);
-
-  } catch (const std::exception& e) {
-    spdlog::warn("failed to load {}", path);
-  }
-
-  file.close();
-
-  // So it gets converted.
-  changed = true;
-}
-
 void site_map::load_capnp()
 {
   spdlog::debug("open {}", path);
@@ -120,11 +66,13 @@ void site_map::load_capnp()
   }
  
   close(fd);
-
-  spdlog::debug("read and parsed {}", path);
+  
+  page_count = pages.size();
 }
 
 void site_map::save() {
+  spdlog::info("saving {} with {} urls for {} pages", host, urls.size(), pages.size());
+
   page_count = pages.size();
 
   std::string new_path = path;
@@ -140,8 +88,6 @@ void site_map::save() {
 
   n.setPath(new_path);
   n.setHost(host);
-
-  spdlog::info("saving {} with {} urls for {} pages", host, urls.size(), pages.size());
 
   auto n_urls = n.initUrls(urls.size());
   for (size_t i = 0; i < urls.size(); i++) {
@@ -189,13 +135,10 @@ void site_map::save() {
 void site_map::reload() {
   loaded = true;
 
-  if (util::has_suffix(path, "json")) {
-    load_json();
-  } else {
-    load_capnp();
-  }
+  urls.clear();
+  pages.clear();
 
-  page_count = pages.size();
+  load_capnp();
 }
 
 void site_map::load() {
@@ -236,6 +179,7 @@ page* site_map::find_page_by_path(const std::string &path)
 page* site_map::add_page(const std::string &url, const std::string &path)
 {
   changed = true;
+  page_count++;
   return &pages.emplace_back(url, path);
 }
 

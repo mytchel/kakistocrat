@@ -52,7 +52,7 @@ struct site_map {
 
     if (loaded) {
       loaded = false;
-      spdlog::debug("flush {}", path);
+      spdlog::debug("clear {}", path);
       urls.clear();
       pages.clear();
     }
