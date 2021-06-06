@@ -38,25 +38,32 @@ site::site(
     size_t n_max_connections,
     size_t n_max_part_size,
     size_t n_max_page_size)
-  : m_site(path), output_dir(n_output),
+  : site_map(path), output_dir(n_output),
     max_pages(n_max_pages),
     max_links(n_max_pages * 5),
     max_part_size(n_max_part_size),
     max_page_size(n_max_page_size)
 {
-  m_site.load();
+  load();
 
-  if (m_site.pages.size() >= max_pages) {
+  if (pages.size() >= max_pages) {
     spdlog::warn("scrape site given more pages than max pages");
   }
 
-  for (auto &u: m_site.pages) {
-    if (url_pending.size() == max_pages) {
-      break;
-    }
+  size_t id = 0;
+  for (auto &u: urls) {
+    url_id_map.emplace(u, id++);
+  }
 
+  for (auto &u: pages) {
     url_pending.push_back(&u);
   }
+
+  url_pending.sort([] (auto a, auto b) {
+    return a->url.size() < b->url.size();
+  });
+  
+  // TODO: limit url pending size here
 
   init_paths();
 
@@ -76,32 +83,6 @@ site::~site() {
   for (auto b: free_bufs) {
     free(b);
   }
-}
-
-site::site(site &&o)
-  : m_site(std::move(o.m_site)),
-    output_dir(std::move(o.output_dir)),
-    max_pages(o.max_pages),
-    max_links(o.max_links),
-    max_part_size(o.max_part_size),
-    max_page_size(o.max_page_size),
-    url_pending(std::move(o.url_pending)),
-    url_scanning(std::move(o.url_scanning)),
-    url_scanned(std::move(o.url_scanned)),
-    url_unchanged(std::move(o.url_unchanged)),
-    url_bad(std::move(o.url_bad)),
-    disallow_path(std::move(o.disallow_path)),
-    getting_robots(o.getting_robots),
-    got_robots(o.got_robots),
-    sitemap_url_pending(std::move(o.sitemap_url_pending)),
-    sitemap_url_getting(std::move(o.sitemap_url_getting)),
-    sitemap_url_got(std::move(o.sitemap_url_got)),
-    fail(o.fail),
-    buf_max(o.buf_max),
-    free_bufs(std::move(o.free_bufs)),
-    using_bufs(std::move(o.using_bufs))
-{
-  spdlog::info("scrape::site moved '{}'", m_site.host);
 }
 
 std::string make_path(const std::string &output_dir, const std::string &url) {
@@ -270,10 +251,10 @@ void site::add_disallow(const std::string &path) {
   /*
   // This will break things wont it?
 
-  auto p = m_site.pages.begin();
-  while (p != m_site.pages.end()) {
+  auto p = pages.begin();
+  while (p != pages.end()) {
     if (util::has_prefix(p->url, path)) {
-      p = m_site.pages.erase(p);
+      p = pages.erase(p);
     } else {
       p++;
     }
@@ -328,34 +309,64 @@ void site::process_sitemap_entry(
     u++;
   }
 
-  if (m_site.pages.size() + 1 >= max_pages) {
+  if (pages.size() + 1 >= max_pages) {
     return;
   }
 
-  if (m_site.find_page(url) != nullptr) {
+  if (find_page(url) != nullptr) {
     spdlog::warn("drop sitemap url {} as in pages (url) already", url);
     return;
   }
 
   auto p = make_path(output_dir, url);
 
-  if (m_site.find_page_by_path(p) != nullptr) {
+  if (find_page_by_path(p) != nullptr) {
     spdlog::warn("drop sitemap url {} as in pages (path) already", url);
     return;
   }
 
-  url_pending.push_back(m_site.add_page(url, p));
+  maybe_insert_new_pending(url, p);
 }
 
-bool add_link(page *p, std::string &n) {
+bool site::add_link(page *p, const std::string &n) {
+  auto it = url_id_map.find(n);
+  if (it == url_id_map.end()) {
+    size_t id = urls.size();
+
+    url_id_map.emplace(n, id);
+    urls.emplace_back(n);
+
+    p->links.emplace_back(id, 1);
+    return true;
+  }
+  
+  size_t id = it->second;
+
   for (auto &l: p->links) {
-    if (l.first == n) {
+    if (l.first == id) {
       l.second++;
       return false;
     }
   }
 
-  p->links.emplace_back(n, 1);
+  p->links.emplace_back(id, 1);
+  return true;
+}
+
+bool site::maybe_insert_new_pending(const std::string &u, const std::string &p) {
+  if (url_pending.size() >= max_pages) {
+    if (url_pending.back()->url.size() > u.size()) {
+      url_pending.pop_back();
+    } else {
+      return false;
+    }
+  }
+
+  url_pending.push_back(add_page(u, p));
+  url_pending.sort([] (auto a, auto b) {
+    return a->url.size() < b->url.size();
+  });
+
   return true;
 }
 
@@ -366,10 +377,10 @@ void site::finish(
       std::vector<std::string> &links,
       std::string &title)
 {
-  spdlog::info("{} finished good {}", m_site.host, url->url);
+  spdlog::info("{} finished good {}", host, url->url);
 
   spdlog::debug("{} bad={} uc={} c={} s={} p={} finish {}",
-      m_site.host,
+      host,
       url_bad.size(),
       url_unchanged.size(),
       url_scanned.size(),
@@ -383,26 +394,22 @@ void site::finish(
 
     bool is_new = add_link(url, u);
 
-    if (is_new && u_host == m_site.host && m_site.pages.size() + 1 < max_pages) {
-      if (url_pending.size() > max_pages) {
-        continue;
-      }
-
+    if (is_new && u_host == host && pages.size() + 1 < max_pages) {
       if (disallow_url(u)) {
         continue;
       }
 
-      if (m_site.find_page(u) != nullptr) {
+      if (find_page(u) != nullptr) {
         continue;
       }
 
       auto p = make_path(output_dir, u);
 
-      if (m_site.find_page_by_path(p) != nullptr) {
+      if (find_page_by_path(p) != nullptr) {
         continue;
       }
 
-      url_pending.push_back(m_site.add_page(u, p));
+      maybe_insert_new_pending(u, p);
     }
   }
 
@@ -447,46 +454,22 @@ void site::finish(
 
   url->last_scanned = time(NULL);
 
-  auto it = url_scanning.begin();
-  while (it != url_scanning.end()) {
-    auto u = *it;
-    if (u->url == url->url) {
-      url_scanned.splice(url_scanned.end(), url_scanning, it);
-      break;
-    } else {
-      it++;
-    }
-  }
+  url_scanning.remove(url);
+  url_scanned.push_back(url);
 }
 
 void site::finish_unchanged(page *url) {
-  spdlog::info("{} finished unchanged {}", m_site.host, url->url);
+  spdlog::info("{} finished unchanged {}", host, url->url);
 
-  auto it = url_scanning.begin();
-  while (it != url_scanning.end()) {
-    auto u = *it;
-    if (u->url == url->url) {
-      url_unchanged.splice(url_unchanged.end(), url_scanning, it);
-      break;
-    } else {
-      it++;
-    }
-  }
+  url_scanning.remove(url);
+  url_unchanged.push_back(url);
 }
 
 void site::finish_bad(page *url, bool actually_bad) {
-  spdlog::info("{} finished bad {}", m_site.host, url->url);
+  spdlog::info("{} finished bad {}", host, url->url);
 
-  auto it = url_scanning.begin();
-  while (it != url_scanning.end()) {
-    auto u = *it;
-    if (u->url == url->url) {
-      url_bad.splice(url_bad.end(), url_scanning, it);
-      break;
-    } else {
-      it++;
-    }
-  }
+  url_scanning.remove(url);
+  url_bad.push_back(url);
 
   if (actually_bad) {
     fail++;
@@ -517,10 +500,10 @@ std::optional<site_op *> site::get_next() {
       auto buf = pop_buf();
       if (buf) {
         getting_robots = true;
-        spdlog::debug("{} get next robots", m_site.host);
+        spdlog::debug("{} get next robots", host);
         return new site_op_robots(this, buf, buf_max);
       } else {
-        spdlog::debug("{} get next robots out of bufs", m_site.host);
+        spdlog::debug("{} get next robots out of bufs", host);
         return {};
       }
     }
@@ -534,10 +517,10 @@ std::optional<site_op *> site::get_next() {
       sitemap_url_pending.erase(url);
       sitemap_url_getting.insert(url);
 
-      spdlog::debug("{} get next sitemap {}", m_site.host, url);
+      spdlog::debug("{} get next sitemap {}", host, url);
       return new site_op_sitemap(this, buf, buf_max, url);
     } else {
-      spdlog::debug("{} get next sitemap out of bufs", m_site.host);
+      spdlog::debug("{} get next sitemap out of bufs", host);
       return {};
     }
   }
@@ -547,46 +530,47 @@ std::optional<site_op *> site::get_next() {
   }
 
   if (url_unchanged.size() + url_scanned.size() + url_scanning.size() >= max_pages) {
-    spdlog::debug("{} over max", m_site.host);
+    spdlog::debug("{} over max", host);
     return {};
 
   } else if (url_pending.empty()) {
-    spdlog::debug("{} no pending", m_site.host);
+    spdlog::debug("{} no pending", host);
     return {};
 
   } else if (should_finish()) {
-    spdlog::debug("{} should finish", m_site.host);
+    spdlog::debug("{} should finish", host);
     return {};
   }
 
   auto buf = pop_buf();
   if (buf) {
-    spdlog::debug("{} get next page {}", m_site.host, url_pending.front()->url);
+    auto page = url_pending.front();
+    url_pending.pop_front();
+    url_scanning.push_back(page);
 
-    url_scanning.splice(url_scanning.end(),
-      url_pending, url_pending.begin());
+    spdlog::debug("{} get next page {}", host, page->url);
 
-    return new site_op_page(this, buf, buf_max, url_scanning.back());
+    return new site_op_page(this, buf, buf_max, page);
 
   } else {
-    spdlog::debug("{} get next page out of bufs", m_site.host);
+    spdlog::debug("{} get next page out of bufs", host);
     return {};
   }
 }
 
 bool site::finished() {
   if (!got_robots) {
-    spdlog::debug("{} not finished, no robots", m_site.host);
+    spdlog::debug("{} not finished, no robots", host);
     return false;
   }
 
   if (!sitemap_url_getting.empty() || !sitemap_url_pending.empty()) {
-    spdlog::debug("{} not finished, pending sitemaps", m_site.host);
+    spdlog::debug("{} not finished, pending sitemaps", host);
     return false;
   }
 
   if (!url_scanning.empty()) {
-    spdlog::debug("{} has active", m_site.host);
+    spdlog::debug("{} has active", host);
     return false;
   }
 

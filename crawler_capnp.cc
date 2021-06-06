@@ -118,9 +118,9 @@ public:
       auto &s = (*a)->site;
 
       if (s.finished()) {
-        spdlog::info("finished {}", s.m_site.host);
+        spdlog::info("finished {}", s.host);
 
-        s.m_site.save();
+        s.save();
 
         (*a)->finish();
         a = adaptors.erase(a);
@@ -133,11 +133,11 @@ public:
         break;
       }
 
-      spdlog::info("checking {} for op", s.m_site.host);
+      spdlog::info("checking {} for op", s.host);
 
       auto m_op = s.get_next();
       if (m_op) {
-        spdlog::info("got op for {}", s.m_site.host);
+        spdlog::info("got op for {}", s.host);
 
         auto op = *m_op;
 
@@ -173,7 +173,7 @@ public:
       spdlog::info("crawler all blocked with {} sites", adaptors.size());
 
       for (auto a: adaptors) {
-        spdlog::info("crawling site {} with {} ops", a->site.m_site.host, a->site.using_bufs.size());
+        spdlog::info("crawling site {} with {} ops", a->site.host, a->site.using_bufs.size());
       }
     }
   }
@@ -206,6 +206,7 @@ int main(int argc, char *argv[]) {
   // two way vat
 
   kj::UnixEventPort::captureSignal(SIGINT);
+  kj::UnixEventPort::captureSignal(SIGPIPE);
   auto ioContext = kj::setupAsyncIo();
 
   auto addrPromise = ioContext.provider->getNetwork().parseAddress(bindAddress)

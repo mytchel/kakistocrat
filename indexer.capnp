@@ -1,7 +1,7 @@
 @0xd8ebb90861928a85;
 
 struct Link {
-  url @0 :Text;
+  url @0 :UInt32;
   count @1 :UInt32;
 }
 
@@ -21,7 +21,9 @@ struct Site {
   path @0 :Text;
   host @1 :Text;
 
-  pages @2 :List(Page);
+  urls @2 :List(Text);
+
+  pages @3 :List(Page);
 }
 
 struct ScoreNode {

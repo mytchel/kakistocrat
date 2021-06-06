@@ -12,14 +12,11 @@
 
 namespace crawl {
 
-struct site {
-  site_map m_site;
+struct site : public site_map {
   size_t level;
 
   time_t last_scanned{0};
   size_t max_pages{0};
-
-  size_t page_count{0};
 
   bool scraped{false};
   bool scraping{false};
@@ -27,33 +24,11 @@ struct site {
   bool indexed;
   bool merged;
 
-  void flush() {
-    page_count = m_site.pages.size();
-    m_site.flush();
-  }
-
-  void reload() {
-    m_site.reload();
-  }
-
-  void load() {
-    m_site.load();
-    page_count = m_site.pages.size();
-  }
-
-  void save() {
-    page_count = m_site.pages.size();
-    m_site.save();
-  }
-
   site() {}
 
   site(const std::string &p, const std::string &h, size_t l)
-    : m_site(p, h), level(l)
+    : site_map(p, h), level(l)
   {}
-
-  page* find_page(const std::string &url);
-  page* find_page_by_path(const std::string &path);
 
   page* find_add_page(const std::string &url, size_t level, const std::string &path = "");
 };

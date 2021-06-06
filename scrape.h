@@ -65,15 +65,13 @@ struct site_op_sitemap : public site_op {
   void finish_bad(bool);
 };
 
-struct site {
-  site_map m_site;
-
+struct site : public site_map {
   std::list<page *> url_pending;
   std::list<page *> url_scanning;
 
-  std::list<page *> url_scanned;
-  std::list<page *> url_unchanged;
-  std::list<page *> url_bad;
+  std::vector<page *> url_scanned;
+  std::vector<page *> url_unchanged;
+  std::vector<page *> url_bad;
 
   std::set<std::string> disallow_path;
   bool getting_robots{false};
@@ -82,6 +80,8 @@ struct site {
   std::set<std::string> sitemap_url_pending;
   std::set<std::string> sitemap_url_getting;
   std::set<std::string> sitemap_url_got;
+  
+  std::unordered_map<std::string, size_t> url_id_map;
 
   std::string output_dir;
   size_t max_pages;
@@ -102,7 +102,8 @@ struct site {
       size_t n_max_part_size,
       size_t n_max_page_size);
 
-  site(site &&o);
+  site(site &&o) = default;
+  site(site &o) = delete;
 
   ~site();
 
@@ -143,6 +144,8 @@ struct site {
   void process_sitemap_entry(const std::string &url, std::optional<time_t> lastmod);
   void add_disallow(const std::string &path);
 
+  bool maybe_insert_new_pending(const std::string &u, const std::string &p);
+  bool add_link(page *p, const std::string &n);
   void finish(page *u, std::vector<std::string> &links, std::string &title);
   void finish_unchanged(page *u);
   void finish_bad(page *u, bool actually_bad);

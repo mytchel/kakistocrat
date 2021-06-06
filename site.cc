@@ -86,14 +86,21 @@ void site_map::load_capnp()
   int fd = open(path.c_str(), O_RDONLY);
   if (fd < 0) {
     spdlog::info("failed to open {}", path);
-    throw std::runtime_error("failed to open site");
+    return;
   }
 
-  ::capnp::PackedFdMessageReader message(fd);
+  capnp::ReaderOptions opts;
+  opts.traversalLimitInWords = 128 * 1024 * 1024;
+
+  ::capnp::PackedFdMessageReader message(fd, opts);
 
   Site::Reader reader = message.getRoot<Site>();
 
   host = reader.getHost();
+
+  for (auto url: reader.getUrls()) {
+    urls.emplace_back(url);   
+  }
 
   for (auto page: reader.getPages()) {
     pages.emplace_back(page.getUrl(), page.getPath());
@@ -118,6 +125,8 @@ void site_map::load_capnp()
 }
 
 void site_map::save() {
+  page_count = pages.size();
+
   std::string new_path = path;
 
   if (util::has_suffix(path, "json")) {
@@ -131,6 +140,13 @@ void site_map::save() {
 
   n.setPath(new_path);
   n.setHost(host);
+
+  spdlog::info("saving {} with {} urls for {} pages", host, urls.size(), pages.size());
+
+  auto n_urls = n.initUrls(urls.size());
+  for (size_t i = 0; i < urls.size(); i++) {
+    n_urls.set(i, urls[i]);
+  }
 
   auto n_pages = n.initPages(pages.size());
   size_t i = 0;
@@ -159,8 +175,8 @@ void site_map::save() {
 
   int fd = open(new_path.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0664);
   if (fd < 0) {
-    spdlog::info("failed to open {}", new_path);
-    throw std::runtime_error("failed to open site");
+    spdlog::info("failed to open {} for writing", new_path);
+    throw std::runtime_error("failed to open site for writing");
   }
 
   writePackedMessageToFd(fd, message);
@@ -178,6 +194,8 @@ void site_map::reload() {
   } else {
     load_capnp();
   }
+
+  page_count = pages.size();
 }
 
 void site_map::load() {
@@ -187,6 +205,8 @@ void site_map::load() {
 
 page* site_map::find_page(const std::string &url)
 {
+  load();
+
   for (auto &p: pages) {
     if (p.url == url) {
       return &p;

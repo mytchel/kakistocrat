@@ -39,7 +39,7 @@ site_op_page::site_op_page(site *s, uint8_t *b, size_t max, page *p)
 
 site_op_robots::site_op_robots(site *s, uint8_t *b, size_t max)
   : site_op(s,
-      fmt::format("https://{}/robots.txt", s->m_site.host),
+      fmt::format("https://{}/robots.txt", s->host),
       b, max)
 {}
 
@@ -182,7 +182,7 @@ void site_op_page::finish(const std::string &effective_url)
   spdlog::debug("process page {}", effective_url);
 
   // Sites seem to do this to facebook for some things
-  if (util::get_host(effective_url) != m_site->m_site.host) {
+  if (util::get_host(effective_url) != m_site->host) {
     spdlog::trace("redirected from {} to other site {}",
         m_page->url, effective_url);
 
@@ -276,7 +276,7 @@ void site_op_sitemap::finish(const std::string &effective_url) {
 
       if (strcmp(tag_name, "url") == 0) {
         if (url_loc) {
-          auto url = process_link("https", m_site->m_site.host, "", *url_loc);
+          auto url = process_link("https", m_site->host, "", *url_loc);
           if (url.has_value()) {
             m_site->process_sitemap_entry(*url, url_lastmod);
           }
@@ -323,7 +323,7 @@ void site_op_sitemap::finish(const std::string &effective_url) {
   } while (token != tokenizer::END);
 
   if (url_loc) {
-    auto url = process_link("https", m_site->m_site.host, "", *url_loc);
+    auto url = process_link("https", m_site->host, "", *url_loc);
     if (url.has_value()) {
       m_site->process_sitemap_entry(*url, url_lastmod);
     }

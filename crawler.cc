@@ -32,8 +32,8 @@ namespace crawl {
 
 void to_json(nlohmann::json &j, const site &s)
 {
-  j["path"] = s.m_site.path;
-  j["host"] = s.m_site.host;
+  j["path"] = s.path;
+  j["host"] = s.host;
   j["level"] = s.level;
   j["max_pages"] = s.max_pages;
   j["last_scanned"] = s.last_scanned;
@@ -43,8 +43,8 @@ void to_json(nlohmann::json &j, const site &s)
 
 void from_json(const nlohmann::json &j, site &s)
 {
-  j.at("path").get_to(s.m_site.path);
-  j.at("host").get_to(s.m_site.host);
+  j.at("path").get_to(s.path);
+  j.at("host").get_to(s.host);
   j.at("level").get_to(s.level);
   j.at("max_pages").get_to(s.max_pages);
   j.at("last_scanned").get_to(s.last_scanned);
@@ -118,7 +118,7 @@ void crawler::load()
 site * crawler::find_site(const std::string &host)
 {
   for (auto &i: sites) {
-    if (i.m_site.host == host) {
+    if (i.host == host) {
       return &i;
     }
   }
@@ -149,7 +149,7 @@ static std::string site_path(std::string base_dir, std::string host)
 }
 
 std::string crawler::get_meta_path(const std::string &host) {
-  return fmt::format("{}.json", site_path(site_meta_path, host));
+  return fmt::format("{}.capnp", site_path(site_meta_path, host));
 }
 
 std::string crawler::get_data_path(const std::string &host) {
@@ -171,32 +171,24 @@ bool crawler::check_blacklist(const std::string &host)
   return false;
 }
 
-page* site::find_page(const std::string &url)
-{
-  spdlog::debug("find page {}", url);
-  load();
-
-  return m_site.find_page(url);
-}
-
 page* site::find_add_page(const std::string &url, size_t n_level, const std::string &path)
 {
   load();
 
   if (level > n_level) level = n_level;
 
-  auto p = m_site.find_page(url);
+  auto p = find_page(url);
   if (p != NULL) {
     return p;
   }
 
-  p = m_site.find_page_by_path(path);
+  p = find_page_by_path(path);
   if (p != NULL) {
     return p;
   }
 
   page_count++;
-  return m_site.add_page(url, path);
+  return add_page(url, path);
 }
 
 void crawler::enable_references(
@@ -205,13 +197,16 @@ void crawler::enable_references(
     size_t next_max_pages)
 {
   std::map<std::string, size_t> sites_link_count;
+  
+  spdlog::info("enable references start {}", isite->host);
 
   isite->load();
 
-  for (auto &page: isite->m_site.pages) {
+  for (auto &page: isite->pages) {
     for (auto &l: page.links) {
-      auto host = util::get_host(l.first);
-      if (host == isite->m_site.host) continue;
+      auto &link_url = isite->urls[l.first];
+      auto host = util::get_host(link_url);
+      if (host == isite->host) continue;
 
       auto it = sites_link_count.try_emplace(host, l.second);
       if (!it.second) {
@@ -241,38 +236,29 @@ void crawler::enable_references(
       add_sites++;
 
       spdlog::debug("site {} is adding available pages {} to {}",
-          isite->m_site.host, next_max_pages, site->m_site.host);
+          isite->host, next_max_pages, site->host);
 
       if (add_sites >= max_add_sites) {
         break;
       }
     }
   }
+  
+  spdlog::info("enable references done {}", isite->host);
 }
-
-/*
-static void add_link(page *p, page_id id, size_t count)
-{
-  for (auto &l: p->links) {
-    if (l.first == id) {
-      l.second += count;
-      return;
-    }
-  }
-
-  p->links.emplace_back(id, count);
-}
-*/
 
 void crawler::expand_links(site *isite)
 {
-  spdlog::info("update {} info", isite->m_site.host);
+  spdlog::info("expand links start {}", isite->host);
 
-  for (auto &p: isite->m_site.pages) {
+  std::set<site *> edited;
+
+  for (auto &p: isite->pages) {
     for (auto &l: p.links) {
-      auto host = util::get_host(l.first);
+      auto &link_url = isite->urls[l.first];
+      auto host = util::get_host(link_url);
       if (host == "") continue;
-      if (host == isite->m_site.host) continue;
+      if (host == isite->host) continue;
 
       if (check_blacklist(host)) {
         continue;
@@ -285,9 +271,25 @@ void crawler::expand_links(site *isite)
         o_site = &sites.back();
       }
 
-      o_site->find_add_page(l.first, isite->level + 1);
+      o_site->find_add_page(link_url, isite->level + 1);
+   
+      edited.insert(o_site);
+    }
+
+    if (edited.size() > 100) {
+      for (auto e: edited) {
+        e->flush();
+      }
+
+      edited.clear();
     }
   }
+  
+  for (auto e: edited) {
+    e->flush();
+  }
+
+  spdlog::info("expand links done {}", isite->host);
 }
 
 void crawler::load_seed(std::vector<std::string> urls)

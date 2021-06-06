@@ -163,13 +163,13 @@ public:
       s->indexed = true;
 
       for (auto ss: sites_pending_index) {
-        spdlog::error("add parts with site that is in pending index? {}", s->m_site.host);
+        spdlog::error("add parts with site that is in pending index? {}", s->host);
       }
 
       for (auto &p: index_parts) {
         for (auto ss: p.sites) {
           if (ss == s) {
-            spdlog::error("add parts with site that is in index part {} : {}", p.path, s->m_site.host);
+            spdlog::error("add parts with site that is in index part {} : {}", p.path, s->host);
           }
         }
       }
@@ -366,8 +366,8 @@ class MasterImpl final: public Master::Server,
 
     auto request = proc->crawlRequest();
 
-    request.setSitePath(site->m_site.path);
-    request.setDataPath(crawler.get_data_path(site->m_site.host));
+    request.setSitePath(site->path);
+    request.setDataPath(crawler.get_data_path(site->host));
 
     request.setMaxPages(site->max_pages);
 
@@ -379,11 +379,11 @@ class MasterImpl final: public Master::Server,
 
     site->scraping = true;
 
-    spdlog::info("start crawling {}", site->m_site.host);
+    spdlog::info("start crawling {}", site->host);
 
     tasks.add(request.send().then(
         [this, site, proc] (auto result) {
-          spdlog::info("got response for crawl site {}", site->m_site.host);
+          spdlog::info("got response for crawl site {}", site->host);
 
           site->reload();
 
@@ -398,7 +398,7 @@ class MasterImpl final: public Master::Server,
 
           site->last_scanned = time(NULL);
 
-          size_t page_count = site->m_site.pages.size();
+          size_t page_count = site->pages.size();
           spdlog::debug("saving scraped site with {} pages", page_count);
 
           // Need to write the changes for this site
@@ -425,7 +425,7 @@ class MasterImpl final: public Master::Server,
         },
         [this, site, proc] (auto exception) {
           spdlog::warn("got exception for crawl site {} : {}",
-              site->m_site.host, std::string(exception.getDescription()));
+              site->host, std::string(exception.getDescription()));
 
           site->scraping = false;
 
@@ -588,8 +588,8 @@ class MasterImpl final: public Master::Server,
     auto paths = request.initSitePaths(sites.size());
     size_t i = 0;
     for (auto &s: sites) {
-      paths.set(i++, s->m_site.path);
-      spdlog::info("indexing {} -> {}", s->m_site.path, output);
+      paths.set(i++, s->path);
+      spdlog::info("indexing {} -> {}", s->path, output);
     }
 
     request.setOutputBase(output);
@@ -597,7 +597,7 @@ class MasterImpl final: public Master::Server,
     tasks.add(request.send().then(
         [this, sites(std::move(sites)), output, indexer] (auto result) {
           for (auto &s: sites) {
-            spdlog::info("index finished for {}", s->m_site.path);
+            spdlog::info("index finished for {}", s->path);
           }
 
           std::list<std::string> parts;
@@ -726,7 +726,7 @@ class MasterImpl final: public Master::Server,
     auto paths = request.initSitePaths(sites.size());
 
     for (size_t i = 0; i < sites.size(); i++) {
-      paths.set(i, sites[i]->m_site.path);
+      paths.set(i, sites[i]->path);
     }
     
     auto seed = request.initSeed(initial_seed.size());

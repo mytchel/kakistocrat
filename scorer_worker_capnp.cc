@@ -188,7 +188,8 @@ public:
         links.reserve(p.links.size());
 
         for (auto &l: p.links) {
-          links.emplace_back(urlToId(l.first, true));
+          auto &l_url = site.urls[l.first];
+          links.emplace_back(urlToId(l_url, true));
         }
 
         auto id = urlToId(p.url, true);

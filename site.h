@@ -15,7 +15,7 @@ struct page {
   time_t last_scanned{0};
 
   std::vector<std::string> aliases;
-  std::list<std::pair<std::string, size_t>> links;
+  std::vector<std::pair<size_t, size_t>> links;
 
   page() {}
 
@@ -34,12 +34,17 @@ struct site_map {
   std::string path;
   std::string host;
 
+  size_t page_count{0};
+
+  std::vector<std::string> urls;
   std::list<page> pages;
 
   bool loaded{false};
   bool changed{false};
 
   void flush() {
+    page_count = pages.size();
+
     if (changed) {
       save();
       changed = false;
@@ -47,7 +52,8 @@ struct site_map {
 
     if (loaded) {
       loaded = false;
-      spdlog::debug("clear {}", path);
+      spdlog::debug("flush {}", path);
+      urls.clear();
       pages.clear();
     }
   }
@@ -58,7 +64,9 @@ struct site_map {
   void load();
   void save();
 
-  // For json
+  site_map(site_map &&o) = default;
+  site_map(site_map &o) = delete;
+
   site_map() {}
 
   site_map(const std::string &p)
