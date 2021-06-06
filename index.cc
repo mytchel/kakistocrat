@@ -60,7 +60,7 @@ void indexer::index_site(site_map &site, char *file_buf, size_t file_buf_len) {
 
 	tokenizer::token_type token;
 
-  spdlog::info("process pages for {}", site.host);
+  spdlog::info("process {} pages for {}", site.pages.size(), site.host);
   for (auto &page: site.pages) {
     if (page.last_scanned == 0) {
       spdlog::info("skip unscanned page {}", page.url);

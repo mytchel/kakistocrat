@@ -226,9 +226,7 @@ class MasterImpl final: public Master::Server,
       s.merged = false;
 
       if (s.scraped) {
-        s.load();
         indexer_manager.mark_indexable(&s);
-        s.flush();
       }
     }
 
@@ -584,8 +582,12 @@ class MasterImpl final: public Master::Server,
     mergeNext();
   }
 
+  std::list<std::vector<crawl::site *>> index_ops;
+
   void indexSites(Indexer::Client *indexer, std::vector<crawl::site *> sites) {
     spdlog::info("request index for {} sites", sites.size());
+
+    auto &op = index_ops.emplace_back(sites);
 
     auto request = indexer->indexRequest();
 
@@ -601,8 +603,8 @@ class MasterImpl final: public Master::Server,
     request.setOutputBase(output);
 
     tasks.add(request.send().then(
-        [this, sites(std::move(sites)), output, indexer] (auto result) {
-          for (auto &s: sites) {
+        [this, &op, output, indexer] (auto result) {
+          for (auto &s: op) {
             spdlog::info("index finished for {}", s->path);
           }
 
@@ -613,13 +615,28 @@ class MasterImpl final: public Master::Server,
             parts.emplace_back(p);
           }
 
-          indexer_manager.add_parts(sites, parts);
+          indexer_manager.add_parts(op, parts);
 
+          index_ops.remove_if(
+              [&op] (auto &o) {
+                return &op == &o;
+              });
+ 
           ready_indexers.push_back(indexer);
         },
-        [this, indexer] (auto exception) {
+        [this, &op, indexer] (auto exception) {
           spdlog::warn("got exception while indexing {}", std::string(exception.getDescription()));
           // TODO store sites somehow.
+
+          for (auto &s: op) {
+            spdlog::info("index finished for {}", s->path);
+            indexer_manager.mark_indexable(s);
+          }
+
+          index_ops.remove_if(
+              [&op] (auto &o) {
+                return &op == &o;
+              });
         }));
   }
 

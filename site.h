@@ -43,8 +43,6 @@ struct site_map {
   bool changed{false};
 
   void flush() {
-    page_count = pages.size();
-
     if (changed) {
       save();
       changed = false;

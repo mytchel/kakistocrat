@@ -27,8 +27,6 @@
 
 void site_map::load_capnp()
 {
-  spdlog::debug("open {}", path);
-  
   int fd = open(path.c_str(), O_RDONLY);
   if (fd < 0) {
     spdlog::info("failed to open {}", path);
@@ -68,10 +66,16 @@ void site_map::load_capnp()
   close(fd);
   
   page_count = pages.size();
+  spdlog::debug("loaded {} : {} with {} urls", pages.size(), path, urls.size());
 }
 
 void site_map::save() {
-  spdlog::info("saving {} with {} urls for {} pages", host, urls.size(), pages.size());
+  if (!loaded) {
+    spdlog::warn("saving unloaded {}", path);
+    return;
+  }
+
+  spdlog::info("saving  {} : {} with {} urls", pages.size(), path, urls.size());
 
   page_count = pages.size();
 
