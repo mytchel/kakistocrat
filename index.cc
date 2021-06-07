@@ -26,6 +26,30 @@ using nlohmann::json;
 
 namespace search {
 
+index_type from_str(const std::string &s) {
+  if (s == "words") {
+    return words;
+  } else if (s == "pairs") {
+    return pairs;
+  } else if (s == "trines") {
+    return trines;
+  } else {
+    throw std::runtime_error(fmt::format("bad type: {}", s));
+  }
+}
+
+std::string to_str(index_type type) {
+  if (type == words) {
+    return "words";
+  } else if (type == pairs) {
+    return "pairs";
+  } else if (type == trines) {
+    return "trines";
+  } else {
+    throw std::runtime_error(fmt::format("bad type"));
+  }
+}
+
 static bool word_allow_extra(std::string s)
 {
   if (s.size() > 30) return false;

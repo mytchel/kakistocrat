@@ -24,6 +24,9 @@ std::vector<std::string> get_split_at(size_t parts);
 
 enum index_type{words, pairs, trines};
 
+index_type from_str(const std::string &s);
+std::string to_str(index_type type);
+
 std::list<std::string> load_parts(std::string path);
 void save_parts(std::string path, std::list<std::string>);
 

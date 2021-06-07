@@ -45,7 +45,7 @@ using nlohmann::json;
 struct index_part {
   std::string path;
   std::vector<std::string> sites;
-  bool merged;
+  bool merged{false};
 
   index_part() = default;
 
@@ -413,33 +413,6 @@ class MasterImpl final: public Master::Server,
           }));
   }
 
-  void checkMerge() {
-    if (!merge_parts_pending.empty() || !merge_parts_merging.empty()) {
-      spdlog::debug("merge in progress");
-      return;
-    }
-
-    if (indexer_manager.need_index()) {
-      spdlog::debug("need index");
-      return;
-    }
-
-    if (!indexer_manager.need_merge()) {
-      spdlog::debug("do not need merge");
-      return;
-    }
-
-    if (time(NULL) < last_merge + settings.merger.frequency_minutes * 60) {
-      spdlog::debug("last merge too recent");
-      return;
-    }
-
-    last_merge = time(NULL);
-
-    spdlog::info("starting merge");
-    startMerging();
-  }
-
   void crawlNext() {
     if (ready_crawlers.empty()) {
       return;
@@ -595,10 +568,12 @@ class MasterImpl final: public Master::Server,
 
     auto request = merger->mergeRequest();
 
-    request.setStart(p.first);
+    request.setType(search::to_str(p.type));
 
-    if (p.second) {
-      request.setEnd(*p.second);
+    request.setStart(p.start);
+
+    if (p.end) {
+      request.setEnd(*p.end);
     }
 
     auto paths = request.initIndexPartPaths(index_parts_merging.size());
@@ -610,21 +585,26 @@ class MasterImpl final: public Master::Server,
 
     util::make_path(settings.merger.parts_path);
 
-    auto w_p = fmt::format("{}/index.words.{}.dat", settings.merger.parts_path, p.first);
-    auto p_p = fmt::format("{}/index.pairs.{}.dat", settings.merger.parts_path, p.first);
-    auto t_p = fmt::format("{}/index.trines.{}.dat", settings.merger.parts_path, p.first);
+    auto out = fmt::format("{}/index.{}.{}.dat",
+      settings.merger.parts_path, search::to_str(p.type), p.start);
 
-    request.setWOut(w_p);
-    request.setPOut(p_p);
-    request.setTOut(t_p);
+    request.setOut(out);
 
     tasks.add(request.send().then(
-        [this, p, merger, w_p, p_p, t_p] (auto result) {
-          spdlog::info("finished merging part {}", p.first);
+        [this, p, merger, out] (auto result) {
+          spdlog::info("finished merging part {} {}", p.type, p.start);
 
-          merge_out_w.emplace_back(w_p, p.first, p.second);
-          merge_out_p.emplace_back(p_p, p.first, p.second);
-          merge_out_t.emplace_back(t_p, p.first, p.second);
+          switch (p.type) {
+            case search::index_type::words:
+              merge_out_w.emplace_back(out, p.start, p.end);
+              break;
+            case search::index_type::pairs:
+              merge_out_p.emplace_back(out, p.start, p.end);
+              break;
+            case search::index_type::trines:
+              merge_out_t.emplace_back(out, p.start, p.end);
+              break;
+          }
 
           merge_parts_merging.remove(p);
 
@@ -634,7 +614,7 @@ class MasterImpl final: public Master::Server,
         },
         [this, p] (auto exception) {
           spdlog::warn("got exception for merge part {} : {}",
-              p.first, std::string(exception.getDescription()));
+              p.start, std::string(exception.getDescription()));
 
           merge_parts_merging.remove(p);
           merge_parts_pending.push_back(p);
@@ -662,7 +642,10 @@ class MasterImpl final: public Master::Server,
         end = *(start + 1);
       }
 
-      merge_parts_pending.emplace_back(*start, end);
+      merge_parts_pending.emplace_back(search::index_type::words, *start, end);
+      merge_parts_pending.emplace_back(search::index_type::pairs, *start, end);
+      merge_parts_pending.emplace_back(search::index_type::trines, *start, end);
+
       start++;
     }
 
@@ -671,7 +654,37 @@ class MasterImpl final: public Master::Server,
     mergeNext();
   }
 
-  std::list<std::vector<std::string>> index_ops;
+  void checkMerge() {
+    if (!merge_parts_pending.empty() || !merge_parts_merging.empty()) {
+      spdlog::debug("merge in progress");
+      return;
+    }
+
+    if (indexer_manager.index_active()) {
+      spdlog::debug("index in progress");
+      return;
+    }
+    
+    if (indexer_manager.need_index()) {
+      spdlog::debug("need index");
+      return;
+    }
+
+    if (!indexer_manager.need_merge()) {
+      spdlog::debug("do not need merge");
+      return;
+    }
+
+    if (time(NULL) < last_merge + settings.merger.frequency_minutes * 60) {
+      spdlog::debug("last merge too recent");
+      return;
+    }
+
+    last_merge = time(NULL);
+
+    spdlog::info("starting merge");
+    startMerging();
+  }
 
   void indexSites(Indexer::Client *indexer, const std::vector<std::string> &sites) {
     spdlog::info("request index for {} sites", sites.size());
@@ -719,7 +732,6 @@ class MasterImpl final: public Master::Server,
         },
         [this, &op, indexer] (auto exception) {
           spdlog::warn("got exception while indexing {}", std::string(exception.getDescription()));
-          // TODO store sites somehow.
 
           for (auto &s: op) {
             spdlog::info("index finished for {}", s);
@@ -739,7 +751,7 @@ class MasterImpl final: public Master::Server,
             indexNext();
           }));
 
-    if (!indexer_manager.need_index()) {
+    if (!indexer_manager.need_index() && !indexer_manager.index_active()) {
       checkMerge();
       return;
     }
@@ -967,6 +979,8 @@ class MasterImpl final: public Master::Server,
 
   index_manager indexer_manager;
 
+  std::list<std::vector<std::string>> index_ops;
+
   std::list<Indexer::Client> indexers;
   std::list<Indexer::Client *> ready_indexers;
 
@@ -977,8 +991,24 @@ class MasterImpl final: public Master::Server,
 
   std::vector<std::string> index_parts_merging;
 
-  std::list<std::pair<std::string, std::optional<std::string>>> merge_parts_pending;
-  std::list<std::pair<std::string, std::optional<std::string>>> merge_parts_merging;
+  struct merge_part {
+    search::index_type type;
+    std::string start;
+    std::optional<std::string> end;
+
+    merge_part(search::index_type t, const std::string &s, 
+               const std::optional<std::string> &e)
+      : type(t), start(s), end(e) {}
+
+    inline bool operator==(const merge_part &a)
+    {
+      return std::tie(a.type, a.start, a.end)
+        == std::tie(type, start, end);
+    }
+  };
+
+  std::list<merge_part> merge_parts_pending;
+  std::list<merge_part> merge_parts_merging;
 
   std::vector<search::index_part_info> merge_out_w, merge_out_p, merge_out_t;
 

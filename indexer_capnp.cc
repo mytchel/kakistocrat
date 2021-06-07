@@ -106,7 +106,9 @@ public:
       spdlog::info("done  {}", site.host);
     }
 
-    indexer.flush();
+    auto &o = outputs.back();
+    auto path = indexer.flush();
+    o.path = path;
 
     auto resultOutputs = context.getResults().initOutputs(outputs.size());
 

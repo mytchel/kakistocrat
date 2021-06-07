@@ -74,9 +74,9 @@ interface Indexer {
 }
 
 interface Merger {
-    merge @0 (start :Text, end :Text,
+    merge @0 (start :Text, end :Text, type :Text,
               indexPartPaths :List(Text),
-              wOut :Text, pOut :Text, tOut :Text);
+              out :Text);
 }
 
 interface Scorer {

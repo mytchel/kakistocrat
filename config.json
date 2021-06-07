@@ -14,12 +14,12 @@
         "max_page_size_mb": 1,
         "levels": [ { "p": 1000, "s": 1000 }, { "p": 100, "s": 50 }, { "p": 1, "s": 0 } ]
     },
-    "index_parts": 50,
+    "index_parts": 100,
     "index_meta_path": "out/index_meta.json",
     "indexer": {
         "n_threads": 3,
-        "thread_max_mem_mb": 600,
-        "max_index_part_size_mb": 20,
+        "thread_max_mem_mb": 800,
+        "max_index_part_size_mb": 50,
         "htcap": 18,
         "pages_per_part": 100000,
         "parts_path": "out/index_parts/",
@@ -27,7 +27,7 @@
     },
     "merger": {
         "n_threads": 3,
-        "max_index_part_size_mb": 500,
+        "max_index_part_size_mb": 300,
         "frequency_minutes": 1,
         "htcap": 18,
         "parts_path": "out/index_merged/",

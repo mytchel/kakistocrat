@@ -63,6 +63,10 @@ public:
 
     auto params = context.getParams();
 
+    std::string str_type = params.getType();
+
+    search::index_type index_type = search::from_str(str_type);
+
     std::string start = params.getStart();
     std::optional<std::string> end;
     if (params.hasEnd()) {
@@ -75,15 +79,11 @@ public:
       part_paths.emplace_back(p);
     }
 
-    std::string w_p = params.getWOut();
-    std::string p_p = params.getPOut();
-    std::string t_p = params.getTOut();
+    std::string out_path = params.getOut();
 
     size_t htcap = settings.merger.htcap;
 
-    search::index_part out_word(w_p, htcap, start, end);
-    search::index_part out_pair(p_p, htcap, start, end);
-    search::index_part out_trine(t_p, htcap, start, end);
+    search::index_part out(out_path, htcap, start, end);
 
     for (auto &index_path: part_paths) {
       spdlog::info("load {} for merging", index_path);
@@ -91,41 +91,40 @@ public:
       search::index_info index(index_path);
       index.load();
 
-      spdlog::info("index {} word part usage {} kb", start, out_word.usage() / 1024);
-      spdlog::info("index {} pair part usage {} kb", start, out_pair.usage() / 1024);
-      spdlog::info("index {} trine part usage {} kb", start, out_trine.usage() / 1024);
+      spdlog::info("index {} usage {} kb", start, out.usage() / 1024);
 
-      for (auto &p: index.word_parts) {
+      std::vector<search::index_part_info> *parts;
+
+      switch (index_type) {
+        case search::index_type::words:
+          parts = &index.word_parts;
+          break;
+        case search::index_type::pairs:
+          parts = &index.pair_parts;
+          break;
+
+        case search::index_type::trines:
+          parts = &index.trine_parts;
+          break;
+
+        default:
+          continue;
+      }
+
+      for (auto &p: *parts) {
         if ((!end || p.start < *end) && (!p.end || start < *p.end)) {
           search::index_part in(p.path, htcap, p.start, p.end);
           in.load();
 
-          out_word.merge(in);
+          spdlog::info("merge {}", p.path);
+          out.merge(in);
         }
       }
 
-      for (auto &p: index.pair_parts) {
-        if ((!end || p.start < *end) && (!p.end || start < *p.end)) {
-          search::index_part in(p.path, htcap,  p.start, p.end);
-          in.load();
-
-          out_pair.merge(in);
-        }
-      }
-
-      for (auto &p: index.trine_parts) {
-        if ((!end || p.start < *end) && (!p.end || start < *p.end)) {
-          search::index_part in(p.path, htcap,  p.start, p.end);
-          in.load();
-
-          out_trine.merge(in);
-        }
-      }
+      spdlog::info("finished merging {}", index_path);
     }
 
-    out_word.save(buf, buf_len);
-    out_pair.save(buf, buf_len);
-    out_trine.save(buf, buf_len);
+    out.save(buf, buf_len);
 
     return kj::READY_NOW;
   }
