@@ -342,6 +342,8 @@ std::pair<key, posting> * index_part::find(std::string ss)
 void index_part::merge(index_part &other)
 {
   size_t added = 0;
+  size_t skipped = 0;
+  size_t total_keys = 0;
 
   size_t key_buf_size = 1024 * 1024;
 
@@ -354,15 +356,17 @@ void index_part::merge(index_part &other)
 
   auto o_it = other.stores[0].begin();
   while (o_it != other.stores[0].end()) {
+    total_keys++;
+
     if (o_it->first < start) {
       o_it++;
-      spdlog::info("skip");
+      skipped++;
       continue;
     }
 
     if (end && o_it->first >= *end) {
       o_it++;
-      spdlog::info("skip");
+      skipped++;
       continue;
     }
 
@@ -413,6 +417,10 @@ void index_part::merge(index_part &other)
     }
 
     o_it++;
+  }
+
+  if (skipped > 0) {
+    spdlog::info("merge skipped {} / {} keys", skipped, total_keys);
   }
 }
 

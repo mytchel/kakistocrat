@@ -42,6 +42,7 @@ add_executable(main_capnp main_capnp.cc
 
     capnp_server.cc
 
+    index_manager.cc
     crawler.cc
 
     index.cc
