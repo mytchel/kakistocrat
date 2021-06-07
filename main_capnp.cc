@@ -566,6 +566,9 @@ class MasterImpl final: public Master::Server,
     auto merger = ready_mergers.front();
     ready_mergers.pop_front();
 
+    spdlog::info("start merging part {} {}",
+            search::to_str(p.type), p.start);
+
     auto request = merger->mergeRequest();
 
     request.setType(search::to_str(p.type));
@@ -592,7 +595,8 @@ class MasterImpl final: public Master::Server,
 
     tasks.add(request.send().then(
         [this, p, merger, out] (auto result) {
-          spdlog::info("finished merging part {} {}", p.type, p.start);
+          spdlog::info("finished merging part {} {}",
+            search::to_str(p.type), p.start);
 
           switch (p.type) {
             case search::index_type::words:
