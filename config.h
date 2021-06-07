@@ -36,6 +36,7 @@ struct config {
   } crawler;
 
   size_t index_parts;
+  std::string index_meta_path;
 
   struct {
     std::optional<size_t> n_threads;

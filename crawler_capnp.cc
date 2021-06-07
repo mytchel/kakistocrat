@@ -169,7 +169,11 @@ public:
       spdlog::info("crawler all blocked with {} sites", adaptors.size());
 
       for (auto a: adaptors) {
-        spdlog::info("crawling site {} with {} ops", a->site.host, a->site.using_bufs.size());
+        spdlog::info("crawling {}:{}/{} : {} with {} ops",
+            a->site.url_pending.size(),
+            a->site.url_scanned.size(),
+            a->site.max_pages,
+            a->site.host, a->site.using_bufs.size());
       }
     }
   }

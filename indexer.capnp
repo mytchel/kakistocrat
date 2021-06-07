@@ -26,6 +26,11 @@ struct Site {
   pages @3 :List(Page);
 }
 
+struct IndexPart {
+  path @0 :Text;
+  sites @1 :List(Text);
+}
+
 struct ScoreNode {
   url @0 :Text;
   counter @1 :UInt32;
@@ -65,7 +70,7 @@ interface Crawler {
 }
 
 interface Indexer {
-    index @0 (sitePaths :List(Text), outputBase :Text) -> (outputPaths :List(Text));
+    index @0 (sitePaths :List(Text), outputBase :Text) -> (outputs :List(IndexPart));
 }
 
 interface Merger {

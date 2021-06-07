@@ -59,9 +59,10 @@ config default_config() {
   c.merger.htcap = 1 << 16;
 
   c.merger.parts_path = "out/index_merged/";
-  c.merger.meta_path = "out/index.json";
+  c.merger.meta_path = "out/merged.json";
 
   c.index_parts = 30;
+  c.index_meta_path = "out/index_meta.json";
 
   c.scores_path = "out/scores.json";
 
@@ -110,6 +111,7 @@ config read_config(std::string path) {
   j.at("crawler").at("levels").get_to(c.crawler.levels);
 
   j.at("index_parts").get_to(c.index_parts);
+  j.at("index_meta_path").get_to(c.index_meta_path);
 
   if (!j.at("indexer").at("n_threads").is_null()) {
     size_t t;

@@ -21,9 +21,6 @@ struct site : public site_map {
   bool scraped{false};
   bool scraping{false};
 
-  bool indexed;
-  bool merged;
-
   site() {}
 
   site(const std::string &p, const std::string &h, size_t l)
@@ -44,7 +41,8 @@ struct crawler {
   std::vector<crawl_level> levels;
 
   std::list<site> sites;
-  std::unordered_map<std::string, site*> sites_map;
+  std::unordered_map<std::string, site*> sites_host_map;
+  std::unordered_map<std::string, site*> sites_path_map;
 
   std::vector<std::string> blacklist;
 
@@ -56,6 +54,7 @@ struct crawler {
   {}
 
   site* find_site(const std::string &host);
+  site* find_site_by_path(const std::string &path);
   site* add_site(const std::string &host, size_t level);
 
   void load_seed(std::vector<std::string> seed);

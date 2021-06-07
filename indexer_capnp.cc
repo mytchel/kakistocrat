@@ -54,10 +54,6 @@ public:
           - settings.crawler.max_page_size,
         settings.indexer.max_index_part_size)
   {
-    indexer.on_flush = [this](const std::string &path) {
-      output_paths.push_back(path);
-    };
-
     file_buf_len = settings.crawler.max_page_size;
     file_buf = (char *) malloc(file_buf_len);
     if (file_buf == NULL) {
@@ -74,6 +70,14 @@ public:
   kj::Promise<void> index(IndexContext context) override {
     spdlog::info("got index request");
 
+    struct output {
+      std::string path;
+      std::vector<std::string> sites;
+    };
+  
+    std::list<output> outputs;
+    outputs.emplace_back();
+
     std::string output_path = context.getParams().getOutputBase();
 
     indexer.base_path = fmt::format("{}/", output_path);
@@ -89,21 +93,36 @@ public:
       spdlog::info("index {}", site.host);
       indexer.index_site(site, file_buf, file_buf_len);
 
+      auto &o = outputs.back();
+      o.sites.emplace_back(path);
+
+      if (indexer.usage() > indexer.max_usage) {
+        auto path = indexer.flush();
+
+        o.path = path;
+        outputs.emplace_back();
+      }
+
       spdlog::info("done  {}", site.host);
     }
 
     indexer.flush();
 
-    auto paths = context.getResults().initOutputPaths(output_paths.size());
+    auto resultOutputs = context.getResults().initOutputs(outputs.size());
 
     size_t i = 0;
-    for (auto &p: output_paths) {
-      paths.set(i++, p);
+    for (auto &o: outputs) {
+      auto r = resultOutputs[i++];
+
+      r.setPath(o.path);
+
+      auto s = r.initSites(o.sites.size());
+      for (size_t j = 0; j < o.sites.size(); j++) {
+        s.set(j, o.sites[j]);
+      }
     }
 
     indexer.reset();
-
-    output_paths.clear();
 
     return kj::READY_NOW;
   }
@@ -113,8 +132,6 @@ public:
 
   size_t file_buf_len;
   char *file_buf;
-
-  std::list<std::string> output_paths;
 };
 
 int main(int argc, char *argv[]) {

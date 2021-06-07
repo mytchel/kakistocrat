@@ -38,8 +38,6 @@ void to_json(nlohmann::json &j, const site &s)
   j["max_pages"] = s.max_pages;
   j["page_count"] = s.page_count;
   j["last_scanned"] = s.last_scanned;
-  j["indexed"] = s.indexed;
-  j["merged"] = s.merged;
 }
 
 void from_json(const nlohmann::json &j, site &s)
@@ -49,8 +47,6 @@ void from_json(const nlohmann::json &j, site &s)
   j.at("level").get_to(s.level);
   j.at("max_pages").get_to(s.max_pages);
   j.at("last_scanned").get_to(s.last_scanned);
-  j.at("indexed").get_to(s.indexed);
-  j.at("merged").get_to(s.merged);
 
   s.page_count = j.value("page_count", 0);
 
@@ -106,7 +102,8 @@ void crawler::load()
   file.close();
 
   for (auto &site: sites) {
-    sites_map.emplace(site.host, &site);
+    sites_host_map.emplace(site.host, &site);
+    sites_path_map.emplace(site.path, &site);
   }
 
   spdlog::debug("load {} finished", sites_path);
@@ -114,8 +111,18 @@ void crawler::load()
 
 site* crawler::find_site(const std::string &host)
 {
-  auto it = sites_map.find(host);
-  if (it == sites_map.end()) {
+  auto it = sites_host_map.find(host);
+  if (it == sites_host_map.end()) {
+    return nullptr;
+  }
+
+  return it->second;
+}
+
+site* crawler::find_site_by_path(const std::string &path)
+{
+  auto it = sites_path_map.find(path);
+  if (it == sites_path_map.end()) {
     return nullptr;
   }
 
@@ -126,7 +133,8 @@ site* crawler::add_site(const std::string &host, size_t level)
 {
   auto &site = sites.emplace_back(get_meta_path(host), host, level);
 
-  sites_map.emplace(host, &site);
+  sites_host_map.emplace(site.host, &site);
+  sites_path_map.emplace(site.path, &site);
 
   return &site;
 }

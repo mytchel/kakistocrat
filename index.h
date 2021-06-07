@@ -293,7 +293,6 @@ struct indexer {
   std::string save();
 
   size_t flush_count{0};
-  std::function<void(const std::string &)> on_flush;
 
   void clear() {
     pages.clear();
@@ -308,7 +307,7 @@ struct indexer {
     flush_count = 0;
   }
 
-  void flush() {
+  std::string flush() {
     spdlog::info("flushing {}", base_path);
 
     word_t.print_usage(fmt::format("{} words  ", base_path));
@@ -321,9 +320,7 @@ struct indexer {
 
     flush_count++;
 
-    if (on_flush) {
-      on_flush(path);
-    }
+    return path;
   }
 
   size_t usage() {
@@ -331,14 +328,6 @@ struct indexer {
          + pair_t.usage()
          + trine_t.usage()
          + pages.size() * (16);
-  }
-
-  void check_usage() {
-    if (usage() > max_usage) {
-      spdlog::info("indexer using {}", usage());
-
-      flush();
-    }
   }
 
   void index_site(site_map &site, char *file_buf, size_t file_buf_len);

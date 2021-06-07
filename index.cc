@@ -86,8 +86,6 @@ void indexer::index_site(site_map &site, char *file_buf, size_t file_buf_len) {
     spdlog::debug("process page {} : {} kb : {}",
       index_id, len / 1024, page.url);
 
-    check_usage();
-
     tokenizer::tokenizer tok(file_buf, len);
 
     bool in_head = false, in_title = false;
