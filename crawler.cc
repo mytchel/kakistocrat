@@ -67,7 +67,7 @@ void crawler::save()
 
   if (!file.is_open()) {
     spdlog::warn("error opening file {}", sites_path);
-    return;
+    throw std::runtime_error(fmt::format("error opening file {}", sites_path));
   }
 
   file << j;

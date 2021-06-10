@@ -42,7 +42,7 @@ struct config {
     std::optional<size_t> n_threads;
     size_t thread_max_mem;
     size_t max_index_part_size;
-    size_t pages_per_part;
+    size_t sites_per_part;
 
     size_t htcap;
 

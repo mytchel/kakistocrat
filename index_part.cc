@@ -95,7 +95,7 @@ std::pair<size_t, size_t> save_postings_to_buf(
   for (auto p = start; p != end; p++) {
     if (offset + p->first.size() + p->second.size() >= buffer_len) {
       spdlog::warn("buffer too small to save");
-      return std::make_pair(offset, 0);
+      throw std::runtime_error("index part buffer too small for postings");
     }
 
     memcpy(buffer + offset, p->first.data(), p->first.size());
@@ -118,7 +118,7 @@ std::pair<size_t, size_t> save_pages_to_buf(
 
   if (offsets_size + sizeof(uint32_t) >= buffer_len) {
     spdlog::warn("buffer too small to save");
-    return std::make_pair(0, 0);
+    throw std::runtime_error("index part buffer too small for pages");
   }
 
   uint8_t *data = buffer + sizeof(uint32_t) + offsets_size;
@@ -129,7 +129,7 @@ std::pair<size_t, size_t> save_pages_to_buf(
   for (auto p: pages) {
     if (offsets_size + offset + p.size() >= buffer_len) {
       spdlog::warn("buffer too small to save");
-      return std::make_pair(0, 0);
+      throw std::runtime_error("index part buffer too small for pages");
     }
 
     offsets[index++] = offset;

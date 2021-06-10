@@ -378,8 +378,6 @@ int main(int argc, char *argv[]) {
     spdlog::info("waiting for register");
     r.wait(ioContext.waitScope);
 
-
-
     spdlog::info("waiting for sigint");
     ioContext.unixEventPort.onSignal(SIGINT).wait(ioContext.waitScope);
   }

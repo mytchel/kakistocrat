@@ -39,6 +39,31 @@ void from_json(const nlohmann::json &j, index_part &p)
   p.merged = j.at("merged");
 }
 
+void to_json(nlohmann::json &j, const merge_part &p)
+{
+  j["type"] = search::to_str(p.type);
+  j["start"] = p.start;
+
+  if (p.end) {
+    j["end"] = *p.end;
+  } else {
+    j["end"] = "";
+  }
+}
+
+void from_json(const nlohmann::json &j, merge_part &p)
+{
+  p.type = search::from_str(j.at("type"));
+  j.at("start").get_to(p.start);
+
+  std::string end = j.at("end");
+  if (end != "") {
+    p.end = end;
+  } else {
+    p.end = {};
+  }
+}
+
 void index_manager::load() {
   spdlog::debug("load {}", path);
 
@@ -58,34 +83,72 @@ void index_manager::load() {
     j.at("parts").get_to(index_parts);
     j.at("next_part_id").get_to(next_part_id);
 
-    std::vector<std::string> sites;
+    j.at("sites_pending_index").get_to(sites_pending_index);
 
-    sites.reserve(sites_pending_index.size() + sites_indexing.size());
+    try {
+      j.at("index_parts_merging").get_to(index_parts_merging);
+      j.at("merge_parts_pending").get_to(merge_parts_pending);
+      
+      j.at("merge_out_w").get_to(merge_out_w);
+      j.at("merge_out_p").get_to(merge_out_p);
+      j.at("merge_out_t").get_to(merge_out_t);
 
-    sites.insert(sites.end(),
-          sites_pending_index.begin(), 
-          sites_pending_index.end());
+    } catch (const std::exception &e) {
+      spdlog::warn("failed to parse new stuff {}", path);
 
-    sites.insert(sites.end(),
-          sites_indexing.begin(), 
-          sites_indexing.end());
+      for (auto &p: index_parts) {
+        for (auto &s: p.sites) {
+          sites_pending_index.emplace(s);
+        }
+      }
 
-    j.at("sites_pending_index").get_to(sites);
+      index_parts.clear();
+    }
+
+    for (auto &m: merge_parts_pending) {
+      m.index_parts = &index_parts_merging;
+    }
 
   } catch (const std::exception &e) {
-    spdlog::warn("failed ot load {}", path);
+    spdlog::warn("failed to load {}", path);
   }
 
   file.close();
 }
 
 void index_manager::save() {
+  if (!have_changes) {
+    return;
+  }
+
   spdlog::debug("save {}", path);
+
+  std::vector<std::string> sites;
+
+  sites.reserve(sites_pending_index.size() + sites_indexing.size());
+
+  sites.insert(sites.end(),
+        sites_pending_index.begin(), 
+        sites_pending_index.end());
+
+  sites.insert(sites.end(),
+        sites_indexing.begin(), 
+        sites_indexing.end());
+
+  std::vector<merge_part> merge_parts;
+
+  merge_parts.insert(merge_parts.end(), merge_parts_pending.begin(), merge_parts_pending.end());
+  merge_parts.insert(merge_parts.end(), merge_parts_merging.begin(), merge_parts_merging.end());
 
   json j = {
     { "parts", index_parts },
     { "next_part_id", next_part_id },
-    { "sites_pending_index", sites_pending_index },
+    { "sites_pending_index", sites },
+    { "merge_parts_pending", merge_parts },
+    { "index_parts_merging", index_parts_merging },
+    { "merge_out_w", merge_out_w },
+    { "merge_out_p", merge_out_p },
+    { "merge_out_t", merge_out_t },
   };
 
   std::ofstream file;
@@ -94,7 +157,7 @@ void index_manager::save() {
 
   if (!file.is_open()) {
     spdlog::warn("error opening file {}", path);
-    return;
+    throw std::runtime_error(fmt::format("error writing to file {}", path));
   }
 
   file << j;
@@ -104,30 +167,14 @@ void index_manager::save() {
   have_changes = false;
 }
 
-std::vector<std::string> index_manager::get_parts_for_merge() {
-  std::vector<std::string> parts;
-
-  parts.reserve(index_parts.size());
-
-  for (auto &p: index_parts) {
-    parts.emplace_back(p.path);
-  }
-
-  return parts;
-}
-
-void index_manager::mark_merged(const std::vector<std::string> &parts) {
-  for (auto &p: parts) {
-    auto pp = find_part(p);
-    if (pp == nullptr) {
-      spdlog::error("merged unknown part {}", p);
-      continue;
+void index_manager::add_indexable(const std::string &path) {
+  for (auto s: sites_pending_index) {
+    if (s == path) {
+      return;
     }
-
-    pp->merged = true;
   }
-  
-  have_changes = true;
+
+  sites_pending_index.emplace(path);
 }
 
 void index_manager::mark_indexable(const std::string &site_path) {
@@ -143,16 +190,26 @@ void index_manager::mark_indexable(const std::string &site_path) {
 }
 
 std::vector<std::string> index_manager::get_sites_for_index(bool flush) {
-  if (!flush && sites_pending_index.size() * 100 < min_pages) {
+  spdlog::info("get sites for index");
+
+  if (!flush && sites_pending_index.size() < sites_per_part) {
     spdlog::debug("waiting on more sites, have {} sites", sites_pending_index.size());
     return {};
   }
   
-  std::vector<std::string> sites(sites_pending_index.begin(), sites_pending_index.end());
+  std::vector<std::string> sites;
 
-  sites_indexing.insert(sites_pending_index.begin(), sites_pending_index.end());
+  auto it = sites_pending_index.begin();
+  while (it != sites_pending_index.end()) {
+    sites.emplace_back(*it);
+    it = sites_pending_index.erase(it);
 
-  sites_pending_index.clear();
+    if (sites.size() > sites_per_part * 3) {
+      break;
+    }
+  }
+
+  sites_indexing.insert(sites.begin(), sites.end());
 
   have_changes = true;
 
@@ -186,14 +243,118 @@ void index_manager::add_part(const std::string &path, const std::vector<std::str
   have_changes = true;
 }
 
-void index_manager::add_indexable(const std::string &path) {
-  for (auto s: sites_pending_index) {
-    if (s == path) {
-      return;
+void index_manager::start_merge() {
+  assert(index_parts_merging.empty());
+
+  index_parts_merging.clear();
+  for (auto &part: index_parts) {
+    index_parts_merging.emplace_back(part.path);
+  }
+
+  auto s = search::get_split_at(index_splits);
+
+  auto start = s.begin();
+  while (start != s.end()) {
+    std::optional<std::string> end;
+    if (start + 1 != s.end()) {
+      end = *(start + 1);
+    }
+
+    merge_parts_pending.emplace_back(index_parts_merging,
+        search::index_type::words, *start, end);
+    merge_parts_pending.emplace_back(index_parts_merging,
+        search::index_type::pairs, *start, end);
+    merge_parts_pending.emplace_back(index_parts_merging,
+        search::index_type::trines, *start, end);
+
+    start++;
+  }
+  
+  have_changes = true;
+}
+
+merge_part& index_manager::get_merge_part() {
+  assert(!merge_parts_pending.empty());
+
+  auto m = merge_parts_pending.front();
+  merge_parts_pending.pop_front();
+
+  have_changes = true;
+
+  return merge_parts_merging.emplace_back(m);
+}
+
+void index_manager::merge_part_done(merge_part &m, const std::string &output, bool ok) {
+  assert(!merge_parts_merging.empty());
+
+  if (ok) {
+    switch (m.type) {
+      case search::index_type::words:
+        merge_out_w.emplace_back(output, m.start, m.end);
+        break;
+      case search::index_type::pairs:
+        merge_out_p.emplace_back(output, m.start, m.end);
+        break;
+      case search::index_type::trines:
+        merge_out_t.emplace_back(output, m.start, m.end);
+        break;
+    }
+
+  } else {
+    merge_parts_pending.emplace_back(m);
+  }
+
+  merge_parts_merging.remove_if(
+    [&m] (auto &n) {
+      return &n == &m;
+    });
+
+  if (merge_parts_pending.empty() && merge_parts_merging.empty()) {
+    finish_merge();
+  }
+  
+  have_changes = true;
+}
+
+void index_manager::finish_merge() {
+  search::index_info info(index_info);
+
+  info.average_page_length = 0;
+
+  for (auto &path: index_parts_merging) {
+    search::index_info index(path);
+    index.load();
+
+    for (auto &p: index.page_lengths) {
+      info.average_page_length += p.second;
+      info.page_lengths.emplace(p.first, p.second);
     }
   }
 
-  sites_pending_index.emplace(path);
+  if (info.page_lengths.size() > 0) {
+    info.average_page_length /= info.page_lengths.size();
+  } else {
+    info.average_page_length = 0;
+  }
+
+  info.word_parts = merge_out_w;
+  info.pair_parts = merge_out_p;
+  info.trine_parts = merge_out_t;
+
+  info.save();
+
+  merge_out_w.clear();
+  merge_out_p.clear();
+  merge_out_t.clear();
+
+  for (auto &path: index_parts_merging) {
+    auto i = find_part(path);
+    if (i != nullptr) {
+      i->merged = true;
+    }
+  }
+
+  index_parts_merging.clear();
 }
 
 index_part * index_manager::find_part(const std::string &path) {
@@ -232,4 +393,4 @@ std::vector<std::string> index_manager::pop_parts(const std::string &site_path) 
 
   return removed_sites;
 }
-
+  

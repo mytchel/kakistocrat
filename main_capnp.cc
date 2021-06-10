@@ -50,7 +50,7 @@ class MasterImpl final: public Master::Server,
   MasterImpl(kj::AsyncIoContext &io_context, const config &s)
     : settings(s), tasks(*this),
       timer(io_context.provider->getTimer()),
-      indexer(s.index_meta_path, s.indexer.pages_per_part),
+      indexer(s.index_meta_path, s.indexer.sites_per_part, s.index_parts, s.merger.meta_path),
       crawler(s)
   {
     tasks.add(timer.afterDelay(1 * kj::SECONDS).then(
@@ -74,6 +74,7 @@ class MasterImpl final: public Master::Server,
     checkCrawlers();
 
     indexNext();
+    mergeNext();
   }
 
   void checkCrawlers() {
@@ -120,9 +121,7 @@ class MasterImpl final: public Master::Server,
   void flush() {
     //search::save_parts(settings.indexer.meta_path, index_parts);
 
-    if (indexer.has_changes()) {
-      indexer.save();
-    }
+    indexer.save();
 
     if (have_changes) {
       spdlog::info("periodic save: started");
@@ -234,67 +233,16 @@ class MasterImpl final: public Master::Server,
     crawlNext();
   }
 
-  void finishedMerging() {
-    spdlog::info("finished merging");
-
-    search::index_info info(settings.merger.meta_path);
-
-    info.average_page_length = 0;
-
-    for (auto &path: index_parts_merging) {
-      search::index_info index(path);
-      index.load();
-
-      for (auto &p: index.page_lengths) {
-        info.average_page_length += p.second;
-        info.page_lengths.emplace(p.first, p.second);
-      }
-    }
-
-    if (info.page_lengths.size() > 0) {
-      info.average_page_length /= info.page_lengths.size();
-    } else {
-      info.average_page_length = 0;
-    }
-
-    info.word_parts = merge_out_w;
-    info.pair_parts = merge_out_p;
-    info.trine_parts = merge_out_t;
-
-    info.save();
-
-    merge_out_w.clear();
-    merge_out_p.clear();
-    merge_out_t.clear();
-
-    indexer.mark_merged(index_parts_merging);
-
-    index_parts_merging.clear();
-
-    last_merge = 0;
-  }
-
   void mergeNext() {
-    if (merge_parts_pending.empty()) {
-      if (merge_parts_merging.empty()) {
-        finishedMerging();
-
-      } else {
-        spdlog::info("all parts merging");
-      }
-
+    if (!indexer.need_merge_part()) {
       return;
     }
 
     if (ready_mergers.empty()) {
-      spdlog::info("have no ready mergers");
       return;
     }
 
-    auto p = merge_parts_pending.front();
-    merge_parts_pending.pop_front();
-
-    merge_parts_merging.push_back(p);
+    auto &p = indexer.get_merge_part();
 
     auto merger = ready_mergers.front();
     ready_mergers.pop_front();
@@ -312,11 +260,11 @@ class MasterImpl final: public Master::Server,
       request.setEnd(*p.end);
     }
 
-    auto paths = request.initIndexPartPaths(index_parts_merging.size());
+    auto paths = request.initIndexPartPaths(p.index_parts->size());
 
     size_t i = 0;
-    for (auto &p: index_parts_merging) {
-      paths.set(i++, p);
+    for (auto &path: *p.index_parts) {
+      paths.set(i++, path);
     }
 
     util::make_path(settings.merger.parts_path);
@@ -327,35 +275,22 @@ class MasterImpl final: public Master::Server,
     request.setOut(out);
 
     tasks.add(request.send().then(
-        [this, p, merger, out] (auto result) {
+        [this, &p, merger, out] (auto result) mutable {
           spdlog::info("finished merging part {} {}",
             search::to_str(p.type), p.start);
 
-          switch (p.type) {
-            case search::index_type::words:
-              merge_out_w.emplace_back(out, p.start, p.end);
-              break;
-            case search::index_type::pairs:
-              merge_out_p.emplace_back(out, p.start, p.end);
-              break;
-            case search::index_type::trines:
-              merge_out_t.emplace_back(out, p.start, p.end);
-              break;
-          }
-
-          merge_parts_merging.remove(p);
+          indexer.merge_part_done(p, out, true);
 
           ready_mergers.push_back(merger);
 
           mergeNext();
         },
-        [this, p] (auto exception) {
+        [this, &p] (auto exception) mutable {
           spdlog::warn("got exception for merge part {} {} : {}",
               search::to_str(p.type), p.start,
               std::string(exception.getDescription()));
 
-          merge_parts_merging.remove(p);
-          merge_parts_pending.push_back(p);
+          indexer.merge_part_done(p, "", false);
 
           // Put merger on ready?
 
@@ -365,66 +300,43 @@ class MasterImpl final: public Master::Server,
     mergeNext();
   }
 
-  void startMerging() {
-    if (!merge_parts_pending.empty() || !merge_parts_merging.empty()) {
-      spdlog::warn("got start merge while still merging");
-      return;
-    }
+  void indexNext() {
+    spdlog::info("index next");
 
-    auto s = search::get_split_at(settings.index_parts);
+    if (!indexer.need_index() && !indexer.index_active()) {
+      spdlog::info("nothing to index");
 
-    auto start = s.begin();
-    while (start != s.end()) {
-      std::optional<std::string> end;
-      if (start + 1 != s.end()) {
-        end = *(start + 1);
+      if (indexer.need_start_merge()) {
+        spdlog::info("start merge");
+        indexer.start_merge();
+        mergeNext();
       }
 
-      merge_parts_pending.emplace_back(search::index_type::words, *start, end);
-      merge_parts_pending.emplace_back(search::index_type::pairs, *start, end);
-      merge_parts_pending.emplace_back(search::index_type::trines, *start, end);
+      tasks.add(timer.afterDelay(30 * kj::SECONDS).then(
+          [this] () {
+            indexNext();
+          }));
 
-      start++;
-    }
-
-    index_parts_merging = indexer.get_parts_for_merge();
-
-    mergeNext();
-  }
-
-  void checkMerge() {
-    if (!merge_parts_pending.empty() || !merge_parts_merging.empty()) {
-      spdlog::debug("merge in progress");
       return;
     }
 
-    if (indexer.index_active()) {
-      spdlog::debug("index in progress");
+    if (ready_indexers.empty()) {
+      spdlog::info("no ready indexers");
       return;
     }
     
-    if (indexer.need_index()) {
-      spdlog::debug("need index");
+    bool flush = time(NULL) > last_index + settings.merger.frequency_minutes * 60;
+
+    auto sites = indexer.get_sites_for_index(flush);
+    if (sites.empty()) {
       return;
     }
+        
+    last_index = time(NULL);
 
-    if (!indexer.need_merge()) {
-      spdlog::debug("do not need merge");
-      return;
-    }
+    auto client = ready_indexers.front();
+    ready_indexers.pop_front();
 
-    if (time(NULL) < last_merge + settings.merger.frequency_minutes * 60) {
-      spdlog::debug("last merge too recent");
-      return;
-    }
-
-    last_merge = time(NULL);
-
-    spdlog::info("starting merge");
-    startMerging();
-  }
-
-  void indexSites(Indexer::Client *client, const std::vector<std::string> &sites) {
     spdlog::info("request index for {} sites", sites.size());
 
     auto &op = index_ops.emplace_back(sites);
@@ -439,7 +351,6 @@ class MasterImpl final: public Master::Server,
     size_t i = 0;
     for (auto &s: op) {
       paths.set(i++, s);
-      spdlog::info("indexing {} -> {}", s);
     }
 
     request.setOutputBase(output);
@@ -467,6 +378,7 @@ class MasterImpl final: public Master::Server,
               });
  
           ready_indexers.push_back(client);
+          indexNext();
         },
         [this, &op, client] (auto exception) {
           spdlog::warn("got exception while indexing {}", std::string(exception.getDescription()));
@@ -481,54 +393,8 @@ class MasterImpl final: public Master::Server,
                 return &op == &o;
               });
         }));
-  }
 
-  void indexNext() {
-    tasks.add(timer.afterDelay(30 * kj::SECONDS).then(
-          [this] () {
-            indexNext();
-          }));
-
-    if (!indexer.need_index() && !indexer.index_active()) {
-      checkMerge();
-      return;
-    }
-
-    if (ready_indexers.empty()) {
-      spdlog::info("no ready indexers");
-      return;
-    }
-    
-    bool flush = time(NULL) > last_index + settings.merger.frequency_minutes * 60;
-
-    auto sites = indexer.get_sites_for_index(flush);
-    if (sites.empty()) {
-      return;
-    }
-
-    last_index = time(NULL);
-
-    if (sites.size() * 100 > 4 * settings.indexer.pages_per_part) {
-      std::vector<std::vector<std::string>> parts(ready_indexers.size());
-
-      size_t i = 0;
-      for (auto &site: sites) {
-        parts[i++ % parts.size()].emplace_back(site);
-      }
-
-      for (auto &part: parts) {
-        auto indexer = ready_indexers.front();
-        ready_indexers.pop_front();
-
-        indexSites(indexer, part);
-      }
-
-    } else {
-      auto indexer = ready_indexers.front();
-      ready_indexers.pop_front();
-
-      indexSites(indexer, sites);
-    }
+    indexNext();
   }
 
   kj::Promise<void> registerCrawler(RegisterCrawlerContext context) override {
@@ -550,6 +416,8 @@ class MasterImpl final: public Master::Server,
 
     ready_indexers.push_back(&indexers.back());
 
+    indexNext();
+
     return kj::READY_NOW;
   }
 
@@ -559,9 +427,7 @@ class MasterImpl final: public Master::Server,
     mergers.push_back(context.getParams().getMerger());
     ready_mergers.push_back(&mergers.back());
 
-    if (!merge_parts_pending.empty()) {
-      mergeNext();
-    }
+    mergeNext();
 
     return kj::READY_NOW;
   }
@@ -727,29 +593,6 @@ class MasterImpl final: public Master::Server,
   std::list<Merger::Client> mergers;
   std::list<Merger::Client *> ready_mergers;
 
-  std::vector<std::string> index_parts_merging;
-
-  struct merge_part {
-    search::index_type type;
-    std::string start;
-    std::optional<std::string> end;
-
-    merge_part(search::index_type t, const std::string &s, 
-               const std::optional<std::string> &e)
-      : type(t), start(s), end(e) {}
-
-    inline bool operator==(const merge_part &a)
-    {
-      return std::tie(a.type, a.start, a.end)
-        == std::tie(type, start, end);
-    }
-  };
-
-  std::list<merge_part> merge_parts_pending;
-  std::list<merge_part> merge_parts_merging;
-
-  std::vector<search::index_part_info> merge_out_w, merge_out_p, merge_out_t;
-
   time_t last_merge{0};
   time_t last_index{0};
 
@@ -768,14 +611,16 @@ int main(int argc, char *argv[]) {
 
   spdlog::info("loading");
 
-  //kj::UnixEventPort::captureSignal(SIGINT);
+  kj::UnixEventPort::captureSignal(SIGINT);
+  kj::UnixEventPort::captureSignal(SIGPIPE);
+
   auto ioContext = kj::setupAsyncIo();
 
   Master::Client master = kj::heap<MasterImpl>(ioContext, settings);
 
   Server server(ioContext, "localhost:1234", master);
 
-  kj::NEVER_DONE.wait(ioContext.waitScope);
+  ioContext.unixEventPort.onSignal(SIGINT).wait(ioContext.waitScope);
 
   return 0;
 }
