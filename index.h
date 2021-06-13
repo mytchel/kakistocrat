@@ -5,6 +5,8 @@
 #include <optional>
 #include <chrono>
 #include <assert.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include <nlohmann/json.hpp>
 
@@ -127,8 +129,14 @@ struct read_backing {
   read_backing(uint8_t *buf, size_t size)
     : buf(buf), size(size) {}
 
+  void setup(uint8_t *b) {
+    buf = b;
+  }
+
   uint8_t *get_data(uint32_t offset) {
-    assert(offset < size);
+    //assert(offset < size);
+
+    //spdlog::info("read {}", offset);
 
     return &buf[offset];
   }
@@ -244,15 +252,11 @@ struct posting_writer {
   }
 };
 
-static const uint32_t key_list_lens     = 0;
-static const uint32_t key_list_offsets  = 1;
-static const uint32_t key_list_ids      = 2;
-
 struct key_entry {
   std::string key;
   uint32_t posting_id;
 
-  entry(uint8_t *d, uint32_t l, uint32_t id)
+  key_entry(uint8_t *d, uint32_t l, uint32_t id)
     : key((const char *) d, l), posting_id(id)
   {}
 };
@@ -264,24 +268,28 @@ struct key_block_reader {
 
   key_block_reader() {}
 
-  uint32_t *get_list(read_backing &m, size_t r) {
-    uint8_t *b = m.get_data(offset) + (items * r);
-
-    return (uint32_t *) b;
+  uint8_t *get_lens(uint8_t *b) {
+    return b;
   }
 
-  uint32_t *get_lens(read_backing &m) { return get_list(m, key_list_lens); }
-  uint32_t *get_offsets(read_backing &m) { return get_list(m, key_list_offsets); }
-  uint32_t *get_ids(read_backing &m) { return get_list(m, key_list_ids); }
+  uint32_t *get_offsets(uint8_t *b) {
+    return (uint32_t *) (b + items * (sizeof(uint8_t)));
+  }
+
+  uint32_t *get_ids(uint8_t *b) {
+    return (uint32_t *) (b + items * (sizeof(uint8_t) + sizeof(uint32_t)));
+  }
 
   std::vector<key_entry> load(read_backing &m, read_backing &d) {
     if (items == 0) {
       return {};
     }
 
-    uint32_t *lens = get_lens(m);
-    uint32_t *offsets = get_offsets(m);
-    uint32_t *ids = get_ids(m);
+    uint8_t *b = m.get_data(offset);
+
+    auto lens = get_lens(b);
+    auto offsets = get_offsets(b);
+    auto ids = get_ids(b);
 
     std::vector<key_entry> entries;
     entries.reserve(items);
@@ -300,20 +308,24 @@ struct key_block_reader {
       return {};
     }
 
-    uint32_t *lens = get_lens(m);
-    uint32_t *offsets = get_offsets(m);
-    uint32_t *ids = get_ids(m);
+    uint8_t *b = m.get_data(offset);
+
+    auto lens = get_lens(b);
+    auto offsets = get_offsets(b);
+    auto ids = get_ids(b);
 
     size_t len = s.size();
+    const uint8_t *s_data = (const uint8_t *) s.data();
 
     for (size_t i = 0; i < items; i++) {
       if (lens[i] == len) {
-        uint8_t *data = d.get_data(offsets[i]);
+        const uint8_t *data = d.get_data(offsets[i]);
 
-        std::string is((const char *) data, len);
-        if (is == s) {
+        if (memcmp(s_data, data, len) == 0) {
           return ids[i];
         }
+      } else if (lens[i] > len) {
+        break;
       }
     }
 
@@ -351,9 +363,11 @@ struct key_block_writer {
       return {};
     }
 
-    auto lens = get_lens(m);
-    auto offsets = get_offsets(m);
-    auto ids = get_ids(m);
+    uint8_t *b = m.get_data(offset);
+
+    auto lens = get_lens(b);
+    auto offsets = get_offsets(b);
+    auto ids = get_ids(b);
 
     std::vector<key_entry> entries;
     entries.reserve(items);
@@ -477,18 +491,33 @@ struct key_block_writer {
   }
 };
 
+struct index_meta {
+  uint32_t htcap;
+  uint32_t htable_base;
+  uint32_t keys_meta_base;
+  uint32_t keys_data_base;
+  uint32_t posting_count;
+  uint32_t posting_meta_base;
+  uint32_t posting_data_base;
+};
+
 struct index_reader {
   std::string path;
+  uint8_t *buf{nullptr};
+  size_t buf_len;
+  size_t part_size;
 
-  size_t htcap;
+  index_meta meta;
 
   // doc id 0 is invalid
 
   // hash
   key_block_reader *keys{nullptr};
+  size_t htcap;
 
   // array
   posting_reader *postings{nullptr};
+  size_t posting_count;
 
   std::vector<std::string> page_urls;
 
@@ -497,13 +526,59 @@ struct index_reader {
   read_backing keys_data_backing;
   read_backing postings_backing;
 
-  index_reader(const std::string &path)
-    : path(path)
-  {}
+  index_reader(const std::string &path, size_t buf_len)
+    : path(path), buf_len(buf_len)
+  {
+    buf = (uint8_t *) malloc(buf_len);
+    if (buf == nullptr) {
+      throw std::bad_alloc();
+    }
+  }
+
+  ~index_reader() {
+    if (buf) {
+      free(buf);
+    }
+  }
 
   void load()
   {
+		struct stat s;
+		if (stat(path.c_str(), &s) == -1) {
+			throw std::runtime_error(fmt::format("load backing failed {}, no file", path));
+		}
 
+		part_size = s.st_size;
+
+    if (part_size > buf_len) {
+      throw std::runtime_error("part to big");
+    }
+
+		std::ifstream file;
+
+		spdlog::info("load {:4} kb from {}", part_size / 1024, path);
+
+		file.open(path, std::ios::in | std::ios::binary);
+
+		if (!file.is_open() || file.fail() || !file.good() || file.bad()) {
+			spdlog::warn("error opening file {}",  path);
+		}
+
+		file.read((char *) buf, part_size);
+
+		file.close();
+
+    meta = *((index_meta *) buf);
+
+    keys = (key_block_reader*) (buf + meta.htable_base);
+    htcap = meta.htcap;
+
+    postings = (posting_reader *) (buf + meta.posting_meta_base);
+    posting_count = meta.posting_count;
+
+    keys_meta_backing.setup(buf + meta.keys_meta_base);
+    keys_data_backing.setup(buf + meta.keys_data_base);
+    postings_backing.setup(buf + meta.posting_data_base);
   }
 
   posting_reader * find(const std::string &s)
@@ -537,7 +612,7 @@ struct index_writer {
   write_backing keys_data_backing;
   write_backing postings_backing;
 
-  index_writer(size_t htcap)
+  index_writer(size_t htcap, size_t key_m_b, size_t key_d_b, size_t post_b)
     : htcap(htcap),
       keys_meta_backing("keys_meta", 1024 * 512),
       keys_data_backing("keys_data", 1024 * 128),
@@ -595,45 +670,72 @@ struct index_writer {
     postings_backing.clear();
   }
 
-  void save(const std::string &p)
+  void write_buf(const std::string &path, uint8_t *buf, size_t len)
   {
-    uint8_t *buf = 0;
+    std::ofstream file;
 
-    size_t key_meta_size = 0;
+    file.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
+
+    if (!file.is_open()) {
+      throw std::runtime_error(fmt::format("error opening file {}", path));
+    }
+
+    spdlog::info("writing {:4} kb to {}", len / 1024, path);
+
+    file.write((const char *) buf, len);
+
+    file.close();
+  }
+
+  void save(const std::string &path, uint8_t *buf, size_t max_len)
+  {
+    size_t keys_meta_size = 0;
 
     for (size_t i = 0; i < htcap; i++) {
       auto &key = keys[i];
-      key_meta_size += key.items * (sizeof(uint8_t) + sizeof(uint32_t) * 2);
+      keys_meta_size += key.items * (sizeof(uint8_t) + sizeof(uint32_t) * 2);
     }
 
-    size_t htable_base = 0;
-    size_t key_meta_base = htable_base + sizeof(uint32_t) * 2 * htcap;
-    size_t key_data_base = keys_meta_base + keys_meta_size;
+    size_t posting_meta_size = postings.size() * sizeof(uint32_t) * 2;
+
+    size_t htable_base = 128;
+    size_t keys_meta_base = htable_base + sizeof(uint32_t) * 2 * htcap;
+    size_t posting_meta_base = keys_meta_base + keys_meta_size;
+    size_t keys_data_base = posting_meta_base + posting_meta_size;
+    size_t posting_data_base = 0; // after key data
+
+    if (keys_data_base >= max_len) {
+      throw std::runtime_error(fmt::format("too much data key data > max len"));
+    }
 
     uint32_t *htable_data = (uint32_t *) (buf + htable_base);
     uint8_t *keys_meta = buf + keys_meta_base;
     uint8_t *keys_data = buf + keys_data_base;
 
-    size_t key_meta_offset = 0;
-    size_t key_data_offset = 0;
+    size_t keys_meta_offset = 0;
+    size_t keys_data_offset = 0;
 
     for (size_t i = 0; i < htcap; i++) {
       auto &key = keys[i];
       auto entries = key.load(keys_meta_backing, keys_data_backing);
 
-      htable_base[i*2+0] = key.items;
-      htable_base[i*2+1] = keys_meta_offset;
+      htable_data[i*2+0] = (uint32_t) key.items;
+      htable_data[i*2+1] = (uint32_t) keys_meta_offset;
 
       uint8_t *lens = keys_meta + keys_meta_offset;
-      uint32_t *offsets = keys_meta + keys_meta_offset + key.items * sizeof(uint8_t);
-      uint32_t *ids = keys_meta + keys_meta_offset + key.items * (sizeof(uint8_t) + sizeof(uint32_t));
+      uint32_t *offsets = (uint32_t *) (keys_meta + keys_meta_offset + key.items * sizeof(uint8_t));
+      uint32_t *ids = (uint32_t *) (keys_meta + keys_meta_offset + key.items * (sizeof(uint8_t) + sizeof(uint32_t)));
 
       for (size_t j = 0; j < entries.size(); j++) {
+        if (keys_data_base + keys_data_offset  >= max_len) {
+          throw std::runtime_error(fmt::format("too much data key data > max len"));
+        }
+
         memcpy(keys_data + keys_data_offset, entries[j].key.data(), entries[j].key.size());
 
         offsets[j] = keys_data_offset;
         lens[j] = entries[j].key.size();
-        ids[j] = entries[j].ids;
+        ids[j] = entries[j].posting_id;
 
         keys_data_offset += entries[j].key.size();
       }
@@ -641,31 +743,49 @@ struct index_writer {
       keys_meta_offset += key.items * (sizeof(uint8_t) + sizeof(uint32_t) * 2);
     }
 
-    size_t posting_base = keys_data_base + keys_data_offset;
+    posting_data_base = keys_data_base + keys_data_offset;
 
-    uint8_t *posting_data = buf + posting_base;
+    uint32_t *posting_meta_data = (uint32_t *) (buf + posting_meta_base);
+    uint8_t *posting_data = buf + posting_data_base;
 
-    for (auto &posting: postings) {
+    uint32_t posting_data_offset = 0;
 
+    for (size_t i = 0; i < postings.size(); i++) {
+      auto &posting = postings[i];
+
+      posting_meta_data[i*2+0] = posting.len;
+      posting_meta_data[i*2+1] = posting_data_offset;
+
+      uint8_t *data = postings_backing.get_data(posting.offset);
+
+      if (posting_data_base + posting_data_offset  >= max_len) {
+        throw std::runtime_error(fmt::format("too much data key data > max len"));
+      }
+
+      memcpy(posting_data + posting_data_offset, data, posting.len);
+
+      posting_data_offset += posting.len;
     }
 
-    // write htcap
-    // write keys_meta_offset
-    // write keys_data_offset
-    // write posting_offset
-  }
+    index_meta *m = (index_meta *) buf;
+    m->htcap = htcap;
+    m->htable_base = htable_base;
+    m->keys_meta_base = keys_meta_base;
+    m->keys_data_base = keys_data_base;
+    m->posting_count = postings.size();
+    m->posting_meta_base = posting_meta_base;
+    m->posting_data_base = posting_data_base;
 
-  /*
-  size_t add_page(const std::string &page) {
-    size_t id = page_urls.size();
-    page_urls.emplace_back(page);
-    return id;
+    write_buf(path, buf, posting_data_base + posting_data_offset);
   }
-*/
 
   void merge(index_reader &other)
   {
-    //assert(keys.size() == other.htcap);
+    assert(htcap == other.htcap);
+
+    if (other.posting_count == 0) {
+      return;
+    }
 
     size_t added = 0;
     size_t skipped = 0;
@@ -689,6 +809,7 @@ struct index_writer {
       for (auto &entry: entries) {
         // TODO: check entry.key for different start / end of part.
 
+        assert(entry.posting_id < other.posting_count);
         auto &posting_other = other.postings[entry.posting_id];
 
         auto posting_id = key_m.find(keys_meta_backing, keys_data_backing, entry.key);
@@ -807,9 +928,9 @@ struct indexer {
       pair_i.emplace_back("", start, end);
       trine_i.emplace_back("", start, end);
 
-      word_t.emplace_back(htcap);
-      pair_t.emplace_back(htcap);
-      trine_t.emplace_back(htcap);
+      word_t.emplace_back(htcap, 1024 * 512, 1024 * 128, 1024 * 256);
+      pair_t.emplace_back(htcap, 1024 * 512, 1024 * 128, 1024 * 256);
+      trine_t.emplace_back(htcap, 1024 * 512, 1024 * 128, 1024 * 256);
     }
   }
 
@@ -831,7 +952,8 @@ struct indexer {
   std::vector<index_part_info> save_parts(
     std::vector<index_part_info> &i,
     std::vector<index_writer> &t,
-    const std::string &base_path);
+    const std::string &base_path,
+    uint8_t *buf, size_t buf_len);
 
   std::string flush(const std::string &base_path) {
     spdlog::info("flushing {}", base_path);

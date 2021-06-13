@@ -83,7 +83,10 @@ public:
 
     size_t htcap = settings.merger.htcap;
 
-    search::index_writer out(htcap);
+    search::index_writer out(htcap,
+          1024 * 1024 * 100,
+          1024 * 1024 * 10,
+          1024 * 1024 * 500);
 
     for (auto &index_path: part_paths) {
       spdlog::info("load {} for merging", index_path);
@@ -113,7 +116,7 @@ public:
 
       for (auto &p: *parts) {
         if ((!end || p.start < *end) && (!p.end || start < *p.end)) {
-          search::index_reader in(p.path);
+          search::index_reader in(p.path, settings.indexer.max_index_part_size);
           in.load();
 
           spdlog::info("merge {}", p.path);
@@ -124,7 +127,8 @@ public:
       spdlog::info("finished merging {}", index_path);
     }
 
-    out.save(out_path);
+    spdlog::info("saving merged {}", out_path);
+    out.save(out_path, buf, buf_len);
 
     return kj::READY_NOW;
   }

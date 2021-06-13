@@ -840,3 +840,13 @@ for the indexer which isn't having very many entries anyway.
 
 index taking (without saving)
 1.20
+
+about 1 minute with saving...
+
+
+quick test with saving and merging
+
+running at 100% cpu usage...
+index: 1.07
+merge: using too much mem. way way too much.
+

@@ -177,7 +177,8 @@ std::vector<index_part_info>
 indexer::save_parts(
     std::vector<index_part_info> &i,
     std::vector<index_writer> &t,
-    const std::string &base_path)
+    const std::string &base_path,
+    uint8_t *buf, size_t buf_len)
 {
   std::vector<index_part_info> new_info;
 
@@ -190,7 +191,7 @@ indexer::save_parts(
     spdlog::info("save part {}", path);
 
     // TODO: don't save empty parts
-    p.save(path);
+    p.save(path, buf, buf_len);
 
     new_info.emplace_back(path, info.start, info.end);
   }
@@ -200,6 +201,12 @@ indexer::save_parts(
 
 std::string indexer::save(const std::string &base_path)
 {
+  size_t buf_len = 1024 * 1024 * 30;
+  uint8_t *buf = (uint8_t *) malloc(buf_len);
+  if (buf == nullptr) {
+    throw std::bad_alloc();
+  }
+
   auto words_path = fmt::format("{}.words", base_path);
   auto pairs_path = fmt::format("{}.pairs", base_path);
   auto trines_path = fmt::format("{}.trines", base_path);
@@ -207,9 +214,11 @@ std::string indexer::save(const std::string &base_path)
 
   index_info info(meta_path);
 
-  info.word_parts = save_parts(word_i, word_t, words_path);
-  info.pair_parts = save_parts(pair_i, pair_t, pairs_path);
-  info.trine_parts = save_parts(trine_i, trine_t, trines_path);
+  info.word_parts = save_parts(word_i, word_t, words_path, buf, buf_len);
+  info.pair_parts = save_parts(pair_i, pair_t, pairs_path, buf, buf_len);
+  info.trine_parts = save_parts(trine_i, trine_t, trines_path, buf, buf_len);
+
+  free(buf);
 
   info.htcap = htcap;
 
