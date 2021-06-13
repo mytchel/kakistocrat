@@ -46,9 +46,7 @@ add_executable(main_capnp main_capnp.cc
     crawler.cc
 
     index.cc
-    index_part.cc
     tokenizer.cc
-    posting.cc
     vbyte.cc
     str.c
 
@@ -100,9 +98,9 @@ add_executable(indexer_capnp indexer_capnp.cc
     ${capnp_sources}
     ${capnp_headers}
 
-    index_part.cc
     index.cc
-    posting.cc
+    indexer.cc
+    index_backing.cc
     vbyte.cc
     tokenizer.cc
     str.c
@@ -127,9 +125,8 @@ add_executable(merger_capnp merger_capnp.cc
     ${capnp_sources}
     ${capnp_headers}
 
-    index_part.cc
     index.cc
-    posting.cc
+    index_backing.cc
     vbyte.cc
     tokenizer.cc
     str.c
@@ -215,15 +212,13 @@ target_link_libraries(scorer_reader_capnp CapnProto::capnp)
 target_link_libraries(scorer_reader_capnp CapnProto::kj-async)
 target_link_libraries(scorer_reader_capnp CapnProto::kj)
 
-
+if (FALSE)
 
 add_executable(search_capnp search_capnp.cc
     ${capnp_sources}
     ${capnp_headers}
 
-    index_part.cc
     index.cc
-    posting.cc
     vbyte.cc
     tokenizer.cc
     str.c
@@ -245,5 +240,5 @@ target_link_libraries(search_capnp CapnProto::capnp)
 target_link_libraries(search_capnp CapnProto::kj-async)
 target_link_libraries(search_capnp CapnProto::kj)
 
-
+endif()
 

@@ -786,3 +786,57 @@ and with just one flush like the improvements testing
 ( ./indexer && ./merger; )  30.42s user 0.72s system 246% cpu 12.617 total
 
 
+
+
+---
+
+
+Time to redo it all.
+
+Indexing is taking a long time and merging is taking longer.
+I want to change the disk format so that less processing is needed.
+I want the final format to be able to be searched without loading the entire
+file.
+
+Have a set of data.
+3G of site data.
+
+release build of
+74d4b3956b12a68c6527897a5621ea38c202bde4
+
+single thread
+100 splits (far to many).
+  but that just shows off how mad the loading time is.
+
+indexing takes
+
+20:01:12.242
+20:02:52.223
+  1.40
+
+merging takes
+
+20:03:35.866
+20:08:28.508
+  4.53
+
+too fucking long
+
+
+initial rearchetecture, not saving
+
+indexing takes
+even longer, and using four times as much memory...
+
+11:07:25.663
+11:10:21.278
+   twice as long...
+
+changing how splitting works. Now use hash % splits. Stop wasting
+time on looking through or generating ranges
+
+decrease the table size. smaller fits in cache better and makes no senes
+for the indexer which isn't having very many entries anyway.
+
+index taking (without saving)
+1.20

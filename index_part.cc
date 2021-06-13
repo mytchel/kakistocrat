@@ -345,8 +345,6 @@ void index_part::merge(index_part &other)
   size_t skipped = 0;
   size_t total_keys = 0;
 
-  size_t key_buf_size = 1024 * 1024;
-
   uint32_t pages_offset = pages.size();
 
   pages.reserve(pages.size() + other.pages.size());

@@ -45,44 +45,40 @@ using nlohmann::json;
 class IndexerImpl final: public Indexer::Server {
 public:
   IndexerImpl(const config &s)
-    : settings(s),
-      indexer(
-        search::get_split_at(settings.index_parts),
-        settings.indexer.htcap,
-        settings.indexer.thread_max_mem
-          - settings.indexer.max_index_part_size
-          - settings.crawler.max_page_size,
-        settings.indexer.max_index_part_size)
-  {
-    file_buf_len = settings.crawler.max_page_size;
-    file_buf = (char *) malloc(file_buf_len);
-    if (file_buf == NULL) {
-      throw std::bad_alloc();
-    }
-  }
-
-  ~IndexerImpl() {
-    if (file_buf) {
-      free(file_buf);
-    }
-  }
+    : settings(s) {}
 
   kj::Promise<void> index(IndexContext context) override {
     spdlog::info("got index request");
+
+    size_t max_usage =
+        settings.indexer.thread_max_mem
+          - settings.indexer.max_index_part_size
+          - settings.crawler.max_page_size;
+
+    spdlog::info("create indexer with {} splits", settings.index_parts);
+
+    search::indexer indexer(
+        settings.index_parts,
+        settings.indexer.htcap,
+        settings.crawler.max_page_size);
+
+    spdlog::info("indexer created");
 
     struct output {
       std::string path;
       std::vector<std::string> sites;
     };
-  
+
     std::list<output> outputs;
     outputs.emplace_back();
 
     std::string output_path = context.getParams().getOutputBase();
 
-    indexer.base_path = fmt::format("{}/", output_path);
+    auto base_path = fmt::format("{}/", output_path);
 
-    util::make_path(indexer.base_path);
+    util::make_path(base_path);
+
+    size_t flush_count = 0;
 
     for (auto path: context.getParams().getSitePaths()) {
       spdlog::info("load  {}", std::string(path));
@@ -91,24 +87,29 @@ public:
       site.load();
 
       spdlog::info("index {}", site.host);
-      indexer.index_site(site, file_buf, file_buf_len);
+      indexer.index_site(site);
 
       auto &o = outputs.back();
       o.sites.emplace_back(path);
 
-      if (indexer.usage() > indexer.max_usage) {
-        auto path = indexer.flush();
+      spdlog::info("done  {}", site.host);
 
-        o.path = path;
+      if (indexer.usage() > max_usage) {
+        o.path = indexer.flush(
+            fmt::format("{}/part.{}", base_path, flush_count++));
+
+        // Setup the next output
         outputs.emplace_back();
       }
-
-      spdlog::info("done  {}", site.host);
     }
 
     auto &o = outputs.back();
-    auto path = indexer.flush();
-    o.path = path;
+    if (!o.sites.empty()) {
+      o.path = indexer.flush(
+              fmt::format("{}/part.{}", base_path, flush_count++));
+    } else {
+      outputs.pop_back();
+    }
 
     auto resultOutputs = context.getResults().initOutputs(outputs.size());
 
@@ -124,16 +125,10 @@ public:
       }
     }
 
-    indexer.reset();
-
     return kj::READY_NOW;
   }
 
   const config &settings;
-  search::indexer indexer;
-
-  size_t file_buf_len;
-  char *file_buf;
 };
 
 int main(int argc, char *argv[]) {

@@ -23,7 +23,7 @@ uint32_t hash(const char *key, size_t l, size_t htcap)
 	return result & (htcap - 1);
 }
 
-uint32_t hash(std::string key, size_t htcap)
+uint32_t hash(const std::string &key, size_t htcap)
 {
 	uint32_t result = 0;
 

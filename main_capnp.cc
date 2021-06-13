@@ -68,7 +68,11 @@ class MasterImpl final: public Master::Server,
     crawler.load_blacklist(blacklist);
     crawler.load_seed(initial_seed);
 
-    indexer.load();
+    //indexer.load();
+
+    for (auto &site: crawler.sites) {
+      indexer.mark_indexable(site.path);
+    }
 
     flush();
     checkCrawlers();
@@ -194,7 +198,7 @@ class MasterImpl final: public Master::Server,
             max_add_sites = level.max_add_sites;
             next_max_pages = next_level.max_pages;
           }
-          
+
           crawler.expand(site, max_add_sites, next_max_pages);
 
           site->last_scanned = time(NULL);
@@ -324,14 +328,14 @@ class MasterImpl final: public Master::Server,
       spdlog::info("no ready indexers");
       return;
     }
-    
-    bool flush = time(NULL) > last_index + settings.merger.frequency_minutes * 60;
+
+    bool flush = true;//time(NULL) > last_index + settings.merger.frequency_minutes * 60;
 
     auto sites = indexer.get_sites_for_index(flush);
     if (sites.empty()) {
       return;
     }
-        
+
     last_index = time(NULL);
 
     auto client = ready_indexers.front();
@@ -367,7 +371,7 @@ class MasterImpl final: public Master::Server,
             for (auto s_path_reader: p.getSites()) {
               sites.emplace_back(s_path_reader);
             }
-          
+
             spdlog::info("index new part {} with {} sites", path, sites.size());
             indexer.add_part(path, sites);
           }
@@ -376,7 +380,7 @@ class MasterImpl final: public Master::Server,
               [&op] (auto &o) {
                 return &op == &o;
               });
- 
+
           ready_indexers.push_back(client);
           indexNext();
         },
@@ -457,13 +461,13 @@ class MasterImpl final: public Master::Server,
     for (size_t i = 0; i < sites.size(); i++) {
       paths.set(i, sites[i]->path);
     }
-    
+
     auto seed = request.initSeed(initial_seed.size());
 
     for (size_t i = 0; i < initial_seed.size(); i++) {
       seed.set(i, initial_seed[i]);
     }
-    
+
     tasks.add(request.send().then(
           [] (auto result) {
             spdlog::info("scoring finished");

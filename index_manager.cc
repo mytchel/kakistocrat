@@ -88,7 +88,7 @@ void index_manager::load() {
     try {
       j.at("index_parts_merging").get_to(index_parts_merging);
       j.at("merge_parts_pending").get_to(merge_parts_pending);
-      
+
       j.at("merge_out_w").get_to(merge_out_w);
       j.at("merge_out_p").get_to(merge_out_p);
       j.at("merge_out_t").get_to(merge_out_t);
@@ -128,11 +128,11 @@ void index_manager::save() {
   sites.reserve(sites_pending_index.size() + sites_indexing.size());
 
   sites.insert(sites.end(),
-        sites_pending_index.begin(), 
+        sites_pending_index.begin(),
         sites_pending_index.end());
 
   sites.insert(sites.end(),
-        sites_indexing.begin(), 
+        sites_indexing.begin(),
         sites_indexing.end());
 
   std::vector<merge_part> merge_parts;
@@ -185,7 +185,7 @@ void index_manager::mark_indexable(const std::string &site_path) {
   }
 
   add_indexable(site_path);
-  
+
   have_changes = true;
 }
 
@@ -196,7 +196,7 @@ std::vector<std::string> index_manager::get_sites_for_index(bool flush) {
     spdlog::debug("waiting on more sites, have {} sites", sites_pending_index.size());
     return {};
   }
-  
+
   std::vector<std::string> sites;
 
   auto it = sites_pending_index.begin();
@@ -251,25 +251,18 @@ void index_manager::start_merge() {
     index_parts_merging.emplace_back(part.path);
   }
 
-  auto s = search::get_split_at(index_splits);
-
-  auto start = s.begin();
-  while (start != s.end()) {
+  for (size_t i = 0; i < index_splits; i++) {
+    std::string start = fmt::format("{}", i);
     std::optional<std::string> end;
-    if (start + 1 != s.end()) {
-      end = *(start + 1);
-    }
 
     merge_parts_pending.emplace_back(index_parts_merging,
-        search::index_type::words, *start, end);
+        search::index_type::words, start, end);
     merge_parts_pending.emplace_back(index_parts_merging,
-        search::index_type::pairs, *start, end);
+        search::index_type::pairs, start, end);
     merge_parts_pending.emplace_back(index_parts_merging,
-        search::index_type::trines, *start, end);
-
-    start++;
+        search::index_type::trines, start, end);
   }
-  
+
   have_changes = true;
 }
 
@@ -312,7 +305,7 @@ void index_manager::merge_part_done(merge_part &m, const std::string &output, bo
   if (merge_parts_pending.empty() && merge_parts_merging.empty()) {
     finish_merge();
   }
-  
+
   have_changes = true;
 }
 
@@ -393,4 +386,4 @@ std::vector<std::string> index_manager::pop_parts(const std::string &site_path) 
 
   return removed_sites;
 }
-  
+
