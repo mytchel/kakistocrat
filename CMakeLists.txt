@@ -212,13 +212,13 @@ target_link_libraries(scorer_reader_capnp CapnProto::capnp)
 target_link_libraries(scorer_reader_capnp CapnProto::kj-async)
 target_link_libraries(scorer_reader_capnp CapnProto::kj)
 
-if (FALSE)
-
 add_executable(search_capnp search_capnp.cc
     ${capnp_sources}
     ${capnp_headers}
 
     index.cc
+    index_backing.cc
+    searcher.cc
     vbyte.cc
     tokenizer.cc
     str.c
@@ -240,5 +240,4 @@ target_link_libraries(search_capnp CapnProto::capnp)
 target_link_libraries(search_capnp CapnProto::kj-async)
 target_link_libraries(search_capnp CapnProto::kj)
 
-endif()
 

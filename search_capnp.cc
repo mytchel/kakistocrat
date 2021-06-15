@@ -70,7 +70,7 @@ class SearcherImpl final:
       char query_c[1024];
       strncpy(query_c, query.c_str(), sizeof(query_c));
 
-      auto postings = searcher.index.find_matches(query_c);
+      auto postings = searcher.searcher.find_matches(query_c);
 
       if (postings.empty()) {
         respond();
@@ -115,7 +115,7 @@ class SearcherImpl final:
                 }
               },
               [this, page] (auto exception) {
-                spdlog::warn("error getting page info {}: {}", page.first, 
+                spdlog::warn("error getting page info {}: {}", page.first,
                     std::string(exception.getDescription()));
 
                 pending--;
@@ -236,12 +236,12 @@ public:
       kj::Own<kj::NetworkAddress> &listenAddr,
       const config &s, Master::Client master)
     : settings(s),
-      index(s.merger.meta_path, s.merger.htcap),
+      searcher(s.merger.meta_path, s.merger.max_index_part_size),
       master(master),
       urlBase(kj::Url::parse("http://localhost/")),
       tasks(*this), timer(io_context.provider->getTimer())
   {
-    index.load();
+    searcher.load();
 
     hAccept = builder.add("Accept");
     hContentType = builder.add("Content-Type");
@@ -293,7 +293,7 @@ public:
 
   const config &settings;
 
-  search::index index;
+  search::searcher searcher;
 
   Master::Client master;
 

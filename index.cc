@@ -26,6 +26,23 @@ using nlohmann::json;
 
 namespace search {
 
+uint32_t part_split(const std::string &s, size_t parts)
+{
+  const char *data = s.data();
+  size_t m = s.size();
+
+  uint32_t h = 0;
+
+  for (size_t l = 0; l < 3 && l < m; l++) {
+    h += (uint32_t) (data[l] - '0');
+  }
+
+  h = h % parts;
+
+//  spdlog::debug("{:4} <- {}", h, s);
+  return h;
+}
+
 index_type from_str(const std::string &s) {
   if (s == "words") {
     return words;
@@ -64,31 +81,6 @@ std::vector<std::string> alphabet() {
   }
 
   return a;
-}
-
-void to_json(nlohmann::json &j, const index_part_info &i)
-{
-  std::string end = "";
-  if (i.end) end = *i.end;
-  j = json{
-    {"path", i.path},
-    {"start", i.start},
-    {"end", end}};
-}
-
-void from_json(const nlohmann::json &j, index_part_info &i)
-{
-  std::string end;
-
-  j.at("path").get_to(i.path);
-  j.at("start").get_to(i.start);
-  j.at("end").get_to(end);
-
-  if (end != "") {
-    i.end = end;
-  } else {
-    i.end = {};
-  }
 }
 
 void index_info::save()

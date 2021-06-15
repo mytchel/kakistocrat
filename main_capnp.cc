@@ -252,17 +252,13 @@ class MasterImpl final: public Master::Server,
     ready_mergers.pop_front();
 
     spdlog::info("start merging part {} {}",
-            search::to_str(p.type), p.start);
+            search::to_str(p.type), p.part_index);
 
     auto request = merger->mergeRequest();
 
     request.setType(search::to_str(p.type));
 
-    request.setStart(p.start);
-
-    if (p.end) {
-      request.setEnd(*p.end);
-    }
+    request.setPartIndex(p.part_index);
 
     auto paths = request.initIndexPartPaths(p.index_parts->size());
 
@@ -274,14 +270,14 @@ class MasterImpl final: public Master::Server,
     util::make_path(settings.merger.parts_path);
 
     auto out = fmt::format("{}/index.{}.{}.dat",
-      settings.merger.parts_path, search::to_str(p.type), p.start);
+      settings.merger.parts_path, search::to_str(p.type), p.part_index);
 
     request.setOut(out);
 
     tasks.add(request.send().then(
         [this, &p, merger, out] (auto result) mutable {
           spdlog::info("finished merging part {} {}",
-            search::to_str(p.type), p.start);
+            search::to_str(p.type), p.part_index);
 
           indexer.merge_part_done(p, out, true);
 
@@ -291,7 +287,7 @@ class MasterImpl final: public Master::Server,
         },
         [this, &p] (auto exception) mutable {
           spdlog::warn("got exception for merge part {} {} : {}",
-              search::to_str(p.type), p.start,
+              search::to_str(p.type), p.part_index,
               std::string(exception.getDescription()));
 
           indexer.merge_part_done(p, "", false);

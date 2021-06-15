@@ -42,26 +42,13 @@ void from_json(const nlohmann::json &j, index_part &p)
 void to_json(nlohmann::json &j, const merge_part &p)
 {
   j["type"] = search::to_str(p.type);
-  j["start"] = p.start;
-
-  if (p.end) {
-    j["end"] = *p.end;
-  } else {
-    j["end"] = "";
-  }
+  j["index"] = p.part_index;
 }
 
 void from_json(const nlohmann::json &j, merge_part &p)
 {
   p.type = search::from_str(j.at("type"));
-  j.at("start").get_to(p.start);
-
-  std::string end = j.at("end");
-  if (end != "") {
-    p.end = end;
-  } else {
-    p.end = {};
-  }
+  p.part_index = j.at("start");
 }
 
 void index_manager::load() {
@@ -252,15 +239,12 @@ void index_manager::start_merge() {
   }
 
   for (size_t i = 0; i < index_splits; i++) {
-    std::string start = fmt::format("{}", i);
-    std::optional<std::string> end;
-
     merge_parts_pending.emplace_back(index_parts_merging,
-        search::index_type::words, start, end);
+        search::index_type::words, i);
     merge_parts_pending.emplace_back(index_parts_merging,
-        search::index_type::pairs, start, end);
+        search::index_type::pairs, i);
     merge_parts_pending.emplace_back(index_parts_merging,
-        search::index_type::trines, start, end);
+        search::index_type::trines, i);
   }
 
   have_changes = true;
@@ -283,13 +267,13 @@ void index_manager::merge_part_done(merge_part &m, const std::string &output, bo
   if (ok) {
     switch (m.type) {
       case search::index_type::words:
-        merge_out_w.emplace_back(output, m.start, m.end);
+        merge_out_w.emplace(m.part_index, output);
         break;
       case search::index_type::pairs:
-        merge_out_p.emplace_back(output, m.start, m.end);
+        merge_out_p.emplace(m.part_index, output);
         break;
       case search::index_type::trines:
-        merge_out_t.emplace_back(output, m.start, m.end);
+        merge_out_t.emplace(m.part_index, output);
         break;
     }
 

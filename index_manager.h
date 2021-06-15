@@ -42,20 +42,18 @@ struct merge_part {
   const std::vector<std::string> *index_parts;
 
   search::index_type type;
-  std::string start;
-  std::optional<std::string> end;
+  uint32_t part_index;
 
   merge_part() = default;
 
   merge_part(const std::vector<std::string> &parts,
-             search::index_type t, const std::string &s,
-             const std::optional<std::string> &e)
-    : index_parts(&parts), type(t), start(s), end(e) {}
+             search::index_type t, uint32_t part_index)
+    : index_parts(&parts), type(t), part_index(part_index) {}
 
   inline bool operator==(const merge_part &a)
   {
-    return std::tie(a.index_parts, a.type, a.start, a.end)
-      == std::tie(index_parts, type, start, end);
+    return std::tie(a.index_parts, a.type, a.part_index)
+      == std::tie(index_parts, type, part_index);
   }
 };
 
@@ -78,7 +76,7 @@ class index_manager {
   std::list<merge_part> merge_parts_pending;
   std::list<merge_part> merge_parts_merging;
 
-  std::vector<search::index_part_info>
+  std::map<uint32_t, std::string>
     merge_out_w, merge_out_p, merge_out_t;
 
   std::string index_info;

@@ -27,6 +27,8 @@ enum index_type{words, pairs, trines};
 index_type from_str(const std::string &s);
 std::string to_str(index_type type);
 
+uint32_t part_split(const std::string &s, size_t parts);
+
 struct backing_piece {
   uint8_t *buf;
   size_t offset;
@@ -142,17 +144,17 @@ struct read_backing {
   }
 };
 
+struct post {
+  uint32_t id;
+  uint8_t count;
+
+  post(uint32_t i, uint8_t c)
+    : id(i), count(c) {}
+};
+
 struct posting_reader {
   uint32_t len;
   uint32_t offset;
-
-  struct post {
-    uint32_t id;
-    uint8_t count;
-
-    post(uint32_t i, uint8_t c)
-      : id(i), count(c) {}
-  };
 
   std::vector<post> decompress(read_backing &p)
   {
@@ -491,14 +493,25 @@ struct key_block_writer {
   }
 };
 
+struct page_url {
+  uint32_t offset;
+  uint32_t len;
+
+  page_url(uint32_t offset, uint32_t len)
+    : offset(offset), len(len) {}
+};
+
 struct index_meta {
   uint32_t htcap;
   uint32_t htable_base;
-  uint32_t keys_meta_base;
-  uint32_t keys_data_base;
+  uint32_t key_meta_base;
+  uint32_t key_data_base;
   uint32_t posting_count;
   uint32_t posting_meta_base;
   uint32_t posting_data_base;
+  uint32_t page_url_count;
+  uint32_t page_url_meta_base;
+  uint32_t page_url_data_base;
 };
 
 struct index_reader {
@@ -519,12 +532,14 @@ struct index_reader {
   posting_reader *postings{nullptr};
   size_t posting_count;
 
-  std::vector<std::string> page_urls;
+  page_url *page_urls{nullptr};
+  size_t page_url_count;
 
   // backings
-  read_backing keys_meta_backing;
-  read_backing keys_data_backing;
-  read_backing postings_backing;
+  read_backing key_meta_backing;
+  read_backing key_data_backing;
+  read_backing posting_backing;
+  read_backing page_url_backing;
 
   index_reader(const std::string &path, size_t buf_len)
     : path(path), buf_len(buf_len)
@@ -576,21 +591,36 @@ struct index_reader {
     postings = (posting_reader *) (buf + meta.posting_meta_base);
     posting_count = meta.posting_count;
 
-    keys_meta_backing.setup(buf + meta.keys_meta_base);
-    keys_data_backing.setup(buf + meta.keys_data_base);
-    postings_backing.setup(buf + meta.posting_data_base);
+    page_urls = (page_url *) (buf + meta.page_url_meta_base);
+    page_url_count = meta.page_url_count;
+
+    key_meta_backing.setup(buf + meta.key_meta_base);
+    key_data_backing.setup(buf + meta.key_data_base);
+    posting_backing.setup(buf + meta.posting_data_base);
+    page_url_backing.setup(buf + meta.page_url_data_base);
   }
 
-  posting_reader * find(const std::string &s)
+  std::string get_page(uint32_t id)
+  {
+    assert(id < page_url_count);
+
+    auto &page = page_urls[id];
+
+    uint8_t *data = page_url_backing.get_data(page.offset);
+    return std::string((const char *) data, page.len);
+  }
+
+  std::vector<post> find(const std::string &s)
   {
     uint32_t hash_key = hash(s, htcap);
 
     auto &key_b = keys[hash_key];
-    auto posting_id = key_b.find(keys_meta_backing, keys_data_backing, s);
+    auto posting_id = key_b.find(key_meta_backing, key_data_backing, s);
     if (posting_id) {
-      return &postings[*posting_id];
+      auto &posting = postings[*posting_id];
+      return posting.decompress(posting_backing);
     } else {
-      return nullptr;
+      return {};
     }
   }
 };
@@ -605,18 +635,22 @@ struct index_writer {
   // array
   std::vector<posting_writer> postings;
 
+  std::vector<page_url> page_urls;
+
   // doc id 0 is invalid
   //std::vector<std::string> page_urls;
 
-  write_backing keys_meta_backing;
-  write_backing keys_data_backing;
-  write_backing postings_backing;
+  write_backing key_meta_backing;
+  write_backing key_data_backing;
+  write_backing posting_backing;
+  write_backing page_url_backing;
 
-  index_writer(size_t htcap, size_t key_m_b, size_t key_d_b, size_t post_b)
+  index_writer(size_t htcap, size_t key_m_b, size_t key_d_b, size_t post_b, size_t page_b)
     : htcap(htcap),
-      keys_meta_backing("keys_meta", 1024 * 512),
-      keys_data_backing("keys_data", 1024 * 128),
-      postings_backing("postings", 1024 * 256)
+      key_meta_backing("key_meta", key_m_b),
+      key_data_backing("key_data", key_d_b),
+      posting_backing("postings", post_b),
+      page_url_backing("pages", page_b)
   {
     //page_urls.push_back("INVALID");
 
@@ -635,9 +669,10 @@ struct index_writer {
   index_writer(index_writer &&o)
     : htcap(o.htcap), keys(o.keys),
       postings(std::move(o.postings)),
-      keys_meta_backing(std::move(o.keys_meta_backing)),
-      keys_data_backing(std::move(o.keys_data_backing)),
-      postings_backing(std::move(o.postings_backing))
+      key_meta_backing(std::move(o.key_meta_backing)),
+      key_data_backing(std::move(o.key_data_backing)),
+      posting_backing(std::move(o.posting_backing)),
+      page_url_backing(std::move(o.page_url_backing))
   {
     o.keys = nullptr;
   }
@@ -649,10 +684,12 @@ struct index_writer {
   }
 
   size_t usage() {
-    return keys_meta_backing.usage() +
-           keys_data_backing.usage() +
-           postings_backing.usage() +
+    return key_meta_backing.usage() +
+           key_data_backing.usage() +
+           posting_backing.usage() +
+           page_url_backing.usage() +
            postings.size() * sizeof(posting_writer);
+           page_urls.size() * sizeof(page_url);
            //keys.size() * sizeof(key_block_writer) +
            //page_urls.size() * 64;
   }
@@ -662,12 +699,11 @@ struct index_writer {
 
     postings.clear();
 
-    //page_urls.clear();
-    //page_urls.push_back("INVALID");
+    page_urls.clear();
 
-    keys_meta_backing.clear();
-    keys_data_backing.clear();
-    postings_backing.clear();
+    key_meta_backing.clear();
+    key_data_backing.clear();
+    posting_backing.clear();
   }
 
   void write_buf(const std::string &path, uint8_t *buf, size_t len)
@@ -689,61 +725,71 @@ struct index_writer {
 
   void save(const std::string &path, uint8_t *buf, size_t max_len)
   {
-    size_t keys_meta_size = 0;
+    size_t key_meta_size = 0;
+
+    size_t key_count = 0;
 
     for (size_t i = 0; i < htcap; i++) {
       auto &key = keys[i];
-      keys_meta_size += key.items * (sizeof(uint8_t) + sizeof(uint32_t) * 2);
+      key_meta_size += key.items * (sizeof(uint8_t) + sizeof(uint32_t) * 2);
+      key_count += key.items;
     }
 
+    spdlog::info("saving {}, keys, {} postings, {} pages", key_count, postings.size(), page_urls.size());
+
     size_t posting_meta_size = postings.size() * sizeof(uint32_t) * 2;
+    size_t page_url_meta_size = page_urls.size() * sizeof(uint32_t) * 2;
 
     size_t htable_base = 128;
-    size_t keys_meta_base = htable_base + sizeof(uint32_t) * 2 * htcap;
-    size_t posting_meta_base = keys_meta_base + keys_meta_size;
-    size_t keys_data_base = posting_meta_base + posting_meta_size;
-    size_t posting_data_base = 0; // after key data
+    size_t key_meta_base = htable_base + sizeof(uint32_t) * 2 * htcap;
+    size_t posting_meta_base = key_meta_base + key_meta_size;
+    size_t page_url_meta_base = posting_meta_base + posting_meta_size;
 
-    if (keys_data_base >= max_len) {
-      throw std::runtime_error(fmt::format("too much data key data > max len"));
+    size_t key_data_base = page_url_meta_base + page_url_meta_size;
+    size_t posting_data_base = 0; // after key data
+    size_t page_url_data_base = 0; // after key data
+
+    if (key_data_base >= max_len) {
+      throw std::runtime_error(fmt::format("too much data key data > max len. {} keys, {} postings",
+            key_meta_size, postings.size()));
     }
 
     uint32_t *htable_data = (uint32_t *) (buf + htable_base);
-    uint8_t *keys_meta = buf + keys_meta_base;
-    uint8_t *keys_data = buf + keys_data_base;
+    uint8_t *key_meta = buf + key_meta_base;
+    uint8_t *key_data = buf + key_data_base;
 
-    size_t keys_meta_offset = 0;
-    size_t keys_data_offset = 0;
+    size_t key_meta_offset = 0;
+    size_t key_data_offset = 0;
 
     for (size_t i = 0; i < htcap; i++) {
       auto &key = keys[i];
-      auto entries = key.load(keys_meta_backing, keys_data_backing);
+      auto entries = key.load(key_meta_backing, key_data_backing);
 
       htable_data[i*2+0] = (uint32_t) key.items;
-      htable_data[i*2+1] = (uint32_t) keys_meta_offset;
+      htable_data[i*2+1] = (uint32_t) key_meta_offset;
 
-      uint8_t *lens = keys_meta + keys_meta_offset;
-      uint32_t *offsets = (uint32_t *) (keys_meta + keys_meta_offset + key.items * sizeof(uint8_t));
-      uint32_t *ids = (uint32_t *) (keys_meta + keys_meta_offset + key.items * (sizeof(uint8_t) + sizeof(uint32_t)));
+      uint8_t *lens = key_meta + key_meta_offset;
+      uint32_t *offsets = (uint32_t *) (key_meta + key_meta_offset + key.items * sizeof(uint8_t));
+      uint32_t *ids = (uint32_t *) (key_meta + key_meta_offset + key.items * (sizeof(uint8_t) + sizeof(uint32_t)));
 
       for (size_t j = 0; j < entries.size(); j++) {
-        if (keys_data_base + keys_data_offset  >= max_len) {
+        if (key_data_base + key_data_offset  >= max_len) {
           throw std::runtime_error(fmt::format("too much data key data > max len"));
         }
 
-        memcpy(keys_data + keys_data_offset, entries[j].key.data(), entries[j].key.size());
+        memcpy(key_data + key_data_offset, entries[j].key.data(), entries[j].key.size());
 
-        offsets[j] = keys_data_offset;
+        offsets[j] = key_data_offset;
         lens[j] = entries[j].key.size();
         ids[j] = entries[j].posting_id;
 
-        keys_data_offset += entries[j].key.size();
+        key_data_offset += entries[j].key.size();
       }
 
-      keys_meta_offset += key.items * (sizeof(uint8_t) + sizeof(uint32_t) * 2);
+      key_meta_offset += key.items * (sizeof(uint8_t) + sizeof(uint32_t) * 2);
     }
 
-    posting_data_base = keys_data_base + keys_data_offset;
+    posting_data_base = key_data_base + key_data_offset;
 
     uint32_t *posting_meta_data = (uint32_t *) (buf + posting_meta_base);
     uint8_t *posting_data = buf + posting_data_base;
@@ -756,10 +802,10 @@ struct index_writer {
       posting_meta_data[i*2+0] = posting.len;
       posting_meta_data[i*2+1] = posting_data_offset;
 
-      uint8_t *data = postings_backing.get_data(posting.offset);
+      uint8_t *data = posting_backing.get_data(posting.offset);
 
-      if (posting_data_base + posting_data_offset  >= max_len) {
-        throw std::runtime_error(fmt::format("too much data key data > max len"));
+      if (posting_data_base + posting_data_offset >= max_len) {
+        throw std::runtime_error(fmt::format("too much data posting data > max len"));
       }
 
       memcpy(posting_data + posting_data_offset, data, posting.len);
@@ -767,16 +813,56 @@ struct index_writer {
       posting_data_offset += posting.len;
     }
 
+    page_url_data_base = posting_data_base + posting_data_offset;
+
+    uint32_t *page_url_meta_data = (uint32_t *) (buf + page_url_meta_base);
+    uint8_t *page_url_data = buf + page_url_data_base;
+
+    uint32_t page_url_data_offset = 0;
+    for (size_t i = 0; i < page_urls.size(); i++) {
+      auto &page = page_urls[i];
+
+      page_url_meta_data[i*2+0] = page.offset;
+      page_url_meta_data[i*2+1] = page.len;
+
+      uint8_t *data = page_url_backing.get_data(page.offset);
+
+      if (page_url_data_base + page_url_data_offset >= max_len) {
+        throw std::runtime_error(fmt::format("too much data page url data > max len"));
+      }
+
+      memcpy(page_url_data + page_url_data_offset, data, page.len);
+
+      page_url_data_offset += page.len;
+    }
+
     index_meta *m = (index_meta *) buf;
     m->htcap = htcap;
     m->htable_base = htable_base;
-    m->keys_meta_base = keys_meta_base;
-    m->keys_data_base = keys_data_base;
+    m->key_meta_base = key_meta_base;
+    m->key_data_base = key_data_base;
     m->posting_count = postings.size();
     m->posting_meta_base = posting_meta_base;
     m->posting_data_base = posting_data_base;
+    m->page_url_count = page_urls.size();
+    m->page_url_meta_base = page_url_meta_base;
+    m->page_url_data_base = page_url_data_base;
 
-    write_buf(path, buf, posting_data_base + posting_data_offset);
+    write_buf(path, buf, page_url_data_base + page_url_data_offset);
+  }
+
+  uint32_t add_page(const std::string &s) {
+    size_t len = s.size();
+
+    backing_piece b = page_url_backing.alloc(len);
+
+    memcpy(b.buf, s.data(), len);
+
+    uint32_t id = page_urls.size();
+
+    page_urls.emplace_back(b.offset, len);
+
+    return id;
   }
 
   void merge(index_reader &other)
@@ -791,20 +877,20 @@ struct index_writer {
     size_t skipped = 0;
     size_t total_keys = 0;
 
-    uint32_t page_id_offset = 0;/*page_urls.size();
+    uint32_t page_id_offset = page_urls.size();
 
-    page_urls.reserve(page_urls.size() + other.page_urls.size());
+    page_urls.reserve(page_urls.size() + other.page_url_count);
 
-    for (auto p: other.page_urls) {
-      page_urls.emplace_back(p);
+    for (size_t i = 0; i < other.page_url_count; i++) {
+      auto s = other.get_page(i);
+      add_page(s);
     }
-    */
 
     for (size_t h = 0; h < other.htcap; h++) {
       auto &key_m = keys[h]; // Make it more flexible?
       auto &key_o = other.keys[h];
 
-      auto entries = key_o.load(other.keys_meta_backing, other.keys_data_backing);
+      auto entries = key_o.load(other.key_meta_backing, other.key_data_backing);
 
       for (auto &entry: entries) {
         // TODO: check entry.key for different start / end of part.
@@ -812,22 +898,22 @@ struct index_writer {
         assert(entry.posting_id < other.posting_count);
         auto &posting_other = other.postings[entry.posting_id];
 
-        auto posting_id = key_m.find(keys_meta_backing, keys_data_backing, entry.key);
+        auto posting_id = key_m.find(key_meta_backing, key_data_backing, entry.key);
         if (posting_id) {
           auto &posting = postings[*posting_id];
-          posting.merge(postings_backing,
-                posting_other, other.postings_backing,
+          posting.merge(posting_backing,
+                posting_other, other.posting_backing,
                 page_id_offset);
 
         } else {
           uint32_t new_id = postings.size();
           auto &posting = postings.emplace_back();
 
-          posting.merge(postings_backing,
-                posting_other, other.postings_backing,
+          posting.merge(posting_backing,
+                posting_other, other.posting_backing,
                 page_id_offset);
 
-          key_m.add(keys_meta_backing, keys_data_backing, entry.key, new_id);
+          key_m.add(key_meta_backing, key_data_backing, entry.key, new_id);
         }
       }
     }
@@ -842,51 +928,35 @@ struct index_writer {
     uint32_t hash_key = hash(s, htcap);
 
     auto &key_b = keys[hash_key];
-    auto posting_id = key_b.find(keys_meta_backing, keys_data_backing, s);
+    auto posting_id = key_b.find(key_meta_backing, key_data_backing, s);
 
     if (posting_id) {
       auto &posting = postings[*posting_id];
-      posting.append(postings_backing, page_id);
+      posting.append(posting_backing, page_id);
 
     } else {
       uint32_t new_id = postings.size();
       auto &posting = postings.emplace_back();
 
-      posting.append(postings_backing, page_id);
+      posting.append(posting_backing, page_id);
 
-      key_b.add(keys_meta_backing, keys_data_backing, s, new_id);
+      key_b.add(key_meta_backing, key_data_backing, s, new_id);
     }
   }
 };
-
-struct index_part_info {
-  std::string path;
-
-  std::string start;
-  std::optional<std::string> end;
-
-  index_part_info() {}
-
-  index_part_info(const std::string &p) : path(p) {}
-
-  index_part_info(const std::string &p, const std::string &s, std::optional<std::string> e)
-    : path(p), start(s), end(e) {}
-};
-
-void to_json(nlohmann::json &j, const index_part_info &i);
-void from_json(const nlohmann::json &j, index_part_info &i);
 
 struct index_info {
   std::string path;
 
   size_t htcap;
+  size_t parts;
 
   uint32_t average_page_length;
   std::map<std::string, uint32_t> page_lengths;
 
-  std::vector<index_part_info> word_parts;
-  std::vector<index_part_info> pair_parts;
-  std::vector<index_part_info> trine_parts;
+  std::map<uint32_t, std::string> word_parts;
+  std::map<uint32_t, std::string> pair_parts;
+  std::map<uint32_t, std::string> trine_parts;
 
   index_info(std::string p) : path(p) {}
 
@@ -899,7 +969,6 @@ struct indexer {
 
   std::vector<std::pair<std::string, uint32_t>> pages;
 
-  std::vector<index_part_info> word_i, pair_i, trine_i;
   std::vector<index_writer> word_t, pair_t, trine_t;
 
   uint8_t *file_buf{nullptr};
@@ -919,18 +988,25 @@ struct indexer {
     }
 
     for (size_t i = 0; i < splits; i++) {
-      std::string start = fmt::format("{}", i);
-      std::optional<std::string> end;
+      spdlog::info("setting up split {}", i);
 
-      spdlog::info("setting up split {}", start);
+      word_t.emplace_back(htcap,
+          1024 * 512,
+          1024 * 128,
+          1024 * 256,
+          1024 * 1024);
 
-      word_i.emplace_back("", start, end);
-      pair_i.emplace_back("", start, end);
-      trine_i.emplace_back("", start, end);
+      pair_t.emplace_back(htcap,
+          1024 * 512,
+          1024 * 128,
+          1024 * 256,
+          1024 * 1024);
 
-      word_t.emplace_back(htcap, 1024 * 512, 1024 * 128, 1024 * 256);
-      pair_t.emplace_back(htcap, 1024 * 512, 1024 * 128, 1024 * 256);
-      trine_t.emplace_back(htcap, 1024 * 512, 1024 * 128, 1024 * 256);
+      trine_t.emplace_back(htcap,
+          1024 * 512,
+          1024 * 128,
+          1024 * 256,
+          1024 * 1024);
     }
   }
 
@@ -949,8 +1025,7 @@ struct indexer {
 
   std::string save(const std::string &path);
 
-  std::vector<index_part_info> save_parts(
-    std::vector<index_part_info> &i,
+  std::map<uint32_t, std::string> save_parts(
     std::vector<index_writer> &t,
     const std::string &base_path,
     uint8_t *buf, size_t buf_len);
@@ -986,6 +1061,11 @@ struct indexer {
 
   uint32_t add_page(const std::string &page) {
     pages.emplace_back(page, 0);
+
+    for (auto &p: word_t) p.add_page(page);
+    for (auto &p: pair_t) p.add_page(page);
+    for (auto &p: trine_t) p.add_page(page);
+
     return pages.size() - 1;
   }
 
@@ -998,19 +1078,21 @@ struct indexer {
 
 struct searcher {
   index_info info;
+  size_t max_part_size;
 
-  searcher(std::string p) : info(p) {}
+  searcher(std::string p, size_t max_part_size)
+      : info(p), max_part_size(max_part_size) {}
 
   void load() {
     info.load();
   }
 
   void find_part_matches(index_reader &p,
-    std::string &term,
+    const std::string &term,
     std::vector<std::vector<std::pair<std::string, double>>> &postings);
 
   void find_matches(
-    std::vector<index_part_info> &part_info,
+    std::map<uint32_t, std::string> &parts,
     std::list<std::string> &terms,
     std::vector<std::vector<std::pair<std::string, double>>> &postings);
 

@@ -173,30 +173,28 @@ void indexer::index_site(site_map &site) {
   spdlog::info("finished indexing site {}", site.host);
 }
 
-std::vector<index_part_info>
+std::map<uint32_t, std::string>
 indexer::save_parts(
-    std::vector<index_part_info> &i,
     std::vector<index_writer> &t,
     const std::string &base_path,
     uint8_t *buf, size_t buf_len)
 {
-  std::vector<index_part_info> new_info;
+  std::map<uint32_t, std::string> paths;
 
-  for (size_t j = 0; j < i.size(); j++) {
-    auto &info = i[j];
-    auto &p = t[j];
+  for (size_t i = 0; i < t.size(); i++) {
+    auto &p = t[i];
 
-    auto path = fmt::format("{}.{}.dat", base_path, info.start);
+    auto path = fmt::format("{}.{}.dat", base_path, i);
 
     spdlog::info("save part {}", path);
 
     // TODO: don't save empty parts
     p.save(path, buf, buf_len);
 
-    new_info.emplace_back(path, info.start, info.end);
+    paths.emplace(i, path);
   }
 
-  return new_info;
+  return paths;
 }
 
 std::string indexer::save(const std::string &base_path)
@@ -214,9 +212,9 @@ std::string indexer::save(const std::string &base_path)
 
   index_info info(meta_path);
 
-  info.word_parts = save_parts(word_i, word_t, words_path, buf, buf_len);
-  info.pair_parts = save_parts(pair_i, pair_t, pairs_path, buf, buf_len);
-  info.trine_parts = save_parts(trine_i, trine_t, trines_path, buf, buf_len);
+  info.word_parts = save_parts(word_t, words_path, buf, buf_len);
+  info.pair_parts = save_parts(pair_t, pairs_path, buf, buf_len);
+  info.trine_parts = save_parts(trine_t, trines_path, buf, buf_len);
 
   free(buf);
 
@@ -243,10 +241,7 @@ std::string indexer::save(const std::string &base_path)
 void indexer::insert(std::vector<index_writer> &t,
       const std::string &s, uint32_t page_id)
 {
-	uint32_t len = s.size();
-  if (len > 4) len = 4;
-
-	size_t h = hash(s.data(), len, splits);
+	size_t h = part_split(s, splits);
 
   return t[h].insert(s, page_id);
 }

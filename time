@@ -850,3 +850,12 @@ running at 100% cpu usage...
 index: 1.07
 merge: using too much mem. way way too much.
 
+
+index: 1.20
+merge: 0.50
+
+split hashing is very uneven.
+
+change hash functino to something not much better.
+put page urls into parts. This seems a lot slower. Would be better to not do it...
+

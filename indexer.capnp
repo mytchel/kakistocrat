@@ -74,7 +74,7 @@ interface Indexer {
 }
 
 interface Merger {
-    merge @0 (start :Text, end :Text, type :Text,
+    merge @0 (partIndex :UInt32, type :Text,
               indexPartPaths :List(Text),
               out :Text);
 }
@@ -98,7 +98,7 @@ interface ScoreWorker {
 
     iterate @3 ();
     iterateFinish @4 () -> (running :Bool);
-    
+
     save @5 ();
 
     addWalks @6 (walks :List(ScoreWalk));

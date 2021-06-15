@@ -103,8 +103,7 @@ static terms split_terms(char *line)
  */
 static std::vector<std::pair<std::string, double>>
 rank(
-    std::vector<std::pair<uint32_t, uint8_t>> &postings,
-    std::vector<std::string> &pages,
+    std::vector<std::pair<std::string, uint32_t>> &postings,
     std::map<std::string, uint32_t> &page_lengths,
     double avgdl)
 {
@@ -113,15 +112,8 @@ rank(
 	// IDF = ln(N/df_t)
 	double wt = log(page_lengths.size() / postings.size());
 	for (auto &p: postings) {
-		uint32_t index_id = p.first;
-    std::string page_url;
-
-    try {
-      page_url = pages.at(index_id);
-    } catch (const std::exception& e) {
-      spdlog::info("bad index id {} / {}", index_id, pages.size());
-      continue;
-    }
+    std::string &page_url = p.first;
+    double tf = p.second;
 
     auto it = page_lengths.find(page_url);
     if (it == page_lengths.end()) {
@@ -130,8 +122,6 @@ rank(
     }
 
 		double docLength = it->second;
-
-    double tf = p.second;
 
 		//                   (k_1 + 1) * tf_td
 		// IDF * ----------------------------------------- (over)
@@ -154,78 +144,42 @@ rank(
 }
 
 void searcher::find_part_matches(
-    search::index_part &part,
-    std::string &term,
+    index_reader &part,
+    const std::string &term,
     std::vector<std::vector<std::pair<std::string, double>>> &postings)
 {
   spdlog::debug("find term {} in {}", term, part.path);
 
-  auto pair = part.find(term);
-  if (pair != nullptr) {
-    auto pairs = pair->second.decompress();
-    spdlog::debug("have pair {} with {} docs", pair->first.str(), pairs.size());
-    auto pairs_ranked = rank(pairs, part.pages, info.page_lengths, info.average_page_length);
+  auto pairs = part.find(term);
 
-    spdlog::debug("have ranked {} with {} docs", pair->first.str(), pairs_ranked.size());
-    postings.push_back(pairs_ranked);
-	} else {
-    spdlog::debug("nothing found");
+  std::vector<std::pair<std::string, uint32_t>> pairs_s;
+
+  pairs_s.reserve(pairs.size());
+  for (auto &p: pairs) {
+    pairs_s.emplace_back(part.get_page(p.id), p.count);
   }
-}
 
-static index_part load_part(index_part_info &info, size_t htcap)
-{
-  index_part part(info.path, htcap, info.start, info.end);
+  spdlog::debug("have pair {} with {} docs", term, pairs.size());
+  auto pairs_ranked = rank(pairs_s, info.page_lengths, info.average_page_length);
 
-  part.load();
-
-  return part;
+  spdlog::debug("have ranked {} with {} docs", term, pairs_ranked.size());
+  postings.push_back(pairs_ranked);
 }
 
 void searcher::find_matches(
-    std::vector<index_part_info> &part_info,
+    std::map<uint32_t, std::string> &parts,
     std::list<std::string> &terms,
     std::vector<std::vector<std::pair<std::string, double>>> &postings)
 {
-  terms.sort();
+  for (auto &term: terms) {
+    uint32_t h = part_split(term, info.parts);
 
-  auto term = terms.begin();
-
-  // This does not support index parts overlapping.
-  // Index parts must be ordered.
-
-  for (auto &part: part_info) {
-    if (term == terms.end()) {
-      spdlog::info("checked all terms");
-      break;
-    }
-
-    if (*term < part.start) {
-      spdlog::info("term {} all checked", *term);
-      term++;
-    }
-
-    if (part.end && *term > *part.end) {
-      spdlog::info("term {} > part end {}", *term, *part.end);
-      continue;
-    }
-
-    spdlog::info("load part {} to check terms", part.path);
-
-    auto index = load_part(part, htcap);
-
-    while (term != terms.end()) {
-      spdlog::info("is term {} in {}", *term, part.start);
-
-      if (part.start <= *term && (!part.end || *term < *part.end)) {
-        spdlog::info("search {} for {}", part.path, *term);
-        find_part_matches(index, *term, postings);
-      } else {
-        spdlog::info("stop?");
-        break;
-      }
-
-      term++;
+    auto it = parts.find(h);
+    if (it != parts.end()) {
+      auto &path = it->second;
+      search::index_reader part(path, max_part_size);
+      part.load();
+      find_part_matches(part, term, postings);
     }
   }
 }

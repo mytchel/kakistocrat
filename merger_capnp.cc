@@ -67,11 +67,7 @@ public:
 
     search::index_type index_type = search::from_str(str_type);
 
-    std::string start = params.getStart();
-    std::optional<std::string> end;
-    if (params.hasEnd()) {
-      end = params.getEnd();
-    }
+    uint32_t part_index = params.getPartIndex();
 
     std::list<std::string> part_paths;
 
@@ -86,7 +82,8 @@ public:
     search::index_writer out(htcap,
           1024 * 1024 * 100,
           1024 * 1024 * 10,
-          1024 * 1024 * 500);
+          1024 * 1024 * 500,
+          1024 * 1024 * 10);
 
     for (auto &index_path: part_paths) {
       spdlog::info("load {} for merging", index_path);
@@ -94,9 +91,9 @@ public:
       search::index_info index(index_path);
       index.load();
 
-      spdlog::info("index {} usage {} kb", start, out.usage() / 1024);
+      spdlog::info("index {} usage {} kb", part_index, out.usage() / 1024);
 
-      std::vector<search::index_part_info> *parts;
+      std::map<uint32_t, std::string> *parts;
 
       switch (index_type) {
         case search::index_type::words:
@@ -114,14 +111,13 @@ public:
           continue;
       }
 
-      for (auto &p: *parts) {
-        if ((!end || p.start < *end) && (!p.end || start < *p.end)) {
-          search::index_reader in(p.path, settings.indexer.max_index_part_size);
-          in.load();
+      auto it = parts->find(part_index);
+      if (it != parts->end()) {
+        search::index_reader in(it->second, settings.indexer.max_index_part_size);
+        in.load();
 
-          spdlog::info("merge {}", p.path);
-          out.merge(in);
-        }
+        spdlog::info("merge {}", it->second);
+        out.merge(in);
       }
 
       spdlog::info("finished merging {}", index_path);
