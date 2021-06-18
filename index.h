@@ -445,15 +445,15 @@ struct key_block_writer {
         ids = get_ids(n);
 
         if (loc > 0) {
-          memcpy(lens, old_lens, loc * sizeof(uint8_t));
-          memcpy(offsets, old_offsets, loc * sizeof(uint32_t));
-          memcpy(ids, old_ids, loc * sizeof(uint32_t));
+          memmove(lens, old_lens, loc * sizeof(uint8_t));
+          memmove(offsets, old_offsets, loc * sizeof(uint32_t));
+          memmove(ids, old_ids, loc * sizeof(uint32_t));
         }
 
         if (loc < items) {
-          memcpy(lens + loc + 1, old_lens + loc, (items - loc) * sizeof(uint8_t));
-          memcpy(offsets + loc + 1, old_offsets + loc, (items - loc) * sizeof(uint32_t));
-          memcpy(ids + loc + 1, old_ids + loc, (items - loc) * sizeof(uint32_t));
+          memmove(lens + loc + 1, old_lens + loc, (items - loc) * sizeof(uint8_t));
+          memmove(offsets + loc + 1, old_offsets + loc, (items - loc) * sizeof(uint32_t));
+          memmove(ids + loc + 1, old_ids + loc, (items - loc) * sizeof(uint32_t));
         }
 
         // TODO: free
@@ -463,13 +463,16 @@ struct key_block_writer {
         offsets = old_offsets;
         ids = old_ids;
 
-        memcpy(lens + loc + 1, old_lens + loc, (items - loc) * sizeof(uint8_t));
-        memcpy(offsets + loc + 1, old_offsets + loc, (items - loc) * sizeof(uint32_t));
-        memcpy(ids + loc + 1, old_ids + loc, (items - loc) * sizeof(uint32_t));
+        if (loc < items) {
+          memmove(lens + loc + 1, old_lens + loc, (items - loc) * sizeof(uint8_t));
+          memmove(offsets + loc + 1, old_offsets + loc, (items - loc) * sizeof(uint32_t));
+          memmove(ids + loc + 1, old_ids + loc, (items - loc) * sizeof(uint32_t));
+        }
       }
 
     } else {
       max_items = 8;
+
       backing_piece back = m.alloc(max_items * (sizeof(uint8_t) + sizeof(uint32_t) * 2));
       offset = back.offset;
 

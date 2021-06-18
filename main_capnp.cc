@@ -60,25 +60,47 @@ class MasterImpl final: public Master::Server,
   }
 
   void setup() {
+    spdlog::info("load crawler");
     crawler.load();
 
     std::vector<std::string> blacklist = util::load_list(settings.blacklist_path);
     std::vector<std::string> initial_seed = util::load_list(settings.seed_path);
 
+    spdlog::info("load blacklist");
+
     crawler.load_blacklist(blacklist);
+    spdlog::info("load seed");
     crawler.load_seed(initial_seed);
 
-    //indexer.load();
+    spdlog::info("load indexing state");
+    indexer.load();
 
+/*
+    spdlog::info("mark all sites indexable");
+    size_t i = 0;
     for (auto &site: crawler.sites) {
-      indexer.mark_indexable(site.path);
+      if (site.scraped)
+        indexer.mark_indexable(site.path);
+
+      if (++i % 100000 == 0) {
+        spdlog::debug("marked {}", i);
+
+        indexer.save();
+      }
     }
+*/
 
+    spdlog::info("initial flush");
     flush();
-    checkCrawlers();
 
+    spdlog::info("start crawling");
+    checkCrawlers();
+    spdlog::info("start indexing");
     indexNext();
+    spdlog::info("start merging");
     mergeNext();
+
+    spdlog::info("setup done");
   }
 
   void checkCrawlers() {

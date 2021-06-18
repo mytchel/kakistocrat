@@ -7,6 +7,7 @@
 #include <vector>
 #include <list>
 #include <set>
+#include <unordered_set>
 #include <map>
 #include <string>
 #include <algorithm>
@@ -69,8 +70,8 @@ class index_manager {
 
   std::list<index_part> index_parts;
 
-  std::set<std::string> sites_pending_index;
-  std::set<std::string> sites_indexing;
+  std::unordered_set<std::string> sites_pending_index;
+  std::unordered_set<std::string> sites_indexing;
 
   std::vector<std::string> index_parts_merging;
   std::list<merge_part> merge_parts_pending;
@@ -148,8 +149,6 @@ public:
 
 private:
   void finish_merge();
-
-  void add_indexable(const std::string &path);
 
   index_part * find_part(const std::string &path);
 

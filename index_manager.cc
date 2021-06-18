@@ -154,24 +154,14 @@ void index_manager::save() {
   have_changes = false;
 }
 
-void index_manager::add_indexable(const std::string &path) {
-  for (auto s: sites_pending_index) {
-    if (s == path) {
-      return;
-    }
-  }
-
-  sites_pending_index.emplace(path);
-}
-
 void index_manager::mark_indexable(const std::string &site_path) {
   auto removed = pop_parts(site_path);
 
   for (auto ss: removed) {
-    add_indexable(ss);
+    sites_pending_index.emplace(ss);
   }
 
-  add_indexable(site_path);
+  sites_pending_index.emplace(site_path);
 
   have_changes = true;
 }
