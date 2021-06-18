@@ -859,3 +859,13 @@ split hashing is very uneven.
 change hash functino to something not much better.
 put page urls into parts. This seems a lot slower. Would be better to not do it...
 
+index: 1.50
+merge: 1.35
+
+I think I was using htcap=15 but got changed to 18, changing back to 15 now.
+
+don't put page urls in parts. put them in parts meta json.
+
+index: 1.23
+merge: 0.50
+

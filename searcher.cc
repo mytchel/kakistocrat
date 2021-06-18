@@ -9,6 +9,7 @@
 #include <sstream>
 #include <cstdint>
 #include <chrono>
+#include <assert.h>
 
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -103,25 +104,36 @@ static terms split_terms(char *line)
  */
 static std::vector<std::pair<std::string, double>>
 rank(
-    std::vector<std::pair<std::string, uint32_t>> &postings,
-    std::map<std::string, uint32_t> &page_lengths,
+    std::vector<post> &postings,
+    std::vector<std::pair<std::string, uint32_t>> &pages,
     double avgdl)
 {
+  if (postings.empty()) {
+    return {};
+  }
+
   std::vector<std::pair<std::string, double>> pairs_ranked;
 
-	// IDF = ln(N/df_t)
-	double wt = log(page_lengths.size() / postings.size());
-	for (auto &p: postings) {
-    std::string &page_url = p.first;
-    double tf = p.second;
+  pairs_ranked.reserve(postings.size());
 
-    auto it = page_lengths.find(page_url);
-    if (it == page_lengths.end()) {
-      spdlog::info("didnt find page length for {}", page_url);
+	// IDF = ln(N/df_t)
+	double wt = log(pages.size() / postings.size());
+  size_t p_i = 0;
+	for (auto &p: postings) {
+    spdlog::info("have pair {} : {},{} ({})", p_i++, p.id, p.count, pages.size());
+
+    assert(p.id < pages.size());
+
+    auto &page = pages.at(p.id);
+    spdlog::info("{} = {} : {}", p.id, page.first, page.second);
+
+    std::string &page_url = page.first;
+		double docLength = page.second;
+    double tf = p.count;
+
+    if (docLength == 0 || page_url == "") {
       continue;
     }
-
-		double docLength = it->second;
 
 		//                   (k_1 + 1) * tf_td
 		// IDF * ----------------------------------------- (over)
@@ -152,15 +164,8 @@ void searcher::find_part_matches(
 
   auto pairs = part.find(term);
 
-  std::vector<std::pair<std::string, uint32_t>> pairs_s;
-
-  pairs_s.reserve(pairs.size());
-  for (auto &p: pairs) {
-    pairs_s.emplace_back(part.get_page(p.id), p.count);
-  }
-
   spdlog::debug("have pair {} with {} docs", term, pairs.size());
-  auto pairs_ranked = rank(pairs_s, info.page_lengths, info.average_page_length);
+  auto pairs_ranked = rank(pairs, info.pages, info.average_page_length);
 
   spdlog::debug("have ranked {} with {} docs", term, pairs_ranked.size());
   postings.push_back(pairs_ranked);
@@ -171,15 +176,24 @@ void searcher::find_matches(
     std::list<std::string> &terms,
     std::vector<std::vector<std::pair<std::string, double>>> &postings)
 {
+  spdlog::info("search");
   for (auto &term: terms) {
+    spdlog::info("search {}", term);
     uint32_t h = part_split(term, info.parts);
+
+    spdlog::info("search {} -> part {}", term, h);
 
     auto it = parts.find(h);
     if (it != parts.end()) {
+      spdlog::info("have part {}", h);
+
       auto &path = it->second;
+      spdlog::info("load {}", path);
       search::index_reader part(path, max_part_size);
       part.load();
       find_part_matches(part, term, postings);
+    } else {
+      spdlog::info("no part for {}", h);
     }
   }
 }

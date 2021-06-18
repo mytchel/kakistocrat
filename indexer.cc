@@ -219,13 +219,16 @@ std::string indexer::save(const std::string &base_path)
   free(buf);
 
   info.htcap = htcap;
+  info.parts = splits;
 
   size_t average_page_length = 0;
 
   if (pages.size() > 0) {
+    info.pages.reserve(pages.size());
+
     for (auto &p: pages) {
       average_page_length += p.second;
-      info.page_lengths.emplace(p.first, p.second);
+      info.pages.emplace_back(p.first, p.second);
     }
 
     average_page_length /= pages.size();

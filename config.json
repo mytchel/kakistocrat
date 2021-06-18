@@ -20,7 +20,7 @@
         "n_threads": 3,
         "thread_max_mem_mb": 800,
         "max_index_part_size_mb": 50,
-        "htcap": 18,
+        "htcap": 15,
         "sites_per_part": 100,
         "parts_path": "out/index_parts/",
         "meta_path": "out/index_parts.json"
@@ -29,7 +29,7 @@
         "n_threads": 3,
         "max_index_part_size_mb": 600,
         "frequency_minutes": 1,
-        "htcap": 18,
+        "htcap": 15,
         "parts_path": "out/index_merged/",
         "meta_path": "out/index.json"
     },

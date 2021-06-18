@@ -191,6 +191,9 @@ class SearcherImpl final:
             [this] () {
               spdlog::info("finished sending");
               finish();
+            },
+            [] (auto exception) {
+              spdlog::warn("error writing result: {}", std::string(exception.getDescription()));
             }));
     }
 
@@ -315,7 +318,7 @@ int main(int argc, char *argv[]) {
   spdlog::set_level(spdlog::level::debug);
 
   std::string bindAddress = "localhost:1234";
-  std::string listenAddress = "192.168.0.2:8000";
+  std::string listenAddress = "0.0.0.0:8000";
 
   spdlog::info("read config");
   config settings = read_config();

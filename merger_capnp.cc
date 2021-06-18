@@ -82,8 +82,9 @@ public:
     search::index_writer out(htcap,
           1024 * 1024 * 100,
           1024 * 1024 * 10,
-          1024 * 1024 * 500,
-          1024 * 1024 * 10);
+          1024 * 1024 * 500);
+
+    uint32_t page_id_offset = 0;
 
     for (auto &index_path: part_paths) {
       spdlog::info("load {} for merging", index_path);
@@ -117,10 +118,12 @@ public:
         in.load();
 
         spdlog::info("merge {}", it->second);
-        out.merge(in);
+        out.merge(in, page_id_offset);
       }
 
-      spdlog::info("finished merging {}", index_path);
+      page_id_offset += index.pages.size();
+
+      spdlog::info("finished merging {} : {} / {}", index_path, index.pages.size(), page_id_offset);
     }
 
     spdlog::info("saving merged {}", out_path);

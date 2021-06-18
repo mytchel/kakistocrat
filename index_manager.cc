@@ -302,14 +302,21 @@ void index_manager::finish_merge() {
     search::index_info index(path);
     index.load();
 
-    for (auto &p: index.page_lengths) {
-      info.average_page_length += p.second;
-      info.page_lengths.emplace(p.first, p.second);
+    if (index.parts != index_splits) {
+      spdlog::warn("part {} has bad split parts {} != {}",
+          path, index.parts, index_splits);
     }
+
+    for (auto &p: index.pages) {
+      info.average_page_length += p.second;
+      info.pages.emplace_back(p.first, p.second);
+    }
+
+    spdlog::info("{} added {} / {} pages", path, index.pages.size(), info.pages.size());
   }
 
-  if (info.page_lengths.size() > 0) {
-    info.average_page_length /= info.page_lengths.size();
+  if (info.pages.size() > 0) {
+    info.average_page_length /= info.pages.size();
   } else {
     info.average_page_length = 0;
   }
@@ -317,6 +324,8 @@ void index_manager::finish_merge() {
   info.word_parts = merge_out_w;
   info.pair_parts = merge_out_p;
   info.trine_parts = merge_out_t;
+
+  info.parts = index_splits;
 
   info.save();
 

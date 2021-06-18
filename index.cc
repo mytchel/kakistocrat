@@ -28,12 +28,15 @@ namespace search {
 
 uint32_t part_split(const std::string &s, size_t parts)
 {
+//  return hash(s, parts);
+
   const char *data = s.data();
   size_t m = s.size();
+  if (m > 3) m = 3;
 
   uint32_t h = 0;
 
-  for (size_t l = 0; l < 3 && l < m; l++) {
+  for (size_t l = 0; l < m; l++) {
     h += (uint32_t) (data[l] - '0');
   }
 
@@ -87,7 +90,8 @@ void index_info::save()
 {
   json j = json{
       {"average_page_length", average_page_length},
-      {"page_lengths", page_lengths},
+      {"pages", pages},
+      {"parts", parts},
       {"htcap", htcap},
       {"word_parts", word_parts},
       {"pair_parts", pair_parts},
@@ -123,7 +127,8 @@ void index_info::load()
   file.close();
 
   j.at("average_page_length").get_to(average_page_length);
-  j.at("page_lengths").get_to(page_lengths);
+  j.at("pages").get_to(pages);
+  j.at("parts").get_to(parts);
   j.at("htcap").get_to(htcap);
   j.at("word_parts").get_to(word_parts);
   j.at("pair_parts").get_to(pair_parts);
