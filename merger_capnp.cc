@@ -80,9 +80,9 @@ public:
     size_t htcap = settings.merger.htcap;
 
     search::index_writer out(htcap,
-          1024 * 1024 * 100,
+          1024 * 1024 * 50,
           1024 * 1024 * 10,
-          1024 * 1024 * 500);
+          1024 * 1024 * 100);
 
     uint32_t page_id_offset = 0;
 

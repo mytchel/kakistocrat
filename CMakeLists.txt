@@ -27,8 +27,6 @@ add_subdirectory(x_nlohmann)
 
 add_subdirectory(x_spdlog)
 
-add_subdirectory(x_memory)
-
 configure_file(x_seed/seed seed COPYONLY)
 configure_file(x_seed/blacklist blacklist COPYONLY)
 
@@ -45,7 +43,7 @@ add_executable(main_capnp main_capnp.cc
     index_manager.cc
     crawler.cc
 
-    index.cc
+    index_info.cc
     tokenizer.cc
     vbyte.cc
     str.c
@@ -60,7 +58,6 @@ target_include_directories(main_capnp PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(main_capnp Threads::Threads)
 target_link_libraries(main_capnp nlohmann_json::nlohmann_json)
 target_link_libraries(main_capnp spdlog::spdlog)
-target_link_libraries(main_capnp foonathan_memory)
 target_link_libraries(main_capnp CapnProto::capnp-rpc)
 target_link_libraries(main_capnp CapnProto::capnp)
 target_link_libraries(main_capnp CapnProto::kj-async)
@@ -88,7 +85,6 @@ target_link_libraries(crawler_capnp ${CURL_LIBRARIES})
 target_link_libraries(crawler_capnp Threads::Threads)
 target_link_libraries(crawler_capnp nlohmann_json::nlohmann_json)
 target_link_libraries(crawler_capnp spdlog::spdlog)
-target_link_libraries(crawler_capnp foonathan_memory)
 target_link_libraries(crawler_capnp CapnProto::capnp-rpc)
 target_link_libraries(crawler_capnp CapnProto::capnp)
 target_link_libraries(crawler_capnp CapnProto::kj-async)
@@ -99,8 +95,11 @@ add_executable(indexer_capnp indexer_capnp.cc
     ${capnp_headers}
 
     index.cc
+    index_info.cc
     indexer.cc
     index_backing.cc
+    key_block.cc
+    posting.cc
     vbyte.cc
     tokenizer.cc
     str.c
@@ -115,7 +114,6 @@ target_include_directories(indexer_capnp PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(indexer_capnp Threads::Threads)
 target_link_libraries(indexer_capnp nlohmann_json::nlohmann_json)
 target_link_libraries(indexer_capnp spdlog::spdlog)
-target_link_libraries(indexer_capnp foonathan_memory)
 target_link_libraries(indexer_capnp CapnProto::capnp-rpc)
 target_link_libraries(indexer_capnp CapnProto::capnp)
 target_link_libraries(indexer_capnp CapnProto::kj-async)
@@ -126,7 +124,10 @@ add_executable(merger_capnp merger_capnp.cc
     ${capnp_headers}
 
     index.cc
+    index_info.cc
     index_backing.cc
+    key_block.cc
+    posting.cc
     vbyte.cc
     tokenizer.cc
     str.c
@@ -141,7 +142,6 @@ target_include_directories(merger_capnp PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(merger_capnp Threads::Threads)
 target_link_libraries(merger_capnp nlohmann_json::nlohmann_json)
 target_link_libraries(merger_capnp spdlog::spdlog)
-target_link_libraries(merger_capnp foonathan_memory)
 target_link_libraries(merger_capnp CapnProto::capnp-rpc)
 target_link_libraries(merger_capnp CapnProto::capnp)
 target_link_libraries(merger_capnp CapnProto::kj-async)
@@ -164,7 +164,6 @@ target_include_directories(scorer_master_capnp PUBLIC ${CMAKE_CURRENT_BINARY_DIR
 target_link_libraries(scorer_master_capnp Threads::Threads)
 target_link_libraries(scorer_master_capnp nlohmann_json::nlohmann_json)
 target_link_libraries(scorer_master_capnp spdlog::spdlog)
-target_link_libraries(scorer_master_capnp foonathan_memory)
 target_link_libraries(scorer_master_capnp CapnProto::capnp-rpc)
 target_link_libraries(scorer_master_capnp CapnProto::capnp)
 target_link_libraries(scorer_master_capnp CapnProto::kj-async)
@@ -185,7 +184,6 @@ target_include_directories(scorer_worker_capnp PUBLIC ${CMAKE_CURRENT_BINARY_DIR
 target_link_libraries(scorer_worker_capnp Threads::Threads)
 target_link_libraries(scorer_worker_capnp nlohmann_json::nlohmann_json)
 target_link_libraries(scorer_worker_capnp spdlog::spdlog)
-target_link_libraries(scorer_worker_capnp foonathan_memory)
 target_link_libraries(scorer_worker_capnp CapnProto::capnp-rpc)
 target_link_libraries(scorer_worker_capnp CapnProto::capnp)
 target_link_libraries(scorer_worker_capnp CapnProto::kj-async)
@@ -206,7 +204,6 @@ target_include_directories(scorer_reader_capnp PUBLIC ${CMAKE_CURRENT_BINARY_DIR
 target_link_libraries(scorer_reader_capnp Threads::Threads)
 target_link_libraries(scorer_reader_capnp nlohmann_json::nlohmann_json)
 target_link_libraries(scorer_reader_capnp spdlog::spdlog)
-target_link_libraries(scorer_reader_capnp foonathan_memory)
 target_link_libraries(scorer_reader_capnp CapnProto::capnp-rpc)
 target_link_libraries(scorer_reader_capnp CapnProto::capnp)
 target_link_libraries(scorer_reader_capnp CapnProto::kj-async)
@@ -217,7 +214,10 @@ add_executable(search_capnp search_capnp.cc
     ${capnp_headers}
 
     index.cc
+    index_info.cc
     index_backing.cc
+    key_block.cc
+    posting.cc
     searcher.cc
     vbyte.cc
     tokenizer.cc
@@ -233,7 +233,6 @@ target_include_directories(search_capnp PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(search_capnp Threads::Threads)
 target_link_libraries(search_capnp nlohmann_json::nlohmann_json)
 target_link_libraries(search_capnp spdlog::spdlog)
-target_link_libraries(search_capnp foonathan_memory)
 target_link_libraries(search_capnp CapnProto::capnp-rpc)
 target_link_libraries(search_capnp CapnProto::kj-http)
 target_link_libraries(search_capnp CapnProto::capnp)
