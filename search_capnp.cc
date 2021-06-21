@@ -92,13 +92,13 @@ class SearcherImpl final:
 
         searcher.tasks.add(request.send().then(
               [this, page] (auto result) {
-                spdlog::info("got page info for {}", page.first);
+                spdlog::trace("got page info for {}", page.first);
 
                 float score = result.getScore();
                 std::string title = result.getTitle();
                 std::string path = result.getPath();
 
-                spdlog::info("got page info for {} : {} '{}' '{}'", page.first, score, title, path);
+                spdlog::trace("got page info for {} : {} '{}' '{}'", page.first, score, title, path);
 
                 if (title != "" && path != "") {
                   results.emplace_back(
@@ -141,7 +141,7 @@ class SearcherImpl final:
 
       if (sum_rank > 0) {
         for (auto &r: results) {
-          spdlog::info("rank {} : {}", r.url, r.rank);
+          spdlog::debug("rank {} : {}", r.url, r.rank);
           r.rank /= sum_rank;
         }
       }
@@ -326,6 +326,7 @@ int main(int argc, char *argv[]) {
   // two way vat
 
   kj::UnixEventPort::captureSignal(SIGINT);
+  kj::UnixEventPort::captureSignal(SIGPIPE);
   auto ioContext = kj::setupAsyncIo();
 
   auto listenAddrPromise = ioContext.provider->getNetwork().parseAddress(listenAddress, 8080);

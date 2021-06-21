@@ -120,12 +120,12 @@ rank(
 	double wt = log(pages.size() / postings.size());
   size_t p_i = 0;
 	for (auto &p: postings) {
-    spdlog::info("have pair {} : {},{} ({})", p_i++, p.id, p.count, pages.size());
+    spdlog::trace("have pair {} : {},{} ({})", p_i++, p.id, p.count, pages.size());
 
     assert(p.id < pages.size());
 
     auto &page = pages.at(p.id);
-    spdlog::info("{} = {} : {}", p.id, page.first, page.second);
+    spdlog::trace("{} = {} : {}", p.id, page.first, page.second);
 
     std::string &page_url = page.first;
 		double docLength = page.second;
@@ -282,7 +282,7 @@ intersect_postings_strict(std::vector<std::vector<std::pair<std::string, double>
 
   if (sum_scores > 0) {
     for (auto &p: result) {
-      spdlog::info("{} : {}", p.second, p.first);
+      spdlog::trace("{} : {}", p.second, p.first);
       p.second /= sum_scores;
     }
   }
@@ -303,9 +303,9 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
   std::vector<size_t> indexes(postings.size(), 0);
 
   for (size_t i = 0; i < postings.size(); i++) {
-    spdlog::debug("posting {}", i);
+    spdlog::trace("posting {}", i);
     for (size_t j = 0; j < postings[i].size(); j++) {
-      spdlog::debug("    {}", postings[i][j].first);
+      spdlog::trace("    {}", postings[i][j].first);
     }
   }
 
@@ -346,7 +346,7 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
     }
 
     score *= matches * matches;
-    spdlog::debug("url {} -- {} : {}", matches, score, url);
+    spdlog::trace("url {} -- {} : {}", matches, score, url);
 
     result.emplace_back(url, score);
   }
@@ -359,7 +359,7 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
   double sum_scores = 0;
 
   for (auto &p: result) {
-    spdlog::info("raw        {} : {}", p.second, p.first);
+    spdlog::trace("raw        {} : {}", p.second, p.first);
 
     size_t p_len = util::get_path(p.first).length();
 
@@ -371,15 +371,15 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
 
       p.second *= a;
 
-      spdlog::info("adjust url {} / {}", p_len, url_max_len);
+      spdlog::trace("adjust url {} / {}", p_len, url_max_len);
     }
 
     if (p.first.find("?") != std::string::npos) {
       p.second *= 0.1;
-      spdlog::info("q   adjust");
+      spdlog::trace("q   adjust");
     }
 
-    spdlog::info("url adjust {} : {}", p.second, p.first);
+    spdlog::trace("url adjust {} : {}", p.second, p.first);
 
     sum_scores += p.second;
   }
@@ -392,7 +392,7 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
   for (auto &p: result) {
     p.second /= sum_scores;
 
-    spdlog::info("sum adjust {} : {}", p.second, p.first);
+    spdlog::trace("sum adjust {} : {}", p.second, p.first);
   }
 
 	return result;

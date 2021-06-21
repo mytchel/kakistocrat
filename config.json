@@ -18,18 +18,18 @@
     "index_meta_path": "out/index_meta.json",
     "indexer": {
         "n_threads": 3,
-        "thread_max_mem_mb": 800,
+        "thread_max_mem_mb": 1000,
         "max_index_part_size_mb": 50,
         "htcap": 15,
-        "sites_per_part": 1000,
+        "sites_per_part": 200,
         "parts_path": "out/index_parts/",
         "meta_path": "out/index_parts.json"
     },
     "merger": {
         "n_threads": 3,
-        "max_index_part_size_mb": 600,
-        "frequency_minutes": 1,
+        "max_index_part_size_mb": 400,
         "htcap": 15,
+        "frequency_minutes": 60,
         "parts_path": "out/index_merged/",
         "meta_path": "out/index.json"
     },

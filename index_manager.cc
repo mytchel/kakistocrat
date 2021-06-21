@@ -166,6 +166,19 @@ void index_manager::mark_indexable(const std::string &site_path) {
   have_changes = true;
 }
 
+void index_manager::index_failed(const std::vector<std::string> &sites) {
+  for (auto &site: sites) {
+    auto it = sites_indexing.find(site);
+    if (it != sites_indexing.end()) {
+      sites_indexing.erase(it);
+    }
+
+    sites_pending_index.emplace(site);
+  }
+
+  have_changes = true;
+}
+
 std::vector<std::string> index_manager::get_sites_for_index(bool flush) {
   spdlog::info("get sites for index");
 
@@ -199,19 +212,12 @@ void index_manager::add_part(const std::string &path, const std::vector<std::str
     if (it != sites_indexing.end()) {
       sites_indexing.erase(it);
     } else {
+      // Could happen due to a site spanning parts.
       spdlog::warn("add part with site that is not in sites indexing? {}", site_path);
     }
 
     if (sites_pending_index.find(site_path) != sites_pending_index.end()) {
       spdlog::error("add parts with site that is in pending index? {}", site_path);
-    }
-
-    for (auto &p: index_parts) {
-      for (auto &ss: p.sites) {
-        if (ss == site_path) {
-          spdlog::error("add parts with site that is in index part {} : {}", p.path, site_path);
-        }
-      }
     }
   }
 

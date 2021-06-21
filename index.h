@@ -35,14 +35,16 @@ struct backing_piece {
 };
 
 struct backing_block {
-  size_t base_offset;
-  size_t block_size;
-  size_t used{0};
+  const std::string &name;
+  uint32_t base_offset;
+  uint32_t block_size;
+  uint32_t head{0};
 
+  bool own;
   uint8_t *buf;
 
-  backing_block(size_t o, size_t s)
-  : base_offset(o), block_size(s)
+  backing_block(const std::string &name, size_t o, size_t s)
+  : name(name), base_offset(o), block_size(s), own(true)
   {
     buf = (uint8_t *) malloc(block_size);
     if (buf == nullptr) {
@@ -50,17 +52,22 @@ struct backing_block {
     }
   }
 
+  backing_block(const std::string &name, size_t o, size_t s, bool own, uint8_t *buf)
+  : name(name), base_offset(o), block_size(s), own(own), buf(buf)
+  {}
+
   ~backing_block() noexcept {
-    if (buf != nullptr) {
+    if (own && buf != nullptr) {
       free(buf);
     }
   }
 
   backing_block(const backing_block &b) = delete;
   backing_block(backing_block &b) noexcept
-    : base_offset(b.base_offset),
+    : name(b.name),
+      base_offset(b.base_offset),
       block_size(b.block_size),
-      used(b.used),
+      head(b.head),
       buf(b.buf)
   {
     b.buf = nullptr;
@@ -68,23 +75,23 @@ struct backing_block {
 
   backing_block(const backing_block &&b) = delete;
   backing_block(backing_block &&b) noexcept
-    : base_offset(b.base_offset),
+    : name(b.name),
+      base_offset(b.base_offset),
       block_size(b.block_size),
-      used(b.used),
+      head(b.head),
       buf(b.buf)
   {
     b.buf = nullptr;
   }
 
   bool can_alloc(uint32_t size) {
-    return block_size - used > size;
+    return block_size - head > size;
   }
 
   backing_piece alloc(uint32_t size);
 
   uint8_t *get_data(uint32_t offset) {
     assert(offset < block_size);
-
     return &buf[offset];
   }
 };
@@ -92,32 +99,47 @@ struct backing_block {
 struct write_backing {
   std::string name;
 
-  size_t block_size;
+  uint32_t block_size;
   std::vector<backing_block> blocks;
 
-  write_backing(const std::string &n, size_t block_size)
+  std::vector<std::vector<uint32_t>> free_pieces;
+
+  write_backing(const std::string &n, uint32_t block_size)
     : name(n), block_size(block_size)
   {}
-
+  
+  backing_piece alloc_big(uint32_t size);
   backing_piece alloc(uint32_t size);
-  backing_piece realloc(uint32_t offset, uint32_t size);
 
-  uint8_t *get_data(uint32_t offset) {
-    assert(!blocks.empty());
+  std::optional<backing_piece> get_free(uint32_t size);
+  void free_block(uint32_t offset, uint32_t size);
 
+  uint8_t *get_data(uint32_t offset)
+  {
     uint32_t n = offset / block_size;
 
-    assert(n < blocks.size());
-
-    return blocks[n].get_data(offset - n * block_size);
+    return blocks.at(n).get_data(offset - n * block_size);
   }
 
-  size_t usage() {
-    return blocks.size() * block_size;
+  uint32_t usage() {
+    uint32_t u = blocks.size() * block_size;
+
+    uint32_t free_u = 0;
+    for (auto &f: free_pieces) {
+      free_u += f.size() * sizeof(uint32_t);
+    }
+
+    if (free_u > u * 2) {
+      spdlog::warn("Usage from free list is excessive {} > base blocks {}",
+        free_u, u);
+    }
+
+    return u + free_u;
   }
 
   void clear() {
     blocks.clear();
+    free_pieces.clear();
   }
 };
 
@@ -188,15 +210,18 @@ struct key_block_reader {
   key_block_reader() {}
 
   uint8_t *get_lens(uint8_t *b) {
-    return b;
+    //return b;
+    return (uint8_t *)  (b + 2 * items * (sizeof(uint32_t)));
   }
 
   uint32_t *get_offsets(uint8_t *b) {
-    return (uint32_t *) (b + items * (sizeof(uint8_t)));
+    //return (uint32_t *) (b + max_items * (sizeof(uint8_t)));
+    return (uint32_t *) (b + 0 * items * (sizeof(uint32_t)));
   }
 
   uint32_t *get_ids(uint8_t *b) {
-    return (uint32_t *) (b + items * (sizeof(uint8_t) + sizeof(uint32_t)));
+    //return (uint32_t *) (b + max_items * (sizeof(uint8_t) + sizeof(uint32_t)));
+    return (uint32_t *) (b + 1 * items * (sizeof(uint32_t)));
   }
 
   std::vector<key_entry> load(read_backing &m, read_backing &d);
@@ -210,27 +235,26 @@ struct key_block_writer {
 
   key_block_writer() {}
 
-  void reset() {
-    max_items = 0;
-    items = 0;
-    offset = 0;
+  uint8_t *get_lens(uint8_t *b, uint32_t m) {
+    //return b;
+    return (uint8_t *)  (b + 2 * m * (sizeof(uint32_t)));
   }
 
-  uint8_t *get_lens(uint8_t *b) {
-    return b;
+  uint32_t *get_offsets(uint8_t *b, uint32_t m) {
+    //return (uint32_t *) (b + max_items * (sizeof(uint8_t)));
+    return (uint32_t *) (b + 0 * m * (sizeof(uint32_t)));
   }
 
-  uint32_t *get_offsets(uint8_t *b) {
-    return (uint32_t *) (b + max_items * (sizeof(uint8_t)));
-  }
-
-  uint32_t *get_ids(uint8_t *b) {
-    return (uint32_t *) (b + max_items * (sizeof(uint8_t) + sizeof(uint32_t)));
+  uint32_t *get_ids(uint8_t *b, uint32_t m) {
+    //return (uint32_t *) (b + max_items * (sizeof(uint8_t) + sizeof(uint32_t)));
+    return (uint32_t *) (b + 1 * m * (sizeof(uint32_t)));
   }
 
   std::vector<key_entry> load(write_backing &m, write_backing &d);
   std::optional<uint32_t> find(write_backing &m, write_backing &d, const std::string &s);
-  void add(write_backing &m, write_backing &d, const std::string &s, uint32_t posting_id);
+  void add(write_backing &m, write_backing &d,
+        const std::string &s, uint32_t posting_id,
+        uint16_t base_items);
 };
 
 struct index_meta {
@@ -241,6 +265,12 @@ struct index_meta {
   uint32_t posting_count;
   uint32_t posting_meta_base;
   uint32_t posting_data_base;
+
+  uint32_t htable_size;
+  uint32_t key_meta_size;
+  uint32_t key_data_size;
+  uint32_t posting_meta_size;
+  uint32_t posting_data_size;
 };
 
 struct index_reader {
@@ -250,8 +280,6 @@ struct index_reader {
   size_t part_size;
 
   index_meta meta;
-
-  // doc id 0 is invalid
 
   // hash
   key_block_reader *keys{nullptr};
@@ -287,6 +315,7 @@ struct index_reader {
 
 struct index_writer {
   size_t htcap;
+  uint16_t key_base_items;
 
   // hash
   //std::vector<key_block_writer> keys;
@@ -299,8 +328,9 @@ struct index_writer {
   write_backing key_data_backing;
   write_backing posting_backing;
 
-  index_writer(size_t htcap, size_t key_m_b, size_t key_d_b, size_t post_b)
-    : htcap(htcap),
+  index_writer(size_t htcap, uint16_t key_base_items,
+               size_t key_m_b, size_t key_d_b, size_t post_b)
+    : htcap(htcap), key_base_items(key_base_items),
       key_meta_backing("key_meta", key_m_b),
       key_data_backing("key_data", key_d_b),
       posting_backing("postings", post_b)
@@ -318,7 +348,9 @@ struct index_writer {
   index_writer(index_writer &o) = delete;
 
   index_writer(index_writer &&o)
-    : htcap(o.htcap), keys(o.keys),
+    : htcap(o.htcap),
+      key_base_items(o.key_base_items),
+      keys(o.keys),
       postings(std::move(o.postings)),
       key_meta_backing(std::move(o.key_meta_backing)),
       key_data_backing(std::move(o.key_data_backing)),
@@ -333,12 +365,21 @@ struct index_writer {
     }
   }
 
+  std::string usage_str() {
+    return fmt::format("ht: {} kb, km: {} kb, kd: {} kb, pm: {} kb, pb: {} kb",
+           sizeof(key_block_writer) * htcap / 1024,
+           key_meta_backing.usage() / 1024,
+           key_data_backing.usage() / 1024,
+           postings.size() * sizeof(posting_writer) / 1024,
+           posting_backing.usage() / 1024);
+  }
+
   size_t usage() {
-    return key_meta_backing.usage() +
+    return sizeof(key_block_writer) * htcap +
+           key_meta_backing.usage() +
            key_data_backing.usage() +
            posting_backing.usage() +
            postings.size() * sizeof(posting_writer);
-           //keys.size() * sizeof(key_block_writer) +
   }
 
   void clear() {
@@ -380,17 +421,24 @@ struct indexer {
   size_t splits, htcap;
 
   std::vector<std::pair<std::string, uint32_t>> pages;
+  size_t pages_usage{0};
 
   std::vector<index_writer> word_t, pair_t, trine_t;
 
   uint8_t *file_buf{nullptr};
   size_t file_buf_size{0};
 
+  uint8_t *out_buf{nullptr};
+  size_t out_buf_size{0};
+
   indexer(
       size_t splits,
       size_t htcap,
+      size_t max_f,
       size_t max_p)
-    : splits(splits), htcap(htcap), file_buf_size(max_p)
+    : splits(splits), htcap(htcap),
+      file_buf_size(max_f),
+      out_buf_size(max_p)
   {
     spdlog::info("setting up");
 
@@ -399,20 +447,25 @@ struct indexer {
       throw std::bad_alloc();
     }
 
+    out_buf = (uint8_t *) malloc(out_buf_size);
+    if (out_buf == nullptr) {
+      throw std::bad_alloc();
+    }
+
     for (size_t i = 0; i < splits; i++) {
       spdlog::info("setting up split {}", i);
 
-      word_t.emplace_back(htcap,
+      word_t.emplace_back(htcap, 2,
           1024 * 512,
           1024 * 128,
           1024 * 256);
 
-      pair_t.emplace_back(htcap,
+      pair_t.emplace_back(htcap, 2,
           1024 * 512,
           1024 * 128,
           1024 * 256);
 
-      trine_t.emplace_back(htcap,
+      trine_t.emplace_back(htcap, 2,
           1024 * 512,
           1024 * 128,
           1024 * 256);
@@ -423,10 +476,15 @@ struct indexer {
     if (file_buf) {
       free(file_buf);
     }
+     
+    if (out_buf) {
+      free(out_buf);
+    }
   }
 
   void clear() {
     pages.clear();
+    pages_usage = 0;
     for (auto &p: word_t) p.clear();
     for (auto &p: pair_t) p.clear();
     for (auto &p: trine_t) p.clear();
@@ -450,18 +508,27 @@ struct indexer {
   }
 
   size_t usage() {
-    size_t u = 0;
+    size_t w = 0, p = 0, t = 0, pa = 0;
+    for (auto &p: word_t) w += p.usage();
+    for (auto &pp: pair_t) p += pp.usage();
+    for (auto &p: trine_t) t += p.usage();
 
-    for (auto &p: word_t) u += p.usage();
-    for (auto &p: pair_t) u += p.usage();
-    for (auto &p: trine_t) u += p.usage();
+    pa += pages.size() * 64;
+    pa += pages_usage;
 
-    u += pages.size() * 64;
+    size_t u = w + p + t + pa;
+
+    spdlog::info("indexer usage pages: {} kb, words {} kb,  pairs: {} kb, trines: {} kb = {} mb",
+      pa  / 1024,
+      w / 1024,
+      p / 1024,
+      t / 1024,
+      u / 1024 / 1024);
 
     return u;
   }
 
-  void index_site(site_map &site);
+  void index_site(site_map &site, std::function<void()> before_page);
 
   void insert(std::vector<index_writer> &t,
       const std::string &s, uint32_t page_id);
@@ -470,6 +537,8 @@ struct indexer {
 
   uint32_t add_page(const std::string &page) {
     pages.emplace_back(page, 0);
+
+    pages_usage += page.size();
 
     return pages.size() - 1;
   }

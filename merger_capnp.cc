@@ -79,7 +79,7 @@ public:
 
     size_t htcap = settings.merger.htcap;
 
-    search::index_writer out(htcap,
+    search::index_writer out(htcap, 56,
           1024 * 1024 * 50,
           1024 * 1024 * 10,
           1024 * 1024 * 100);
@@ -87,12 +87,13 @@ public:
     uint32_t page_id_offset = 0;
 
     for (auto &index_path: part_paths) {
+      spdlog::info("index {} usage {} kb = {}", part_index, out.usage() / 1024,
+        out.usage_str());
+
       spdlog::info("load {} for merging", index_path);
 
       search::index_info index(index_path);
       index.load();
-
-      spdlog::info("index {} usage {} kb", part_index, out.usage() / 1024);
 
       std::map<uint32_t, std::string> *parts;
 

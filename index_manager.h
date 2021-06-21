@@ -133,6 +133,7 @@ public:
   // indexing
 
   void mark_indexable(const std::string &site_path);
+  void index_failed(const std::vector<std::string> &sites);
 
   std::vector<std::string> get_sites_for_index(bool flush);
 

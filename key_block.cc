@@ -68,9 +68,9 @@ std::vector<key_entry> key_block_writer::load(write_backing &m, write_backing &d
 
   uint8_t *b = m.get_data(offset);
 
-  auto lens = get_lens(b);
-  auto offsets = get_offsets(b);
-  auto ids = get_ids(b);
+  auto lens = get_lens(b, max_items);
+  auto offsets = get_offsets(b, max_items);
+  auto ids = get_ids(b, max_items);
 
   std::vector<key_entry> entries;
   entries.reserve(items);
@@ -91,9 +91,9 @@ std::optional<uint32_t> key_block_writer::find(write_backing &m, write_backing &
 
   uint8_t *b = m.get_data(offset);
 
-  auto lens = get_lens(b);
-  auto offsets = get_offsets(b);
-  auto ids = get_ids(b);
+  auto lens    = get_lens(b, max_items);
+  auto offsets = get_offsets(b, max_items);
+  auto ids     = get_ids(b, max_items);
 
   size_t len = s.size();
   const uint8_t *s_data = (const uint8_t *) s.data();
@@ -113,76 +113,113 @@ std::optional<uint32_t> key_block_writer::find(write_backing &m, write_backing &
   return {};
 }
 
-void key_block_writer::add(write_backing &m, write_backing &d, const std::string &s, uint32_t posting_id)
+void key_block_writer::add(write_backing &m, write_backing &d,
+          const std::string &s, uint32_t posting_id,
+          uint16_t base_items)
 {
   assert(s.size() < key_max_len);
 
   size_t loc = 0;
+  size_t s_len = s.size();
+
   uint8_t *lens;
   uint32_t *offsets;
   uint32_t *ids;
 
-  size_t s_len = s.size();
-
   if (items > 0) {
     uint8_t *b = m.get_data(offset);
 
-    uint8_t *old_lens = get_lens(b);
-    uint32_t *old_offsets = get_offsets(b);
-    uint32_t *old_ids = get_ids(b);
+    lens    = get_lens(b, max_items);
+    offsets = get_offsets(b, max_items);
+    ids     = get_ids(b, max_items);
 
-    while (loc < items && old_lens[loc] <= s_len)
+    while (loc < items && lens[loc] <= s_len)
       loc++;
 
     if (items + 1 >= max_items) {
-      max_items *= 2;
-
-      backing_piece back = m.alloc(max_items * (sizeof(uint8_t) + sizeof(uint32_t) * 2));
-      offset = back.offset;
+      backing_piece back = m.alloc(4 * max_items * (sizeof(uint8_t) + sizeof(uint32_t) * 2));
 
       uint8_t *n = back.buf;
+      uint32_t new_offset = back.offset;
+      uint32_t new_max_items = back.size / (sizeof(uint8_t) + sizeof(uint32_t) * 2);
 
-      lens = get_lens(n);
-      offsets = get_offsets(n);
-      ids = get_ids(n);
+      auto new_lens    = get_lens(n, new_max_items);
+      auto new_offsets = get_offsets(n, new_max_items);
+      auto new_ids     = get_ids(n, new_max_items);
 
       if (loc > 0) {
-        memmove(lens, old_lens, loc * sizeof(uint8_t));
-        memmove(offsets, old_offsets, loc * sizeof(uint32_t));
-        memmove(ids, old_ids, loc * sizeof(uint32_t));
+        memcpy(new_lens, lens,
+               loc * sizeof(uint8_t));
+
+        memcpy(new_offsets, offsets,
+               loc * sizeof(uint32_t));
+
+        memcpy(new_ids, ids,
+               loc * sizeof(uint32_t));
       }
 
       if (loc < items) {
-        memmove(lens + loc + 1, old_lens + loc, (items - loc) * sizeof(uint8_t));
-        memmove(offsets + loc + 1, old_offsets + loc, (items - loc) * sizeof(uint32_t));
-        memmove(ids + loc + 1, old_ids + loc, (items - loc) * sizeof(uint32_t));
+        memcpy(new_lens + loc + 1,
+               lens + loc,
+               (items - loc) * sizeof(uint8_t));
+
+        memcpy(new_offsets + loc + 1,
+               offsets + loc,
+               (items - loc) * sizeof(uint32_t));
+
+        memcpy(new_ids + loc + 1,
+               ids + loc,
+               (items - loc) * sizeof(uint32_t));
       }
 
-      // TODO: free
+/*
+      memmove(new_lens, lens, items * sizeof(uint8_t));
+      memmove(new_offsets, offsets, items * sizeof(uint32_t));
+      memmove(new_ids, ids, items * sizeof(uint32_t));
+*/
+
+      // freeing doesn't make much sense here.
+      // eveything gets filled out and then grows.
+      // the free'd blocks do not get used.
+      //m.free_block(offset, max_len);
+
+      lens    = new_lens;
+      offsets = new_offsets;
+      ids     = new_ids;
+
+      offset    = new_offset;
+      max_items = new_max_items;
+
+      spdlog::trace("key meta grow {} > {}", back.size, max_items);
 
     } else {
-      lens = old_lens;
-      offsets = old_offsets;
-      ids = old_ids;
-
       if (loc < items) {
-        memmove(lens + loc + 1, old_lens + loc, (items - loc) * sizeof(uint8_t));
-        memmove(offsets + loc + 1, old_offsets + loc, (items - loc) * sizeof(uint32_t));
-        memmove(ids + loc + 1, old_ids + loc, (items - loc) * sizeof(uint32_t));
+        // memmove because overlapping buffers
+
+        memmove(lens + loc + 1,
+                lens + loc,
+                (items - loc) * sizeof(uint8_t));
+
+        memmove(offsets + loc + 1,
+                offsets + loc,
+                (items - loc) * sizeof(uint32_t));
+
+        memmove(ids + loc + 1,
+                ids + loc,
+                (items - loc) * sizeof(uint32_t));
       }
     }
 
   } else {
-    max_items = 8;
+    backing_piece back = m.alloc(base_items * (sizeof(uint8_t) + sizeof(uint32_t) * 2));
 
-    backing_piece back = m.alloc(max_items * (sizeof(uint8_t) + sizeof(uint32_t) * 2));
-    offset = back.offset;
+    uint8_t *b = back.buf;
+    offset    = back.offset;
+    max_items = back.size / (sizeof(uint8_t) + sizeof(uint32_t) * 2);
 
-    uint8_t *n = back.buf;
-
-    lens = get_lens(n);
-    offsets = get_offsets(n);
-    ids = get_ids(n);
+    lens    = get_lens(b, max_items);
+    offsets = get_offsets(b, max_items);
+    ids     = get_ids(b, max_items);
   }
 
   backing_piece b = d.alloc(s_len);

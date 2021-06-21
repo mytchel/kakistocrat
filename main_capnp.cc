@@ -73,9 +73,8 @@ class MasterImpl final: public Master::Server,
     crawler.load_seed(initial_seed);
 
     spdlog::info("load indexing state");
-    indexer.load();
+//    indexer.load();
 
-/*
     spdlog::info("mark all sites indexable");
     size_t i = 0;
     for (auto &site: crawler.sites) {
@@ -88,7 +87,6 @@ class MasterImpl final: public Master::Server,
         indexer.save();
       }
     }
-*/
 
     spdlog::info("initial flush");
     flush();
@@ -302,20 +300,15 @@ class MasterImpl final: public Master::Server,
             search::to_str(p.type), p.part_index);
 
           indexer.merge_part_done(p, out, true);
-
           ready_mergers.push_back(merger);
-
           mergeNext();
         },
-        [this, &p] (auto exception) mutable {
+        [this, &p, merger] (auto exception) mutable {
           spdlog::warn("got exception for merge part {} {} : {}",
               search::to_str(p.type), p.part_index,
               std::string(exception.getDescription()));
 
           indexer.merge_part_done(p, "", false);
-
-          // Put merger on ready?
-
           mergeNext();
         }));
 
@@ -405,15 +398,15 @@ class MasterImpl final: public Master::Server,
         [this, &op, client] (auto exception) {
           spdlog::warn("got exception while indexing {}", std::string(exception.getDescription()));
 
-          for (auto &s: op) {
-            spdlog::info("index finished for {}", s);
-            indexer.mark_indexable(s);
-          }
+          indexer.index_failed(op);
 
           index_ops.remove_if(
               [&op] (auto &o) {
                 return &op == &o;
               });
+
+          indexNext();
+
         }));
 
     indexNext();

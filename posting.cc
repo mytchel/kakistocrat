@@ -36,33 +36,30 @@ std::vector<post> posting_reader::decompress(read_backing &p)
 
 uint8_t * posting_writer::ensure_size(write_backing &p, uint32_t need)
 {
-  if (len > 0 && need < max_len) {
+  if (need < max_len) {
     return p.get_data(offset);
   }
 
-  uint8_t *old;
+  uint32_t n_max = max_len;
+
+  if (n_max < 32) {
+    n_max = 32;
+  }
+
+  do {
+    n_max = n_max * 4;
+  } while (n_max <= need);
+
+  backing_piece b = p.alloc(n_max);
+
   if (len > 0) {
-    old = p.get_data(offset);
+    uint8_t *old = p.get_data(offset);
+    memcpy(b.buf, old, len);
+    p.free_block(offset, max_len);
   }
-
-  while (max_len < need) {
-    if (max_len < 32) {
-      max_len = 32;
-    } else {
-      max_len = max_len * 8;
-    }
-  }
-
-  // TODO: realloc
-
-  backing_piece b = p.alloc(max_len);
 
   offset = b.offset;
   max_len = b.size;
-
-  if (len > 0) {
-    memcpy(b.buf, old, len);
-  }
 
   return b.buf;
 }

@@ -100,14 +100,14 @@ void index_writer::write_buf(const std::string &path, uint8_t *buf, size_t len)
 void index_writer::save(const std::string &path, uint8_t *buf, size_t max_len)
 {
   size_t key_meta_size = 0;
-
   size_t key_count = 0;
 
   for (size_t i = 0; i < htcap; i++) {
     auto &key = keys[i];
-    key_meta_size += key.items * (sizeof(uint8_t) + sizeof(uint32_t) * 2);
     key_count += key.items;
   }
+
+  key_meta_size = key_count * (sizeof(uint8_t) + sizeof(uint32_t) * 2);
 
   spdlog::info("saving {}, keys, {} postings", key_count, postings.size());
 
@@ -140,9 +140,9 @@ void index_writer::save(const std::string &path, uint8_t *buf, size_t max_len)
     htable_data[i*2+0] = (uint32_t) key.items;
     htable_data[i*2+1] = (uint32_t) key_meta_offset;
 
-    uint8_t *lens = key_meta + key_meta_offset;
-    uint32_t *offsets = (uint32_t *) (key_meta + key_meta_offset + key.items * sizeof(uint8_t));
-    uint32_t *ids = (uint32_t *) (key_meta + key_meta_offset + key.items * (sizeof(uint8_t) + sizeof(uint32_t)));
+    uint8_t *lens = (key_meta + key_meta_offset + 2 * key.items * sizeof(uint32_t));
+    uint32_t *offsets = (uint32_t *) (key_meta + key_meta_offset + 0 * key.items * sizeof(uint32_t));
+    uint32_t *ids = (uint32_t *) (key_meta + key_meta_offset + 1 * key.items * sizeof(uint32_t));
 
     for (size_t j = 0; j < entries.size(); j++) {
       if (key_data_base + key_data_offset  >= max_len) {
@@ -188,11 +188,23 @@ void index_writer::save(const std::string &path, uint8_t *buf, size_t max_len)
   index_meta *m = (index_meta *) buf;
   m->htcap = htcap;
   m->htable_base = htable_base;
+  m->htable_size = htable_size;
   m->key_meta_base = key_meta_base;
+  m->key_meta_size = key_meta_size;
   m->key_data_base = key_data_base;
+  m->key_data_size = key_data_offset;
   m->posting_count = postings.size();
   m->posting_meta_base = posting_meta_base;
+  m->posting_meta_size = posting_meta_size;
   m->posting_data_base = posting_data_base;
+  m->posting_data_size = posting_data_offset;
+
+  spdlog::info("writing {} with k meta: {:4} kb k data: {:4} key, p meta: {:4} kb, p data: {:4}",
+    path,
+    m->key_meta_size / 1024,
+    m->key_data_size / 1024,
+    m->posting_meta_size / 1024,
+    m->posting_data_size / 1024);
 
   write_buf(path, buf, posting_data_base + posting_data_offset);
 }
@@ -223,7 +235,7 @@ void index_writer::merge(index_reader &other, uint32_t page_id_offset)
 
       auto posting_id = key_m.find(key_meta_backing, key_data_backing, entry.key);
       if (posting_id) {
-        auto &posting = postings[*posting_id];
+        auto &posting = postings.at(*posting_id);
         posting.merge(posting_backing,
               posting_other, other.posting_backing,
               page_id_offset);
@@ -236,7 +248,7 @@ void index_writer::merge(index_reader &other, uint32_t page_id_offset)
               posting_other, other.posting_backing,
               page_id_offset);
 
-        key_m.add(key_meta_backing, key_data_backing, entry.key, new_id);
+        key_m.add(key_meta_backing, key_data_backing, entry.key, new_id, key_base_items);
       }
     }
   }
@@ -263,7 +275,7 @@ void index_writer::insert(const std::string &s, uint32_t page_id)
 
     posting.append(posting_backing, page_id);
 
-    key_b.add(key_meta_backing, key_data_backing, s, new_id);
+    key_b.add(key_meta_backing, key_data_backing, s, new_id, key_base_items);
   }
 }
 

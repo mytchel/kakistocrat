@@ -60,7 +60,8 @@ public:
     search::indexer indexer(
         settings.index_parts,
         settings.indexer.htcap,
-        settings.crawler.max_page_size);
+        settings.crawler.max_page_size,
+        settings.indexer.max_index_part_size);
 
     spdlog::info("indexer created");
 
@@ -83,24 +84,38 @@ public:
     for (auto path: context.getParams().getSitePaths()) {
       spdlog::info("load  {}", std::string(path));
 
+      if (indexer.usage() > max_usage) {
+        auto &o = outputs.back();
+
+        o.path = indexer.flush(
+          fmt::format("{}/part.{}", base_path, flush_count++));
+
+        // Setup the next output
+        auto &n = outputs.emplace_back();
+      }
+
       site_map site(path);
       site.load();
 
       spdlog::info("index {}", site.host);
-      indexer.index_site(site);
+      indexer.index_site(site, 
+        [max_usage, &base_path, &path, &flush_count, &indexer, &outputs] () mutable {
+          if (indexer.usage() > max_usage) {
+            auto &o = outputs.back();
+
+            o.path = indexer.flush(
+              fmt::format("{}/part.{}", base_path, flush_count++));
+
+            // Setup the next output
+            auto &n = outputs.emplace_back();
+            n.sites.emplace_back(path);
+          }
+        });
 
       auto &o = outputs.back();
       o.sites.emplace_back(path);
 
       spdlog::info("done  {}", site.host);
-
-      if (indexer.usage() > max_usage) {
-        o.path = indexer.flush(
-            fmt::format("{}/part.{}", base_path, flush_count++));
-
-        // Setup the next output
-        outputs.emplace_back();
-      }
     }
 
     auto &o = outputs.back();

@@ -41,7 +41,7 @@ static bool word_allow_extra(std::string s)
   return true;
 }
 
-void indexer::index_site(site_map &site) {
+void indexer::index_site(site_map &site, std::function<void()> before_page) {
   spdlog::info("index site {}", site.host);
 
   const size_t buf_len = 80;
@@ -63,9 +63,11 @@ void indexer::index_site(site_map &site) {
   spdlog::info("process {} pages for {}", site.pages.size(), site.host);
   for (auto &page: site.pages) {
     if (page.last_scanned == 0) {
-      spdlog::info("skip unscanned page {}", page.url);
+      spdlog::debug("skip unscanned page {}", page.url);
       continue;
     }
+
+    before_page();
 
     size_t page_length = 0;
 
@@ -84,7 +86,7 @@ void indexer::index_site(site_map &site) {
 
     uint32_t page_id = add_page(page.url);
 
-    spdlog::debug("process page {} kb : {}",
+    spdlog::trace("process page {} kb : {}",
       len / 1024, page.url);
 
     tokenizer::tokenizer tok((char *) file_buf, len);
@@ -170,7 +172,7 @@ void indexer::index_site(site_map &site) {
     set_page_size(page.url, page_length);
   }
 
-  spdlog::info("finished indexing site {}", site.host);
+  spdlog::debug("finished indexing site {}", site.host);
 }
 
 std::map<uint32_t, std::string>
@@ -199,12 +201,6 @@ indexer::save_parts(
 
 std::string indexer::save(const std::string &base_path)
 {
-  size_t buf_len = 1024 * 1024 * 30;
-  uint8_t *buf = (uint8_t *) malloc(buf_len);
-  if (buf == nullptr) {
-    throw std::bad_alloc();
-  }
-
   auto words_path = fmt::format("{}.words", base_path);
   auto pairs_path = fmt::format("{}.pairs", base_path);
   auto trines_path = fmt::format("{}.trines", base_path);
@@ -212,11 +208,9 @@ std::string indexer::save(const std::string &base_path)
 
   index_info info(meta_path);
 
-  info.word_parts = save_parts(word_t, words_path, buf, buf_len);
-  info.pair_parts = save_parts(pair_t, pairs_path, buf, buf_len);
-  info.trine_parts = save_parts(trine_t, trines_path, buf, buf_len);
-
-  free(buf);
+  info.word_parts = save_parts(word_t, words_path, out_buf, out_buf_size);
+  info.pair_parts = save_parts(pair_t, pairs_path, out_buf, out_buf_size);
+  info.trine_parts = save_parts(trine_t, trines_path, out_buf, out_buf_size);
 
   info.htcap = htcap;
   info.parts = splits;
