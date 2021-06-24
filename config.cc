@@ -90,12 +90,6 @@ config read_config(std::string path) {
   j.at("blacklist").get_to(c.blacklist_path);
   j.at("frequency_d").get_to(c.frequency_d);
 
-  if (!j.at("crawler").at("n_threads").is_null()) {
-    size_t t;
-    j.at("crawler").at("n_threads").get_to(t);
-    c.crawler.n_threads = t;
-  }
-
   j.at("crawler").at("site_data_path").get_to(c.crawler.site_data_path);
   j.at("crawler").at("site_meta_path").get_to(c.crawler.site_meta_path);
   j.at("crawler").at("sites_path").get_to(c.crawler.sites_path);
@@ -113,12 +107,6 @@ config read_config(std::string path) {
   j.at("index_parts").get_to(c.index_parts);
   j.at("index_meta_path").get_to(c.index_meta_path);
 
-  if (!j.at("indexer").at("n_threads").is_null()) {
-    size_t t;
-    j.at("indexer").at("n_threads").get_to(t);
-    c.indexer.n_threads = t;
-  }
-
   j.at("indexer").at("thread_max_mem_mb").get_to(s_mb);
   c.indexer.thread_max_mem = s_mb * 1024 * 1024;
   j.at("indexer").at("max_index_part_size_mb").get_to(s_mb);
@@ -131,12 +119,6 @@ config read_config(std::string path) {
 
   j.at("indexer").at("parts_path").get_to(c.indexer.parts_path);
   j.at("indexer").at("meta_path").get_to(c.indexer.meta_path);
-
-  if (!j.at("merger").at("n_threads").is_null()) {
-    size_t t;
-    j.at("merger").at("n_threads").get_to(t);
-    c.merger.n_threads = t;
-  }
 
   j.at("merger").at("max_index_part_size_mb").get_to(s_mb);
   c.merger.max_index_part_size = s_mb * 1024 * 1024;

@@ -21,7 +21,6 @@ struct config {
   size_t frequency_d;
 
   struct {
-    std::optional<size_t> n_threads;
     size_t thread_max_sites;
     size_t thread_max_connections;
     size_t site_max_connections;
@@ -39,7 +38,6 @@ struct config {
   std::string index_meta_path;
 
   struct {
-    std::optional<size_t> n_threads;
     size_t thread_max_mem;
     size_t max_index_part_size;
     size_t sites_per_part;
@@ -51,7 +49,6 @@ struct config {
   } indexer;
 
   struct {
-    std::optional<size_t> n_threads;
     size_t max_index_part_size;
 
     size_t frequency_minutes;

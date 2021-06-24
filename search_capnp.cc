@@ -129,6 +129,10 @@ class SearcherImpl final:
           break;
         }
       }
+
+      if (pending == 0) {
+        respond();
+      }
     }
 
     void respond() {

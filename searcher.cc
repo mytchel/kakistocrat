@@ -38,27 +38,27 @@ static terms split_terms(char *line)
   const size_t buf_len = 512;
 
   char tok_buffer_store[buf_len];
-	struct str tok_buffer;
-	str_init(&tok_buffer, tok_buffer_store, sizeof(tok_buffer_store));
+  struct str tok_buffer;
+  str_init(&tok_buffer, tok_buffer_store, sizeof(tok_buffer_store));
 
   char pair_buffer[buf_len * 2 + 1];
-	struct str tok_buffer_pair;
-	str_init(&tok_buffer_pair, pair_buffer, sizeof(pair_buffer));
+  struct str tok_buffer_pair;
+  str_init(&tok_buffer_pair, pair_buffer, sizeof(pair_buffer));
 
   char trine_buffer[buf_len * 3 + 2];
-	struct str tok_buffer_trine;
-	str_init(&tok_buffer_trine, trine_buffer, sizeof(trine_buffer));
+  struct str tok_buffer_trine;
+  str_init(&tok_buffer_trine, trine_buffer, sizeof(trine_buffer));
 
   tokenizer::token_type token;
   tokenizer::tokenizer tok(line, strlen(line));
 
   terms t;
 
-	do {
-		token = tok.next(&tok_buffer);
+  do {
+    token = tok.next(&tok_buffer);
     if (token == tokenizer::WORD) {
-		  str_tolower(&tok_buffer);
-		  str_tostem(&tok_buffer);
+      str_tolower(&tok_buffer);
+      str_tostem(&tok_buffer);
 
       std::string s(str_c(&tok_buffer));
 
@@ -89,7 +89,7 @@ static terms split_terms(char *line)
       str_resize(&tok_buffer_pair, 0);
       str_cat(&tok_buffer_pair, str_c(&tok_buffer));
     }
-	} while (token != tokenizer::END);
+  } while (token != tokenizer::END);
 
   return t;
 }
@@ -116,10 +116,10 @@ rank(
 
   pairs_ranked.reserve(postings.size());
 
-	// IDF = ln(N/df_t)
-	double wt = log(pages.size() / postings.size());
+  // IDF = ln(N/df_t)
+  double wt = log(pages.size() / postings.size());
   size_t p_i = 0;
-	for (auto &p: postings) {
+  for (auto &p: postings) {
     spdlog::trace("have pair {} : {},{} ({})", p_i++, p.id, p.count, pages.size());
 
     assert(p.id < pages.size());
@@ -128,24 +128,24 @@ rank(
     spdlog::trace("{} = {} : {}", p.id, page.first, page.second);
 
     std::string &page_url = page.first;
-		double docLength = page.second;
+    double docLength = page.second;
     double tf = p.count;
 
     if (docLength == 0 || page_url == "") {
       continue;
     }
 
-		//                   (k_1 + 1) * tf_td
-		// IDF * ----------------------------------------- (over)
-		//       k_1 * (1 - b + b * (L_d / L_avg)) + tf_td
-		double k1 = 0.9;
-		double b = 0.4;
-		double dividend = (k1 + 1.0) * tf;
-		double divisor = k1 * (1 - b + b * (docLength / avgdl) + tf);
-		double rsv = wt * dividend / divisor;
+    //                   (k_1 + 1) * tf_td
+    // IDF * ----------------------------------------- (over)
+    //       k_1 * (1 - b + b * (L_d / L_avg)) + tf_td
+    double k1 = 0.9;
+    double b = 0.4;
+    double dividend = (k1 + 1.0) * tf;
+    double divisor = k1 * (1 - b + b * (docLength / avgdl) + tf);
+    double rsv = wt * dividend / divisor;
 
     pairs_ranked.emplace_back(page_url, rsv);
-	}
+  }
 
   std::sort(pairs_ranked.begin(), pairs_ranked.end(),
     [](auto &a, auto &b) {
@@ -243,40 +243,40 @@ intersect_postings_strict(std::vector<std::vector<std::pair<std::string, double>
 
   bool done = false;
 
-	while (indexes[0] < postings[0].size()) {
-		auto url = postings[0][indexes[0]].first;
-		bool canAdd = true;
-		for (size_t i = 1; i < postings.size(); i++) {
-			while (indexes[i] < postings[i].size() && postings[i][indexes[i]].first < url) {
-				indexes[i]++;
+  while (indexes[0] < postings[0].size()) {
+    auto url = postings[0][indexes[0]].first;
+    bool canAdd = true;
+    for (size_t i = 1; i < postings.size(); i++) {
+      while (indexes[i] < postings[i].size() && postings[i][indexes[i]].first < url) {
+        indexes[i]++;
       }
 
-			if (indexes[i] == postings[i].size()) {
+      if (indexes[i] == postings[i].size()) {
         done = true;
         break;
       }
 
-			if (postings[i][indexes[i]].first != url)
-				canAdd = false;
-		}
+      if (postings[i][indexes[i]].first != url)
+        canAdd = false;
+    }
 
     if (done) {
       break;
     }
 
     if (canAdd) {
-	    double rsv = 0;
-			for (size_t i = 0; i < postings.size(); i++) {
-				double w = postings[i][indexes[i]].second;
+      double rsv = 0;
+      for (size_t i = 0; i < postings.size(); i++) {
+        double w = postings[i][indexes[i]].second;
         rsv += w;
       }
 
       sum_scores += rsv;
       result.emplace_back(url, rsv);
-		}
+    }
 
-		indexes[0]++;
-	}
+    indexes[0]++;
+  }
 
   spdlog::info("total sum {} for {} postings", sum_scores, result.size());
 
@@ -287,7 +287,7 @@ intersect_postings_strict(std::vector<std::vector<std::pair<std::string, double>
     }
   }
 
-	return result;
+  return result;
 }
 
 std::list<std::pair<std::string, double>>
@@ -303,9 +303,9 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
   std::vector<size_t> indexes(postings.size(), 0);
 
   for (size_t i = 0; i < postings.size(); i++) {
-    spdlog::trace("posting {}", i);
+    spdlog::debug("posting {}", i);
     for (size_t j = 0; j < postings[i].size(); j++) {
-      spdlog::trace("    {}", postings[i][j].first);
+      spdlog::debug("    {}", postings[i][j].first);
     }
   }
 
@@ -313,9 +313,9 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
   std::list<std::pair<std::string, double>> result;
 
   while (true) {
-		std::string url = "";
+    std::string url = "";
 
-		for (size_t i = 0; i < postings.size(); i++) {
+    for (size_t i = 0; i < postings.size(); i++) {
       if (indexes[i] < postings[i].size()) {
         if (url == "" || postings[i][indexes[i]].first < url) {
           url = postings[i][indexes[i]].first;
@@ -335,7 +335,7 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
     double score = 0;
     size_t matches = 0;
 
-		for (size_t i = 0; i < postings.size(); i++) {
+    for (size_t i = 0; i < postings.size(); i++) {
       if (indexes[i] < postings[i].size()) {
         if (postings[i][indexes[i]].first == url) {
           score += postings[i][indexes[i]].second;
@@ -395,7 +395,7 @@ intersect_postings(std::vector<std::vector<std::pair<std::string, double>>> &pos
     spdlog::trace("sum adjust {} : {}", p.second, p.first);
   }
 
-	return result;
+  return result;
 }
 
 }
