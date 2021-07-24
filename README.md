@@ -31,9 +31,9 @@ Now completly re-written.
 * capnproto
 * libcurl
 
-* submodules:
-** nlohmann
-** spdlog
+Submodules:
+* nlohmann
+* spdlog
 
 ### Building & Running
 
