@@ -1,9 +1,0 @@
-vgcore.*
-*.txt
-*.dat
-*.xml
-*.o
-index
-search
-search-cgi
-search-cli
