@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.16.2)
 
 project(webscraper)
 
+# Change this 
+configure_file(x_seed/seed seed COPYONLY)
+configure_file(x_seed/blacklist blacklist COPYONLY)
+
 include_directories(SYSTEM "/usr/local/include")
 
 set (CMAKE_CXX_STANDARD 17)
@@ -26,9 +30,6 @@ find_package(CapnProto)
 add_subdirectory(x_nlohmann)
 
 add_subdirectory(x_spdlog)
-
-configure_file(x_seed/seed seed COPYONLY)
-configure_file(x_seed/blacklist blacklist COPYONLY)
 
 configure_file(config.json config.json COPYONLY)
 
